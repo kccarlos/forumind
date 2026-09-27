@@ -13,20 +13,11 @@ struct ForumsHome: View {
     @State private var forumToRemove: Forum?
     @State private var showingPinnedEditor = false
     @State private var addingSuggested: Set<String> = []
-    @ObservedObject private var sync: FolderSyncController
-    @State private var syncPromptHandled = SyncPrompt.isHandled || SyncPrompt.isHiddenOnForumsHome
 
     init(app: AppModel, onAddForum: @escaping () -> Void) {
         self.app = app
         self.browser = app.browser
-        self.sync = app.folderSync
         self.onAddForum = onAddForum
-    }
-
-    /// Sync is on by default wherever possible: until this device has a
-    /// folder (or "Not now" was tapped here or in Settings), invite to sync.
-    private var showsSyncPrompt: Bool {
-        !syncPromptHandled && SyncDebug.status(actual: sync.status) == .off
     }
 
     private var isNewUser: Bool { app.forums.isEmpty }
@@ -42,16 +33,10 @@ struct ForumsHome: View {
                 backToPage
             }
 
-            if showsSyncPrompt, !isNewUser {
-                syncPrompt
-            }
-
             if isNewUser {
                 welcome
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-                // A new user sees the welcome first.
-                if showsSyncPrompt { syncPrompt }
             } else {
                 pinnedSection
                 recentSection
@@ -73,14 +58,6 @@ struct ForumsHome: View {
             PinnedForumsEditor(app: app)
         }
         .accessibilityIdentifier("forumsHome")
-    }
-
-    private var syncPrompt: some View {
-        Section {
-            SyncPromptCard(app: app) {
-                withAnimation(DCMotion.quick) { syncPromptHandled = true }
-            }
-        }
     }
 
     // MARK: Header

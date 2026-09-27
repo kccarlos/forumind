@@ -25,7 +25,7 @@ A CLEANER BROWSER
 The built-in browser blocks ads and trackers using the EasyList and EasyPrivacy filter lists. Allow ads on any site with one tap.
 
 ON ALL YOUR DEVICES
-Built for iPhone and iPad, with the forum and the assistant side by side on iPad. Sync your forums, summaries, chats, and settings through a folder in your own iCloud Drive, encrypted with a key kept in your iCloud Keychain.
+Built for iPhone and iPad, with the forum and the assistant side by side on iPad. Your forums, summaries, chats, and settings sync automatically through your own iCloud account, end-to-end encrypted.
 
 PRIVATE BY DESIGN
 - No accounts, no analytics, no ads, no tracking.

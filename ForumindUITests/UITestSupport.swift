@@ -34,8 +34,7 @@ class DCUITestCase: XCTestCase {
         let app = XCUIApplication()
         let wantsOnboarding = arguments.contains("-dc-reset")
             || arguments.contains("-dc-onboarding-step")
-        // The Forums home sync card would shift the rows these flows use.
-        app.launchArguments = (wantsOnboarding ? [] : ["-dc-skip-onboarding"]) + ["-dc-no-sync-prompt"] + arguments
+        app.launchArguments = (wantsOnboarding ? [] : ["-dc-skip-onboarding"]) + arguments
         app.launch()
         return app
     }

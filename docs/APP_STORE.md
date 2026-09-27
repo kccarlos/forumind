@@ -27,6 +27,18 @@ in the repository already.
       | App ID | `io.github.kccarlos.forumind` |
       | Share extension App ID | `io.github.kccarlos.forumind.share` |
       | App Group (on both App IDs) | `group.io.github.kccarlos.forumind` |
+      | iCloud container (app App ID, with the iCloud › CloudKit and Push Notifications capabilities) | `iCloud.io.github.kccarlos.forumind` |
+
+      The first signed build with automatic signing registers the container
+      and turns the capabilities on; check them in the portal afterwards.
+- [ ] **Deploy the CloudKit schema to production** (CloudKit Console ›
+      the container › Schema › Deploy Schema Changes) before the first
+      TestFlight build. Development builds create the record types in the
+      development environment as they sync; TestFlight and App Store builds
+      use the **production** environment, which only has what was deployed.
+      Without it, sync fails for every tester and user. Redeploy whenever a
+      release adds a record type or field. The record types and fields are
+      listed in [SYNC.md](SYNC.md#cloudkit-schema).
 
 - [ ] Create the app record: App Store Connect › Apps › **+** › New App.
       Platform iOS, name (see [Name and trademark](#6-name-and-trademark)),
@@ -58,8 +70,13 @@ can access for longer than needed to service the request):
   developer's partners, and the data is sent only to fulfill the user's
   request. Apple treats data processed on-device or on Private Cloud Compute
   to fulfill a request as not collected by the developer.
-- iCloud Drive sync writes encrypted files to the user's own iCloud account;
-  the developer can't access it.
+- iCloud sync stores data in the app's CloudKit **private database** in the
+  user's own iCloud account. Apple's App Privacy guidance counts data as
+  collected only when the developer or its partners can access it; CloudKit
+  gives the developer no access to users' private databases (the CloudKit
+  Console shows only the developer's own account's data), and the content
+  fields are end-to-end encrypted besides. So it is not "collected", and the
+  answers don't change with sync.
 - No tracking: nothing is linked to the user or shared with data brokers or
   ad networks.
 
@@ -75,7 +92,6 @@ domains, and no collected data, plus the "required reason" APIs the code uses:
 | API category | Reason | Why |
 | --- | --- | --- |
 | User defaults | `CA92.1` | App-only settings and state. |
-| File timestamp | `3B52.1` | Reading modification dates of files in the iCloud Drive folder the user picked. |
 
 When code starts using another required-reason API (for example disk space or
 system boot time), add it to the manifest. Xcode's **Generate Privacy Report**
@@ -90,8 +106,9 @@ Rationale: the app uses only encryption **provided by Apple's operating
 system**, and only standard algorithms:
 
 - HTTPS/TLS through `URLSession` and WebKit for forum and AI requests.
-- **AES-GCM from Apple CryptoKit** to encrypt sync files at rest in the
-  user's iCloud Drive, with a key stored in the Keychain.
+- **CloudKit**'s end-to-end encryption of synced fields (`encryptedValues`),
+  done entirely by the OS; the app itself only hashes (SHA-256 from Apple
+  CryptoKit) to name records.
 - The iOS Keychain for API keys.
 
 There is no proprietary or non-standard cryptography and no bundled
@@ -203,8 +220,10 @@ How to test:
 Notes:
 - The built-in browser can open any website (hence the web access age
   rating) and blocks ads/trackers with bundled EasyList/EasyPrivacy lists.
-- Optional iCloud sync uses a folder the user picks in iCloud Drive, encrypted
-  with a key in iCloud Keychain. There is no server.
+- iCloud sync is automatic when the device is signed in to iCloud: CloudKit
+  private database, end-to-end encrypted fields. There is no server of ours.
+  To see it, use two devices on one Apple Account; Settings › iCloud Sync
+  shows the status.
 - The app is not affiliated with Discourse (Civilized Discourse Construction
   Kit, Inc.); it only reads public forum pages and pages the user is logged
   in to.

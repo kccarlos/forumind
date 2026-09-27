@@ -89,7 +89,7 @@ platform :ios do
       precheck_include_in_app_purchases: false,
       submission_information: {
         add_id_info_uses_idfa: false,
-        # Uses only exempt, OS-provided encryption (TLS, CryptoKit AES-GCM);
+        # Uses only exempt, OS-provided encryption (TLS, CloudKit, Keychain);
         # matches ITSAppUsesNonExemptEncryption = NO. See docs/APP_STORE.md.
         export_compliance_uses_encryption: true,
         export_compliance_is_exempt: true

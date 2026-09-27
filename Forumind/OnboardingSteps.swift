@@ -453,38 +453,38 @@ struct OnboardingForumIcon: View {
 
 // MARK: 5. Sync across your devices
 
-/// Optional: pick a folder in iCloud Drive (Skip allowed).
+/// Informational: sync is on by default wherever iCloud is available.
 struct OnboardingSyncPage: View {
     @ObservedObject var app: AppModel
-    @ObservedObject private var sync: FolderSyncController
-    @State private var picking = false
+    @ObservedObject private var sync: CloudSyncController
 
     init(app: AppModel) {
         self.app = app
-        self.sync = app.folderSync
+        self.sync = app.cloudSync
     }
 
-    private var status: FolderSyncController.Status { SyncDebug.status(actual: sync.status) }
+    private var status: CloudSyncController.Status { SyncDebug.status(actual: sync.status) }
+    private var isEnabled: Bool { SyncDebug.isEnabled(actual: sync.isEnabled) }
 
     var body: some View {
         OnboardingPage {
             OnboardingHeader(
-                eyebrow: "Optional",
+                eyebrow: "Automatic",
                 title: "Sync across your devices",
-                subtitle: "Keep your forums, summaries, chats and agent runs on your iPhone and iPad."
+                subtitle: "Your forums, summaries and chats sync across your iPhone and iPad through iCloud — end-to-end encrypted."
             )
             VStack(alignment: .leading, spacing: DCTheme.spacingL) {
                 OnboardingFeatureRow(
-                    symbol: "folder.fill",
+                    symbol: "icloud.fill",
                     tint: SettingsPage.sync.tint,
-                    title: "A folder in your iCloud Drive",
-                    detail: FolderPicker.tip
+                    title: "Nothing to set up",
+                    detail: "Sign in to the same Apple Account on each device and your data follows you."
                 )
                 OnboardingFeatureRow(
                     symbol: "lock.fill",
                     tint: DCTheme.brandPurple,
-                    title: "Encrypted first",
-                    detail: "Synced data is encrypted before it reaches iCloud Drive, with a key kept in iCloud Keychain."
+                    title: "End-to-end encrypted",
+                    detail: "Stored in your own iCloud account with keys only your devices have. No server of ours in between."
                 )
                 OnboardingFeatureRow(
                     symbol: "key.fill",
@@ -495,37 +495,39 @@ struct OnboardingSyncPage: View {
             }
             .dcCard()
 
-            if status == .off {
-                Button {
-                    picking = true
-                } label: {
-                    Label("Choose folder…", systemImage: "folder.badge.plus")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(DCActionButtonStyle(prominent: false))
-                .accessibilityIdentifier("onboardingSyncChooseFolder")
-            } else {
-                let presentation = SyncStatusPresentation(status)
-                HStack(alignment: .top, spacing: DCTheme.spacingM) {
-                    OnboardingIconTile(symbol: presentation.symbol, tint: presentation.tint, size: 36)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(sync.folderName.map { "Syncing with “\($0)”" } ?? presentation.title)
-                            .font(.subheadline.weight(.semibold))
-                        Text(presentation.detail ?? presentation.title)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Spacer(minLength: 0)
-                    Button("Change…") { picking = true }
+            VStack(alignment: .leading, spacing: DCTheme.spacingM) {
+                Toggle(isOn: Binding(get: { isEnabled }, set: { sync.setEnabled($0) })) {
+                    Text("Sync with iCloud")
                         .font(.subheadline.weight(.semibold))
-                        .accessibilityIdentifier("onboardingSyncChooseFolder")
                 }
-                .dcCard(tint: presentation.tint)
-                .accessibilityIdentifier("onboardingSyncStatus")
+                .tint(SettingsPage.sync.tint)
+                .accessibilityIdentifier("onboardingSyncToggle")
+                if isEnabled {
+                    let presentation = SyncStatusPresentation(status)
+                    HStack(alignment: .top, spacing: DCTheme.spacingM) {
+                        OnboardingIconTile(symbol: presentation.symbol, tint: presentation.tint, size: 32)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(presentation.title)
+                                .font(.subheadline.weight(.semibold))
+                            if let detail = presentation.detail {
+                                Text(detail)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("onboardingSyncStatus")
+                } else {
+                    Text("Turn it on any time in Settings › iCloud Sync.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
+            .dcCard()
         }
-        .syncFolderPicker(isPresented: $picking, app: app)
     }
 }
 
@@ -722,13 +724,13 @@ struct PrivacyPoints: View {
             symbol: "key.fill",
             tint: DCTheme.brandPurple,
             title: "Keys in your Keychain",
-            detail: "Keys are kept in your Keychain and, if you turn on sync, in iCloud Keychain. They’re sent only to the provider they belong to."
+            detail: "Keys are kept in your Keychain and, with Sync API keys on, in iCloud Keychain. They’re sent only to the provider they belong to."
         )
         OnboardingFeatureRow(
             symbol: "iphone",
             tint: DCTheme.brandBlue,
             title: "Saved on your devices",
-            detail: "Summaries, chats, and answers are stored on your device. Synced data is encrypted before it reaches iCloud Drive. Delete them any time in Settings."
+            detail: "Summaries, chats, and answers are stored on your device and, with sync, end-to-end encrypted in your own iCloud. Delete them any time in Settings."
         )
         OnboardingFeatureRow(
             symbol: "arrow.left.arrow.right",
@@ -832,23 +834,25 @@ struct OnboardingDonePage: View {
 
 /// Done page checklist row for sync.
 private struct OnboardingDoneSyncRow: View {
-    @ObservedObject private var sync: FolderSyncController
+    @ObservedObject private var sync: CloudSyncController
 
     init(app: AppModel) {
-        self.sync = app.folderSync
+        self.sync = app.cloudSync
     }
 
     var body: some View {
-        let on = SyncDebug.status(actual: sync.status) != .off
+        let status = SyncDebug.status(actual: sync.status)
+        let enabled = SyncDebug.isEnabled(actual: sync.isEnabled)
+        let on = enabled && [.syncing, .upToDate].contains(status)
         HStack(alignment: .top, spacing: DCTheme.spacingM) {
             Image(systemName: on ? "checkmark.circle.fill" : "circle.dashed")
                 .font(.title2)
                 .foregroundStyle(on ? DCTheme.success : Color.secondary)
                 .frame(width: 32)
             VStack(alignment: .leading, spacing: 2) {
-                Text(on ? "Syncing across your devices" : "Sync is off")
+                Text(on ? "Syncing across your devices" : (enabled ? SyncStatusPresentation(status).title : "Sync is off"))
                     .font(.subheadline.weight(.semibold))
-                Text(on ? (sync.folderName.map { "Folder: \($0)" } ?? "iCloud Drive") : "Turn it on any time in Settings › iCloud Sync.")
+                Text(on ? "Through your iCloud account" : "Check it any time in Settings › iCloud Sync.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)

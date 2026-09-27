@@ -77,29 +77,72 @@ content_blocking.last_known_file_type = "folder"
 app_target.resources_build_phase.add_file_reference(content_blocking)
 app_group.new_file("Info.plist")
 app_group.new_file("Forumind.entitlements")
-app_group.new_file("Forumind-PCC.entitlements")
 # Privacy manifests (App Store requirement; see docs/APP_STORE.md).
 app_privacy = app_group.new_file("PrivacyInfo.xcprivacy")
 app_privacy.last_known_file_type = "text.xml"
 app_target.resources_build_phase.add_file_reference(app_privacy)
 
-pcc_enabled = %w[1 YES yes true].include?(ENV["DC_ENABLE_PCC"].to_s.strip)
+def flag_value(name)
+  value = ENV[name].to_s.strip
+  return nil if value.empty?
+  return true if %w[1 YES yes true].include?(value)
+  return false if %w[0 NO no false].include?(value)
+  abort "#{name} must be YES or NO (got #{value.inspect})"
+end
+
+# Capabilities beyond the base entitlements (App Group only).
+#
+# - CloudKit (iCloud sync): on whenever a team is resolved, because CloudKit
+#   needs a signed build and an app without the iCloud entitlement crashes
+#   on its first CloudKit call. DC_ENABLE_CLOUDKIT=YES|NO overrides.
+#   Unsigned builds (CI, forks without a team, CODE_SIGNING_ALLOWED=NO) get
+#   neither the entitlement nor `CLOUDKIT_ENABLED`, so sync stays off there.
+# - Private Cloud Compute: a managed entitlement Apple assigns on request.
+#   DC_ENABLE_PCC=YES. See docs/APPLE_INTELLIGENCE.md.
+#
+# The signing entitlements are composed from Forumind/Forumind.entitlements
+# plus the enabled capabilities into Forumind/Generated/Forumind.entitlements
+# (git-ignored). With nothing beyond the base (the committed project), the
+# project signs with the committed base file directly.
+cloudkit_override = flag_value("DC_ENABLE_CLOUDKIT")
+cloudkit_enabled = cloudkit_override.nil? ? !development_team.empty? : cloudkit_override
+pcc_enabled = flag_value("DC_ENABLE_PCC") || false
+cloudkit_container = "iCloud.$(DC_IDENTIFIER_PREFIX)"
+
+extra_entitlements = {}
+if cloudkit_enabled
+  # "development" here; exporting for TestFlight / the App Store re-signs
+  # with the distribution profile, which switches it to "production".
+  extra_entitlements["aps-environment"] = "development"
+  extra_entitlements["com.apple.developer.icloud-container-identifiers"] = [cloudkit_container]
+  extra_entitlements["com.apple.developer.icloud-services"] = ["CloudKit"]
+end
+extra_entitlements["com.apple.developer.private-cloud-compute"] = true if pcc_enabled
+
+base_entitlements_path = "Forumind/Forumind.entitlements"
+generated_entitlements_dir = File.join(root, "Forumind", "Generated")
+FileUtils.rm_rf(generated_entitlements_dir)
+app_entitlements_path =
+  if extra_entitlements.empty?
+    base_entitlements_path
+  else
+    entitlements = Xcodeproj::Plist.read_from_path(File.join(root, base_entitlements_path))
+    entitlements.merge!(extra_entitlements)
+    FileUtils.mkdir_p(generated_entitlements_dir)
+    Xcodeproj::Plist.write_to_path(entitlements, File.join(generated_entitlements_dir, "Forumind.entitlements"))
+    "Forumind/Generated/Forumind.entitlements"
+  end
+
+app_swift_flags = ["$(inherited)"]
+app_swift_flags << "-D CLOUDKIT_ENABLED" if cloudkit_enabled
+app_swift_flags << "-D PCC_ENABLED" if pcc_enabled
 
 app_target.build_configurations.each do |configuration|
   settings = configuration.build_settings
   settings["ASSETCATALOG_COMPILER_APPICON_NAME"] = "AppIcon"
   settings["ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME"] = "AccentColor"
-  # Apple Intelligence on Private Cloud Compute needs an entitlement Apple
-  # assigns on request. DC_ENABLE_PCC=YES compiles the PCC path in and signs
-  # with the PCC entitlements file; it can also be overridden per build with
-  # `xcodebuild DC_ENABLE_PCC=YES`. See docs/APPLE_INTELLIGENCE.md.
-  settings["DC_ENABLE_PCC"] = pcc_enabled ? "YES" : "NO"
-  settings["DC_PCC_SWIFT_FLAGS_YES"] = "-D PCC_ENABLED"
-  settings["DC_PCC_SWIFT_FLAGS_NO"] = ""
-  settings["OTHER_SWIFT_FLAGS"] = "$(inherited) $(DC_PCC_SWIFT_FLAGS_$(DC_ENABLE_PCC))"
-  settings["DC_PCC_ENTITLEMENTS_SUFFIX_YES"] = "-PCC"
-  settings["DC_PCC_ENTITLEMENTS_SUFFIX_NO"] = ""
-  settings["CODE_SIGN_ENTITLEMENTS"] = "Forumind/Forumind$(DC_PCC_ENTITLEMENTS_SUFFIX_$(DC_ENABLE_PCC)).entitlements"
+  settings["OTHER_SWIFT_FLAGS"] = app_swift_flags.join(" ")
+  settings["CODE_SIGN_ENTITLEMENTS"] = app_entitlements_path
   settings["CODE_SIGN_STYLE"] = "Automatic"
   settings["CURRENT_PROJECT_VERSION"] = build_number
   settings.merge!(identity_settings)
@@ -255,4 +298,8 @@ scheme.add_test_target(ui_test_target)
 scheme.set_launch_target(app_target)
 scheme.save_as(project_path, "Forumind", true)
 
+capabilities = []
+capabilities << "CloudKit" if cloudkit_enabled
+capabilities << "PCC" if pcc_enabled
 puts "Generated #{project_path}"
+puts "Capabilities: #{capabilities.empty? ? "none (base entitlements)" : capabilities.join(", ")}; entitlements: #{app_entitlements_path}"

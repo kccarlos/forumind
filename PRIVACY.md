@@ -1,7 +1,7 @@
 # Privacy Policy
 
 **Forumind for iPhone and iPad**
-Effective date: September 26, 2026
+Effective date: September 27, 2026
 
 Forumind is a free, open-source app that helps you read Discourse
 forums with an AI assistant. This policy explains, in plain words, what the
@@ -52,24 +52,36 @@ or turn on automatic summary refresh for a watched topic.
 - **API keys** are stored in the iOS Keychain, not in the app's data file.
   If **Sync API keys** is on (the default), they are stored in **iCloud
   Keychain** so your other devices can use them. Apple end-to-end encrypts
-  iCloud Keychain.
+  iCloud Keychain. Keys never go into the CloudKit database.
 
-### iCloud sync (optional)
+### iCloud sync
 
-If you choose a folder in **Settings › iCloud Sync**, the app writes your
-forums, summaries, chats, Ask the forum runs, watched topics, and settings to
-that folder in **your own iCloud Drive**. Every file is encrypted on your
-device (AES-GCM) with a key kept in your iCloud Keychain, so iCloud Drive
-stores only encrypted files. The developer has no access to your iCloud
-account, the folder, or the key. Stop syncing at any time in Settings, and
-delete the folder in the Files app to remove the synced copies.
+When your device is signed in to iCloud, the app syncs your forums,
+summaries, chats, Ask the forum runs, watched topics, and settings between
+your devices through **Apple CloudKit**, in the app's **private database in
+your own iCloud account**. The content (forum names and addresses, topic
+titles, summaries, chats, answers, and settings) is stored in CloudKit's
+end-to-end encrypted fields, with keys held by your devices; Apple and the
+developer can't read it. Like any CloudKit data, each record also has
+unencrypted metadata that CloudKit needs to work, such as its type, an
+identifier, and when it changed.
+
+The developer has no access to your iCloud account or to your private
+database: CloudKit gives the developer no way to read a user's private data.
+The data counts toward your iCloud storage. Turn sync off in **Settings ›
+iCloud Sync**, and use **Delete iCloud data** there to remove the app's data
+from iCloud on all your devices (data on each device is kept).
+
+CloudKit tells the app about changes from your other devices with silent
+push notifications from Apple, which carry no content and show nothing on
+screen.
 
 ### Notifications
 
 If you watch a topic and allow notifications, the app checks that topic on
 the forum (including in the background, when iOS allows) and shows a local
-notification about new replies. Notifications are created on your device; no
-push notification service is used.
+notification about new replies. These notifications are created on your
+device; they don't go through a push notification service.
 
 ### Ad and tracker blocking
 

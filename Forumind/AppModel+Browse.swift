@@ -75,14 +75,16 @@ extension AppModel {
     func applyDebugLaunchArguments() {
         let arguments = ProcessInfo.processInfo.arguments
         if arguments.contains("-dc-seed-forums"), forums.isEmpty {
+            // Discourse Meta plus fictional communities on reserved example
+            // domains (screenshots show no real companies).
             let pinned = [
                 Forum(siteURL: "https://meta.discourse.org", name: "Discourse Meta"),
-                Forum(siteURL: "https://community.openai.com", name: "OpenAI Developer Community"),
-                Forum(siteURL: "https://discuss.python.org", name: "Discussions on Python.org")
+                Forum(siteURL: "https://community.example.org", name: "Maker Space Community"),
+                Forum(siteURL: "https://talk.example.com", name: "Trail Runners Club")
             ]
             pinned.forEach(pin)
-            recordVisit(siteURL: "https://forum.cursor.com", name: "Cursor Community Forum", iconURL: nil)
-            recordVisit(siteURL: "https://community.home-assistant.io", name: "Home Assistant Community", iconURL: nil)
+            recordVisit(siteURL: "https://forum.example.net", name: "Home Lab Forum", iconURL: nil)
+            recordVisit(siteURL: "https://bakers.example.org", name: "Sourdough Bakers", iconURL: nil)
             if ForumIconPolicy.loadsRemoteIcons {
                 for forum in forums { refreshForumInfo(siteURL: forum.siteURL) }
             }

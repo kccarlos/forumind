@@ -2,80 +2,73 @@
 
 Forumind syncs between a person's iPhone and iPad in two ways:
 
-- **A folder the user picks in iCloud Drive** carries forums, summaries,
-  chats, agent runs, watched topics, and settings as encrypted files.
-- **iCloud Keychain** carries API keys and the key that encrypts the folder.
+- **CloudKit** carries forums, summaries, chats, Ask the forum runs, watched
+  topics, and settings, in the app's private database in the user's own
+  iCloud account. It is **on by default** whenever the device is signed in to
+  iCloud; there is nothing to set up.
+- **iCloud Keychain** carries API keys (**Sync API keys**, on by default).
 
-Neither needs an iCloud (CloudKit) entitlement, so sync works in builds signed
-with any team, including a free personal team, and there is no server of ours
-involved: the files live in the user's own iCloud Drive.
+There is no server of ours involved.
 
 ## For users
 
-1. Open **Settings › iCloud Sync** and tap **Choose folder…**.
-2. Pick **iCloud Drive**, then create or choose a folder such as
-   "Forumind".
-3. Do the same on each device, choosing the same folder.
-
-API keys sync by themselves through iCloud Keychain (turn that off with
-**Sync API keys**). If a device says it's waiting for iCloud Keychain, turn on
-**Settings › [your name] › iCloud › Passwords and Keychain**.
-**Stop syncing on this device** keeps everything already on the device.
-**Reset sync data** starts a new encryption key and re-uploads from this
-device.
+- Sign in to the same Apple Account on each device. Sync starts by itself.
+- **Settings › iCloud Sync** shows the status and when the last sync
+  finished, with **Sync now**, the **Sync with iCloud** switch (turns sync off
+  on this device only), **Sync API keys**, "What syncs", and **Delete iCloud
+  data**.
+- The status says what to fix: "Sign in to iCloud in the Settings app" (no
+  account), "iCloud is turned off for Forumind in Settings › [your name] ›
+  iCloud" (restricted), the reason CloudKit gave (unavailable), or the error
+  with **Sync now**.
+- Synced data counts toward the user's iCloud storage. When iCloud is full,
+  the status shows the error; local data is unaffected.
 
 ## What syncs
 
-| Data | Transport | Merge rule |
+Every synced item is one CloudKit record. A record is a set of *units* (a
+top-level field of the model, or a few fields that must travel together),
+each with a `modifiedAt` stamp. Merging two copies picks, per unit, the copy
+with the newest stamp, except where the table says otherwise. Stamps come
+from diffing against the baseline (what both sides last agreed on), so a
+unit this device didn't touch can't beat a remote edit.
+
+| Data | Record kind | Merge rule |
 |---|---|---|
-| API keys | Keychain items with `kSecAttrSynchronizable` | iCloud Keychain |
-| Settings (except device-local ones) | `settings.json`, with a `modifiedAt` per field | per field, newest wins |
-| Forums | one file per forum | newest `updatedAt` wins |
-| Topic sessions: summary, chat, instructions, kept flag, counts | one file per topic | fields newest-wins; the chat history as a whole by `chatUpdatedAt` (never merged message by message, so a cleared or edited chat can't come back) |
-| Agent runs, including the transcript | one file per run | newest `updatedAt` wins; follow-ups as a whole |
-| Watched topics | one file per topic | newest wins; `knownPostCount` takes the maximum |
+| Settings, except device-local ones | `settings` (one record) | per setting, newest wins; each provider configuration is one unit, without its API key |
+| Forums | `forum`, one per forum | newest wins; `addedAt` takes the minimum, `lastVisitedAt` the maximum |
+| Topic sessions: summary, chat, instructions, kept flag, counts | `session`, one per topic | newest wins per unit; the chat history is one unit (never merged message by message, so a cleared or edited chat can't come back), and the summary travels with its post count, time, provider, and model; `createdAt` min, `updatedAt` / `lastAccessedAt` max |
+| Ask the forum runs, including the transcript | `run`, one per run | the run as a whole, newest wins |
+| Watched topics | `watched`, one per topic | newest wins; `knownPostCount` takes the maximum |
 
-**Stays on each device:** the work queue and activity log, cached forum pages,
-the browser bar position, whether the walkthrough was completed, the chosen
-folder itself, panel width, and browser state.
+An unkept chat that expired (24 hours idle) counts as cleared on every
+device.
 
-## Folder layout
-
-```
-<picked folder>/Forumind Sync/
-  format.json                    { "format": 1, "keyID": "…" }
-  settings.json
-  forums/<name>.json
-  sessions/<name>.json
-  runs/<uuid>.json
-  watched/<name>.json
-```
-
-`<name>` is a lowercase hex SHA-256 prefix of the record key (topic keys
-contain `/` and may be non-ASCII); the real key is inside the encrypted file.
-A file is bound to its path: one whose kind or id doesn't match its folder and
-name is refused, so files can't be swapped between records.
+**Stays on each device:** API keys (they sync only through iCloud Keychain),
+**Sync API keys**, whether sync is on, the work queue and activity log,
+fetched topic text and cached forum pages, each device's last watch check,
+the browser bar position, whether the walkthrough was completed, panel width,
+and browser state.
 
 ## Encryption and privacy
 
-Every file is encrypted with AES-GCM (Apple CryptoKit) using a random 256-bit
-key stored in iCloud Keychain as a synchronizable item. iCloud Drive only ever
-holds ciphertext; the kind and id of each record are authenticated as part of
-the encryption. The sync key is separate from API keys and always syncs, even
-with **Sync API keys** off.
+Each record's content (the record id, every unit, and the stamps) is one
+JSON payload stored in the record's **`encryptedValues`**, which CloudKit
+encrypts end to end with keys from the user's iCloud Keychain: neither Apple
+nor the developer can read it. The unencrypted fields are only what the
+engine needs without decrypting: the record kind, a format version, and the
+deletion time of a tombstone. The record name is `settings` or the first 40
+hex digits of the SHA-256 of `kind/id`, so forum addresses and topic ids
+never appear in plain form.
 
-A device without the key (iCloud Keychain off, or not yet synced) shows
-"Turn on iCloud Keychain to read synced data" and writes nothing until the key
-arrives. It re-checks the Keychain at the start of every pass and whenever the
-app comes to the foreground, so it recovers on its own.
-
-If two devices create `format.json` at the same time, the lowest `keyID` wins
-and the other device re-encrypts its records with that key.
+The developer can't see users' private databases at all; the CloudKit Console
+shows only the signed-in developer's own data.
 
 ## API keys
 
 Provider API keys (`KeychainProviderKeyStore` in `Persistence.swift`) are
 synchronizable Keychain items while **Sync API keys** is on (the default).
+They never go into CloudKit.
 
 - Each launch moves any local-only key into iCloud Keychain: add the synced
   item, then delete the local copy only if the add worked. A different key
@@ -88,35 +81,34 @@ synchronizable Keychain items while **Sync API keys** is on (the default).
 - Keys are re-read from the Keychain on every foreground, because iOS sends no
   change notifications for Keychain items.
 
-## How a sync pass works
+## How it works
 
-`FolderSyncController` (main actor) owns the folder bookmark, the status shown
-in Settings, and scheduling. `FolderSyncEngine` (an actor) does the work, and
-`FolderSyncStorage` reads and writes files with `NSFileCoordinator`.
+`CloudSyncController` (main actor) owns the status shown in Settings, the
+on/off switch, and scheduling. `CloudSyncEngine` (an actor) keeps a mirror of
+the server's records and a baseline, and plans each pass. `CloudKitTransport`
+wraps a `CKSyncEngine` on the private database, zone `Forumind`, and turns the
+engine's outbox into CloudKit records. `SyncRecords.swift` defines the record
+model and merge rules, and `AppModel+CloudSync.swift` converts app state to
+and from records.
 
-A pass is **pull, then push**:
+A **pass** merges the app state, the mirror, and the baseline, applies remote
+changes to the app in one main-actor step (`AppModel.applyRemote`), and queues
+the records whose merged content differs from the server's copy. Merges are
+deterministic (same inputs give the same plaintext bytes), so two devices
+stop sending once they agree.
 
-1. List the folder. Files that are still iCloud placeholders are asked to
-   download (`startDownloadingUbiquitousItem`) and skipped this pass; the app
-   never reads a file that isn't downloaded.
-2. Read changed files, merge any `NSFileVersion` conflict versions with the
-   rules above, and apply the result to the app state in one main-actor step
-   (`AppModel.applyRemote(_:)`), which saves locally and updates the baseline
-   so nothing echoes back.
-3. Diff the app state against the baseline and write only the records whose
-   content changed, plus tombstones for deletions.
+**When it runs:** about 2 seconds after a local change, after every fetch,
+when the app comes to the foreground, on **Sync now**, and a last send when
+the app goes to the background (inside a background task). Changes from other
+devices arrive as silent CloudKit pushes (`remote-notification` background
+mode, `aps-environment` entitlement), and `CKSyncEngine` fetches them.
 
-The baseline (per-record plaintext hashes and last-synced versions) is kept in
-Application Support. Merges are deterministic (same inputs give the same
-plaintext bytes, with stable key order) and the baseline compares plaintext
-hashes, since AES-GCM ciphertext differs on every write. Two devices therefore
-stop writing once they agree.
+**Joining.** A device that starts syncing (first launch, sync turned back on,
+another account) fetches everything first and sends nothing until that fetch
+completes, then merges its local data in.
 
-**When a pass runs:** about 2 seconds after a local change, when the app comes
-to the foreground, every 60 seconds while it's active, when the folder reports
-a change (`NSFilePresenter`, plus a best-effort `NSMetadataQuery`), on
-**Sync now**, and one last push when the app goes to the background (inside a
-background task).
+**Conflicts.** If another device saved a record in between, CloudKit rejects
+the send; the engine merges the server's copy and sends the result.
 
 **Running work is not disturbed.** Remote settings changes go through the same
 path as local edits, so a summary or agent run that is already running keeps
@@ -124,74 +116,93 @@ the settings it started with.
 
 ## Deletions
 
-- A deletion rewrites the record's file as a tombstone
-  `{ "id", "deletedAt" }`. A tombstone wins only if it is newer than the other
-  copy's last update. Tombstones older than 60 days are removed.
-- Deletes are logged the moment they happen, so a delete made just before the
-  app is closed, or while the folder or key is unavailable, keeps its real
-  time.
+- A deletion replaces the record's payload with a tombstone. A tombstone wins
+  only if it is newer than the other copy's last update. Tombstones older than
+  60 days are deleted from the server.
+- Deletes are logged the moment they happen (`cloudsync-deletions.json`), so
+  a delete made just before the app is closed keeps its real time.
 - Pruning old history on one device (to stay within the app's limits) never
   writes a tombstone; that device simply doesn't re-import the pruned record
   until someone changes it.
-- A device returning after longer than the tombstone lifetime treats a record
-  it synced and didn't change, whose file has stayed missing for 30 minutes
-  over two passes, as deleted elsewhere. A device that was active recently
-  re-uploads a missing file instead. A changed local copy is always kept.
-- A write that fails keeps the previous hash in the baseline, so a record that
-  never reached the folder is written again rather than taken as deleted.
-- When a device joins a folder that has an old tombstone for a record it still
-  has, the local copy is kept (and uploaded again) if it was used after the
-  delete; otherwise it is deleted.
+- A device returning after longer than the tombstone lifetime re-lists the
+  whole zone first, and treats a record it synced and didn't change that is
+  gone from the server as deleted elsewhere.
 
-## Resetting
+## Account changes, turning off, deleting
 
-- **Reset sync data** makes a new key and re-uploads everything from this
-  device. Other devices notice the new key and re-read the folder.
+- **Signing out of iCloud** stops sync and forgets the server state; local
+  data stays. The next sign-in joins from scratch.
+- **Another Apple Account** signs in: the old account's server state is
+  forgotten and the device joins the new account's zone with its local data.
+- **Sync with iCloud off** stops sync on this device and forgets the server
+  state; local data and the iCloud copy stay, and other devices keep syncing.
+  Turning it back on joins again.
+- **Delete iCloud data** deletes the `Forumind` zone, which removes the
+  iCloud copy for every device, and turns sync off here. Other devices notice
+  the deleted zone and turn sync off too, rather than uploading everything
+  again. Local data stays on every device.
+- If the user removes the app's data in iOS Settings › iCloud, or iCloud's
+  end-to-end encryption keys are reset, the device uploads its data again.
 - **Reset settings** keeps **Sync API keys** (it is device-local). With it off,
   the reset deletes this device's local keys only; with it on, it deletes the
-  synced keys on every device. The settings reset itself syncs through the
-  folder.
+  synced keys on every device. The settings reset itself syncs.
 
-## Limits
+## Requirements and limits
 
-- Setting an optional top-level setting back to "none" doesn't propagate (no
-  control in the app does this today).
+- CloudKit needs a build **signed with a paid team** and the iCloud
+  entitlement. The generator turns CloudKit on only when a team is set
+  (`CLOUDKIT_ENABLED`); unsigned builds, CI, and unit tests have no transport
+  and show "Sync needs a signed build". See
+  [DEVELOPMENT.md](DEVELOPMENT.md#icloud-sync-cloudkit-and-signing).
+- Everything counts toward the user's iCloud storage (a few KB per topic).
+- A record holds at most about 900 KB of payload (CloudKit's limit is 1 MB).
+  Payloads over 128 KB are LZFSE-compressed; an Ask the forum run that still
+  doesn't fit keeps its goal and the newest transcript messages that do.
+- An Ask the forum run syncs once it has finished; work that is running on a
+  device is never changed by a remote edit.
 - A device whose clock runs fast wins concurrent edits by the amount of the
   skew; edits made after seeing its change still win.
-- Records pruned on every device stay in the folder (about 4 KB per topic;
-  500 topics is about 2 MB). A pass over 500 topics takes about 0.5 s (nothing
-  changed) to 1 s (full check) on a simulator, off the main thread.
-- Each watched-topic check updates `lastCheckedAt`, so it rewrites that
-  topic's file.
-- Two devices using different folders with the same name look alike in
-  Settings.
-- Signing matters for Keychain sync: unsigned simulator builds
+- Signing matters for Keychain sync too: unsigned simulator builds
   (`CODE_SIGNING_ALLOWED=NO`) can't create synchronizable items. DEBUG builds
-  have `-dc-keychain-sync-probe` to check a signed build on a device (see
-  [DEVELOPMENT.md](DEVELOPMENT.md)).
+  have `-dc-keychain-sync-probe` to check a signed build on a device.
+
+## CloudKit schema
+
+Development builds create the schema in the container's **development**
+environment as they sync. TestFlight and App Store builds use the
+**production** environment, so before the first TestFlight build (and after
+any release that adds a record type or field), open
+[CloudKit Console](https://icloud.developer.apple.com) › the container
+(`iCloud.<BUNDLE_ID_PREFIX>`) › Schema, check it, and **Deploy Schema Changes**
+to production. Without it, every save in a TestFlight or App Store build
+fails.
+
+| Record type | Field | Type | Notes |
+|---|---|---|---|
+| `SyncRecord` | `kind` | String | `settings`, `forum`, `session`, `run`, `watched` |
+| | `formatVersion` | Int(64) | payload format (1) |
+| | `deletedAt` | Date/Time | tombstones only |
+| | `payload` | Bytes, **encrypted** | the record's JSON (id, units, stamps) |
+
+Zone: `Forumind` (custom zone in the private database). No indexes are
+needed: records are only fetched through zone changes, never queried. Forks
+use their own container (`iCloud.<BUNDLE_ID_PREFIX>`) and deploy the same
+schema to it.
 
 ## Testing
 
-Nothing touches iCloud in unit tests. The storage works on any directory, so
-`FolderSyncTests` use temporary folders and simulate two devices sharing one
-folder, including convergence (alternating passes stop writing).
+Nothing touches iCloud in unit tests: `CloudSyncTests` drive the controller
+and engine through an in-memory fake transport (`CloudSyncFakes.swift`),
+including two devices converging, conflicts, deletes, account changes, and
+zone deletion.
 
-For end-to-end checks with two simulators, point both at a folder on the host
-Mac with the same fixed key:
+End-to-end checks need two devices (or a device and a simulator signed in to
+iCloud) on the same Apple Account, both running a signed build generated with
+a team. Watch the status in Settings › iCloud Sync on both, change something
+on one, and check it arrives on the other. DEBUG builds also have
+`-dc-cloudkit-probe`, which logs the account status and a round trip through
+a test record.
 
-```sh
-KEY=$(head -c 32 /dev/urandom | base64)
-xcrun simctl launch <sim-1> "$BUNDLE_ID" -dc-sync-folder /tmp/dc-sync -dc-sync-key "$KEY"
-xcrun simctl launch <sim-2> "$BUNDLE_ID" -dc-sync-folder /tmp/dc-sync -dc-sync-key "$KEY"
-```
-
-Without `-dc-sync-folder`, sync stays off under `-dc-sample` and UI tests, so
-sample data never reaches a real sync folder.
-
-## Future: CloudKit
-
-A CloudKit private database could replace the folder transport now that the
-project can use a paid developer team: no folder to pick, and push-driven
-updates instead of polling. The record model, merge rules, and encryption
-above would carry over; only the storage layer (`FolderSyncStorage`) would
-change.
+Sync stays off under `-dc-sample` and the UI tests' `-ui-test-*` arguments,
+so sample data never reaches iCloud. `-dc-sync-status <status>` fakes the
+status shown in the UI for screenshots ([DEVELOPMENT.md](DEVELOPMENT.md#sync)).

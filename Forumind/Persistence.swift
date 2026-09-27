@@ -54,9 +54,11 @@ final class PersistentStore {
     private(set) var saveCount = 0
     /// The app's own store (Application Support), not a test/preview location.
     let usesDefaultLocation: Bool
-    /// Folder sync baseline, beside the snapshot (`foldersync.json`).
-    var folderSyncBaselineURL: URL {
-        fileURL.deletingLastPathComponent().appendingPathComponent("foldersync.json")
+    /// The folder holding the snapshot; iCloud sync keeps its files here too
+    /// (`CloudSyncFiles`: `cloudsync.json`, `cloudsync-state.json`,
+    /// `cloudsync-deletions.json`, `cloudsync-records/`).
+    var directoryURL: URL {
+        fileURL.deletingLastPathComponent()
     }
 
     init(fileURL: URL? = nil, keys: ProviderKeyStore? = nil) {

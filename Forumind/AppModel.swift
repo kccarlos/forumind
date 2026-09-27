@@ -131,11 +131,16 @@ final class AppModel: ObservableObject {
     /// A hand-off needed an AI provider that is not configured yet.
     @Published var needsProviderSetup = false
 
-    static let suggestedForums = ForumDirectory.suggested
+    nonisolated static var suggestedForums: [SuggestedForum] {
+        #if DEBUG
+        if ForumDirectory.usesSampleSuggestions { return ForumDirectory.sampleSuggested }
+        #endif
+        return ForumDirectory.suggested
+    }
 
     let browser: ForumBrowserModel
-    /// iCloud Drive folder sync (see FolderSyncController.swift).
-    let folderSync: FolderSyncController
+    /// iCloud (CloudKit) sync (see CloudSyncController.swift).
+    let cloudSync: CloudSyncController
 
     private let store: PersistentStore
     private let forumService: ForumService
@@ -184,11 +189,11 @@ final class AppModel: ObservableObject {
         browser: ForumBrowserModel? = nil,
         planner: AgentPlanner? = nil,
         notifier: WatchNotifier = .shared,
-        folderSync: FolderSyncController? = nil
+        cloudSync: CloudSyncController? = nil
     ) {
         self.store = store
         self.keyStore = store.keys
-        self.folderSync = folderSync ?? FolderSyncController.makeDefault(for: store)
+        self.cloudSync = cloudSync ?? CloudSyncController.makeDefault(for: store)
         self.forumService = forumService
         self.aiService = aiService
         self.browser = browser ?? ForumBrowserModel()
@@ -309,7 +314,7 @@ final class AppModel: ObservableObject {
         }
         applyStateDebugScript()
         #endif
-        self.folderSync.attach(self)
+        self.cloudSync.attach(self)
     }
 
     var currentSession: TopicSession? {
@@ -819,7 +824,7 @@ final class AppModel: ObservableObject {
         )
         run.transcript = [AgentPrompt.goalMessage(goal)]
         agentRuns.insert(run, at: 0)
-        folderSync.notePruned(kind: .run, ids: agentRuns.dropFirst(50).map(\.id.uuidString))
+        cloudSync.notePruned(kind: .run, ids: agentRuns.dropFirst(50).map(\.id.uuidString))
         agentRuns = Array(agentRuns.prefix(50))
         selectedAgentRunID = run.id
         agentGoalDraft = ""
@@ -1047,7 +1052,7 @@ final class AppModel: ObservableObject {
             startWatchTimer()
             // API keys edited on another device arrive through iCloud
             // Keychain, which has no change notification on iOS (sync passes
-            // re-read them too, but folder sync may be off).
+            // re-read them too, but iCloud sync may be off).
             reloadProviderKeysFromKeychain()
             let stale = lastWatchCheck.map {
                 Date().timeIntervalSince($0) >= Self.watchInterval
@@ -1067,7 +1072,7 @@ final class AppModel: ObservableObject {
         @unknown default:
             break
         }
-        folderSync.handleScenePhase(phase)
+        cloudSync.handleScenePhase(phase)
     }
 
     func requestNotificationAuthorization() {
@@ -2292,7 +2297,7 @@ final class AppModel: ObservableObject {
             sessions.removeValue(forKey: session.topicKey)
         }
         // Pruned, not deleted: other devices keep their copies.
-        folderSync.notePruned(kind: .session, ids: unkept.dropFirst(40).map(\.topicKey))
+        cloudSync.notePruned(kind: .session, ids: unkept.dropFirst(40).map(\.topicKey))
     }
 
     /// Writes the snapshot (and any changed API keys) now. Data changes save
@@ -2300,7 +2305,7 @@ final class AppModel: ObservableObject {
     private func save() {
         settingsSaveTask?.cancel()
         settingsSaveTask = nil
-        folderSync.localDataDidChange()
+        cloudSync.localDataDidChange()
         #if DEBUG
         // Sample data for screenshots is never written over the real snapshot,
         // and its placeholder key stays in memory.
@@ -2326,7 +2331,7 @@ final class AppModel: ObservableObject {
         activities.lazy.filter { !$0.status.isTerminal }.count
     }
 
-    // MARK: Folder sync hooks (AppModel+FolderSync.swift)
+    // MARK: Sync hooks (AppModel+CloudSync.swift)
 
     /// Replaces the synced collections with merged ones and saves.
     func replaceSyncedData(
@@ -2359,7 +2364,7 @@ final class AppModel: ObservableObject {
     }
 
     /// Every synced record the app holds, as "kind/id" (to notice deletes).
-    func folderSyncRecordKeys() -> Set<String> {
+    func syncRecordKeys() -> Set<String> {
         var keys = Set<String>(minimumCapacity: sessions.count + agentRuns.count + watchedTopics.count + forums.count + 1)
         for key in sessions.keys { keys.insert(SyncRecord.recordKey(kind: .session, id: key)) }
         for run in agentRuns { keys.insert(SyncRecord.recordKey(kind: .run, id: run.id.uuidString)) }

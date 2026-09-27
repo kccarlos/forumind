@@ -96,8 +96,13 @@ The generator then:
 
 1. adds `-D PCC_ENABLED` to the app target's `OTHER_SWIFT_FLAGS`, which turns
    on `#if PCC_ENABLED`, and
-2. signs with an entitlements file that also contains
-   `com.apple.developer.private-cloud-compute = true`.
+2. signs with `Forumind/Generated/Forumind.entitlements` (git-ignored),
+   which it composes from `Forumind/Forumind.entitlements` plus
+   `com.apple.developer.private-cloud-compute = true` (and the iCloud
+   entitlements when CloudKit is on; see
+   [DEVELOPMENT.md](DEVELOPMENT.md#icloud-sync-cloudkit-and-signing)).
+
+The setting is read when the project is generated; regenerate to change it.
 
 To check that the PCC path compiles without the entitlement (it only compiles,
 it doesn't sign):

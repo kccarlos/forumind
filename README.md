@@ -7,8 +7,7 @@ the posts it used.
 Forumind is a free, open-source iPhone and iPad app: a forum browser
 with an AI assistant beside it. It works with any forum built on
 [Discourse](https://www.discourse.org), like
-[meta.discourse.org](https://meta.discourse.org),
-[community.openai.com](https://community.openai.com), or your own community.
+[meta.discourse.org](https://meta.discourse.org), or your own community.
 
 **App Store: coming soon.** Until then, you can [build it yourself](#build-it-yourself).
 
@@ -35,8 +34,8 @@ with an AI assistant beside it. It works with any forum built on
 - **Built-in ad and tracker blocking** in the browser, using EasyList and
   EasyPrivacy.
 - **iCloud sync.** Forums, summaries, chats, and settings follow you between
-  devices through an encrypted folder in your own iCloud Drive; API keys sync
-  through iCloud Keychain.
+  your iPhone and iPad automatically, end-to-end encrypted in your own iCloud
+  account; API keys sync through iCloud Keychain.
 - **iPhone and iPad.** On iPad the forum and the Assistant sit side by side.
 
 <p>
@@ -87,9 +86,11 @@ address (for example `http://192.168.1.20:11434`) as the base URL.
 If a forum needs you to log in, log in inside the app's browser. The app
 reads the forum the way the browser does, so it can read what you can read.
 
-**Sync between iPhone and iPad:** open **Settings › iCloud Sync**, tap
-**Choose folder…**, and pick or create a folder in iCloud Drive. Do the same
-on your other device, choosing the same folder.
+**Sync between iPhone and iPad** is automatic: sign in to the same Apple
+Account on both, and your forums, summaries, chats, and settings follow you.
+Check it or turn it off in **Settings › iCloud Sync**. (Sync needs a build
+signed with a paid team; see
+[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#icloud-sync-cloudkit-and-signing).)
 
 ## Privacy in plain words
 
@@ -99,8 +100,8 @@ on your other device, choosing the same folder.
   Apple Intelligence, they stay on your device or go to Apple's Private Cloud
   Compute.
 - **Your keys stay in your Keychain** (and iCloud Keychain, if you sync them).
-- **Your history stays yours:** on your device and, if you turn on sync, as
-  encrypted files in your own iCloud Drive.
+- **Your history stays yours:** on your device and, with sync, end-to-end
+  encrypted in your own iCloud account, where nobody else can read it.
 - **Each forum's login stays with that forum.** Cookies are sent only to the
   forum they belong to.
 
@@ -160,7 +161,7 @@ your signing team first; see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#signing).
 - [CI/CD](docs/CI.md): GitHub Actions, TestFlight, releases
 - [Ad blocking](docs/AD_BLOCKING.md): how the filter lists are converted and
   loaded
-- [iCloud sync](docs/SYNC.md): folder sync, merge rules, encryption
+- [iCloud sync](docs/SYNC.md): CloudKit sync, merge rules, encryption
 - [Apple Intelligence](docs/APPLE_INTELLIGENCE.md): on-device and Private
   Cloud Compute
 - [App Store](docs/APP_STORE.md): release checklist

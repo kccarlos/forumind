@@ -9,7 +9,6 @@ final class AppIdentityTests: XCTestCase {
         XCTAssertEqual(AppIdentity.appGroupIdentifier, "group.\(prefix)")
         XCTAssertEqual(SharedInbox.appGroupIdentifier, AppIdentity.appGroupIdentifier)
         XCTAssertEqual(KeychainStore.providerKeysService, "\(prefix).provider-keys")
-        XCTAssertEqual(KeychainSyncKeyProvider.service, "\(prefix).sync-key")
     }
 
     func testBackgroundTaskIdentifierIsPermittedInInfoPlist() {

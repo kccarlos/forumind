@@ -76,8 +76,6 @@ struct SettingsRootView: View {
 
     var body: some View {
         Form {
-            SyncPromptSection(app: app)
-
             Section {
                 NavigationLink(value: SettingsPage.provider) {
                     providerRow

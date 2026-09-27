@@ -173,7 +173,7 @@ struct AssistantDebugSeed {
 ///
 /// - `-dc-sample`                      multi-forum sample data (required for the others)
 /// - `-dc-page-state <state>`          loading | notForum | maybe | forumHome | topic (default)
-/// - `-dc-topic meta|openai`           which sample topic is open (default meta)
+/// - `-dc-topic meta|makers`           which sample topic is open (default meta)
 /// - `-dc-assistant-mode <mode>`       summary | chat | agent
 /// - `-dc-open-manage`                 opens Manage
 /// - `-dc-no-provider`                 leaves the AI provider unconfigured
@@ -184,7 +184,7 @@ struct AssistantDebugSeed {
 /// - `-dc-scroll-sources`              Agent: scrolls to the answer's sources
 /// - `-dc-manage-kind <kind>`          Manage: all | summaries | agent | watched | activity
 /// - `-dc-chat-typing`                 with `-dc-chat-streaming`: no text yet (typing dots)
-/// - `-dc-stale-summary`               the openai topic's summary is behind (stale notice)
+/// - `-dc-stale-summary`               the makers topic's summary is behind (stale notice)
 /// - `-dc-forums-home`                 keeps the Forums home up (no sample page load)
 /// - with `-dc-apple-intelligence on-device|pcc`, sample runs are labeled Apple Intelligence
 enum AssistantDebug {
@@ -211,12 +211,14 @@ extension AppModel {
             siteURL: "https://meta.discourse.org", name: "Discourse Meta",
             isPinned: true, pinOrder: 0, lastVisitedAt: ago(2)
         )
-        let openAI = Forum(
-            siteURL: "https://community.openai.com", name: "OpenAI Developer Community",
+        // Fictional communities on reserved example domains (screenshots
+        // show no real companies or people).
+        let makers = Forum(
+            siteURL: "https://community.example.org", name: "Maker Space Community",
             isPinned: true, pinOrder: 1, lastVisitedAt: ago(30)
         )
-        let homeAssistant = Forum(
-            siteURL: "https://community.home-assistant.io", name: "Home Assistant Community",
+        let homeLab = Forum(
+            siteURL: "https://forum.example.net", name: "Home Lab Forum",
             lastVisitedAt: ago(60 * 26)
         )
 
@@ -256,16 +258,16 @@ extension AppModel {
         let markdownEndpoints = topic(meta, "413006", "discourse-core-now-includes-markdown-endpoints-for-topic-lists-and-views",
                                       "Discourse core now includes Markdown endpoints for topic lists and views")
         let sidebar = topic(meta, "413150", "experimental-user-sidebar-navigation", "Experimental user sidebar navigation")
-        let messageStream = topic(openAI, "1395555",
-                                  "repeated-error-in-message-stream-in-project-chats-and-branches-while-work-remains-usable",
-                                  "Repeated “Error in message stream” in Project chats and branches")
-        let mcpBlocked = topic(openAI, "1400691", "chatgpt-safety-layer-blocks-valid-mcp-tool-calls",
-                               "ChatGPT safety layer blocks valid MCP tool calls")
-        let sidebarUX = topic(openAI, "1400575", "right-click-behavior-in-the-chat-sidebar-is-a-clear-ux-regression",
-                              "Right-click behavior in the chat sidebar is a clear UX regression")
-        let terminals = topic(openAI, "1400729", "background-tool-calls-spawn-visible-terminals",
-                              "Background tool calls spawn visible terminals")
-        let fridge = topic(homeAssistant, "344678", "samsung-family-hub-refrigerator", "Samsung Family Hub Refrigerator")
+        let layerShifts = topic(makers, "18342",
+                                "layer-shifts-on-long-prints-after-the-2-4-firmware-update",
+                                "Layer shifts on long prints after the 2.4 firmware update")
+        let stepperHeat = topic(makers, "18391", "stepper-drivers-overheating-in-enclosed-printers",
+                                "Stepper drivers overheating in enclosed printers")
+        let slicerPresets = topic(makers, "18377", "sharing-slicer-presets-between-machines",
+                                  "Sharing slicer presets between machines")
+        let fanAfterPrint = topic(makers, "18402", "cooling-fan-keeps-running-after-a-print-finishes",
+                                  "Cooling fan keeps running after a print finishes")
+        let lowPowerNAS = topic(homeLab, "7713", "low-power-nas-build-for-2026", "Low-power NAS build for 2026")
 
         let metaSummary = """
         ## Original post
@@ -298,35 +300,35 @@ extension AppModel {
         ]
         let streamSummary = """
         ## Problem
-        Since mid-September, long **Project chats** stop with *“Error in message stream”*, while the same \
-        prompts work in a new chat.
+        Since the **2.4 firmware update**, prints longer than about six hours show *layer shifts* \
+        partway up, while short prints come out fine.
 
         ## Workarounds reported
-        - Start a **branch** from the last good message.
-        - Remove large files from the project, then retry.
-        - Switching models does not help consistently.
+        - Lower the **travel speed** by 20–30%.
+        - Re-tension the belts, then re-run the calibration.
+        - Rolling back to 2.3 helps some, but not everyone.
 
         ## Status
-        Staff acknowledged the report; no fix date yet.
+        The firmware maintainers confirmed the report; no fix date yet.
         """
         let streamChat: [(ChatRole, String)] = [
             (.user, "Which workaround works most often?"),
-            (.assistant, "Branching from the last good message is the one most people confirm. Removing large project files helped in **about a third** of replies."),
-            (.user, "Did anyone hear back from OpenAI staff?"),
-            (.assistant, "Yes — a staff member asked for conversation IDs and said the team is investigating. There is no fix date in the thread yet.")
+            (.assistant, "Lowering the travel speed is the one most people confirm. Re-tensioning the belts helped in **about a third** of replies."),
+            (.user, "Did anyone hear back from the firmware maintainers?"),
+            (.assistant, "Yes — a maintainer asked for print logs and said a fix is being tested. There is no release date in the thread yet.")
         ]
 
         var sessions = [
             session(unifiedNew, posts: 68, summary: metaSummary, chat: metaChat, kept: true, updated: 6),
             session(markdownEndpoints, posts: 12, summary: "## Summary\nAppending `.md` to topic list and topic URLs now returns Markdown — handy for tools and AI assistants.", updated: 12),
             session(sidebar, posts: 7, summary: "## Summary\nAn experimental sidebar lets each user choose sections and links.", updated: 60 * 5),
-            session(messageStream, posts: 35, summarized: AssistantDebug.has("-dc-stale-summary") ? 29 : nil, summary: streamSummary, chat: streamChat, kept: true, updated: 45),
-            session(mcpBlocked, posts: 2, summary: "## Summary\nValid MCP tool calls are refused by a safety check; the poster shares a minimal repro.", updated: 60 * 2),
-            session(sidebarUX, posts: 5, summary: "## Summary\nRight-clicking a chat in the sidebar no longer opens it in a new tab.", updated: 60 * 3),
-            session(fridge, posts: 78, summary: "## Summary\nThe SmartThings integration exposes the fridge’s temperatures and door sensors.", updated: 60 * 26)
+            session(layerShifts, posts: 35, summarized: AssistantDebug.has("-dc-stale-summary") ? 29 : nil, summary: streamSummary, chat: streamChat, kept: true, updated: 45),
+            session(stepperHeat, posts: 2, summary: "## Summary\nDrivers in enclosed printers hit thermal shutdown on long prints; a small fan on the board fixes it.", updated: 60 * 2),
+            session(slicerPresets, posts: 5, summary: "## Summary\nMembers keep their slicer presets in a shared folder so every machine prints the same way.", updated: 60 * 3),
+            session(lowPowerNAS, posts: 78, summary: "## Summary\nMembers compare low-power storage builds; most idle under 15 W with the disks spun down.", updated: 60 * 26)
         ]
 
-        let openTopic = AssistantDebug.value("-dc-topic") == "openai" ? messageStream : unifiedNew
+        let openTopic = AssistantDebug.value("-dc-topic") == "makers" ? layerShifts : unifiedNew
         if AssistantDebug.has("-dc-no-summary"),
            let index = sessions.firstIndex(where: { $0.topicKey == openTopic.topicKey }) {
             sessions[index].summary = ""
@@ -336,8 +338,8 @@ extension AppModel {
 
         // Agent runs: a finished run with a sourced answer, and an older one.
         var run = AgentRun(
-            siteURL: openAI.siteURL,
-            goal: "What are people saying about “Error in message stream” in Project chats?",
+            siteURL: makers.siteURL,
+            goal: "What are people saying about layer shifts after the 2.4 firmware update?",
             provider: sampleProvider,
             model: sampleModel
         )
@@ -345,46 +347,46 @@ extension AppModel {
         run.updatedAt = ago(18)
         run.completedAt = ago(18)
         run.status = .completed
-        run.topicIDs = [messageStream.topicID, mcpBlocked.topicID, terminals.topicID]
+        run.topicIDs = [layerShifts.topicID, stepperHeat.topicID, fanAfterPrint.topicID]
         run.steps = [
-            AgentStep(tool: "search_forum", arguments: ["query": "Error in message stream project"],
-                      thought: "Search for reports of the stream error.", outcome: "8 topics found",
+            AgentStep(tool: "search_forum", arguments: ["query": "layer shift firmware 2.4"],
+                      thought: "Search for reports of the layer shifts.", outcome: "8 topics found",
                       startedAt: ago(20), finishedAt: ago(20)),
-            AgentStep(tool: "read_topic", arguments: ["topic_id": messageStream.topicID],
+            AgentStep(tool: "read_topic", arguments: ["topic_id": layerShifts.topicID],
                       thought: "The main report thread.", outcome: "Read 35 posts",
-                      topicID: messageStream.topicID, topicKey: messageStream.topicKey,
+                      topicID: layerShifts.topicID, topicKey: layerShifts.topicKey,
                       startedAt: ago(19.5), finishedAt: ago(19.4)),
-            AgentStep(tool: "read_topic", arguments: ["topic_id": mcpBlocked.topicID],
-                      thought: "Tool calls failing mid-stream may be related.", outcome: "Read 2 posts",
-                      topicID: mcpBlocked.topicID, topicKey: mcpBlocked.topicKey,
+            AgentStep(tool: "read_topic", arguments: ["topic_id": stepperHeat.topicID],
+                      thought: "Overheating drivers can also skip steps.", outcome: "Read 2 posts",
+                      topicID: stepperHeat.topicID, topicKey: stepperHeat.topicKey,
                       startedAt: ago(19.2), finishedAt: ago(19.1)),
-            AgentStep(tool: "search_forum", arguments: ["query": "stream error branch workaround"],
+            AgentStep(tool: "search_forum", arguments: ["query": "layer shift travel speed workaround"],
                       thought: "Look for confirmed workarounds.", outcome: "5 topics found",
                       startedAt: ago(19), finishedAt: ago(19)),
-            AgentStep(tool: "read_topic", arguments: ["topic_id": terminals.topicID],
-                      thought: "Check whether background tools cause it.", outcome: "Read 1 post",
-                      topicID: terminals.topicID, topicKey: terminals.topicKey,
+            AgentStep(tool: "read_topic", arguments: ["topic_id": fanAfterPrint.topicID],
+                      thought: "Check whether the other 2.4 change is related.", outcome: "Read 1 post",
+                      topicID: fanAfterPrint.topicID, topicKey: fanAfterPrint.topicKey,
                       startedAt: ago(18.8), finishedAt: ago(18.7)),
             AgentStep(tool: AgentPrompt.finalAnswerTool, thought: "Enough to answer.", outcome: "Answered",
                       startedAt: ago(18.2), finishedAt: ago(18))
         ]
         run.answer = """
-        People report the error mostly in **long Project chats**, while new chats with the same prompt \
-        work ([Repeated “Error in message stream”](\(messageStream.url.absoluteString))). \
-        The most confirmed workaround is to **branch from the last good message**; removing large \
-        project files helps some users.
+        People report the shifts mostly on **prints longer than six hours**, while short prints \
+        come out fine ([Layer shifts after 2.4](\(layerShifts.url.absoluteString))). \
+        The most confirmed workaround is to **lower the travel speed**; re-tensioning the belts \
+        helps some members.
 
-        A few replies link it to tool calls that fail mid-stream \
-        ([MCP tool calls blocked](\(mcpBlocked.url.absoluteString))), but background tools that open \
-        terminals look like a separate bug ([Background tool calls](\(terminals.url.absoluteString))).
+        A few replies link it to drivers overheating in enclosures \
+        ([Stepper drivers overheating](\(stepperHeat.url.absoluteString))), but the fan that keeps \
+        running after a print looks like a separate bug ([Cooling fan](\(fanAfterPrint.url.absoluteString))).
 
-        - Staff asked for conversation IDs; no fix date yet.
-        - Switching models does **not** reliably help.
+        - The maintainers asked for print logs; no fix date yet.
+        - Rolling back to 2.3 does **not** reliably help.
         """
         run.initialAnswer = run.answer
         run.followUps = [
-            ChatMessage(role: .user, content: "Is it only on the web app?", createdAt: ago(17)),
-            ChatMessage(role: .assistant, content: "No — reports cover the web app and the macOS app. Nobody reports it on iOS.", createdAt: ago(16))
+            ChatMessage(role: .user, content: "Is it only on the larger printers?", createdAt: ago(17)),
+            ChatMessage(role: .assistant, content: "No — reports cover both the small and the large beds. Nobody reports it on resin printers.", createdAt: ago(16))
         ]
         var olderRun = AgentRun(
             siteURL: meta.siteURL,
@@ -417,8 +419,8 @@ extension AppModel {
             return value
         }
         activities.append(record(.summary, unifiedNew, 6, text: "Summarized 68 posts"))
-        activities.append(record(.chat, messageStream, 45, text: "Answered"))
-        activities.append(record(.summary, mcpBlocked, 120, status: .failed, text: "Failed"))
+        activities.append(record(.chat, layerShifts, 45, text: "Answered"))
+        activities.append(record(.summary, stepperHeat, 120, status: .failed, text: "Failed"))
 
         var currentRun = run
         if AssistantDebug.has("-dc-agent-running") {
@@ -431,11 +433,11 @@ extension AppModel {
             currentRun.steps[3].finishedAt = nil
             currentRun.steps[3].outcome = ""
             var agentRecord = WorkRecord(
-                type: .agent, siteURL: openAI.siteURL, topicID: "agent:" + run.id.uuidString,
-                title: run.goal, url: openAI.latestURL!, provider: sampleProvider, model: sampleModel
+                type: .agent, siteURL: makers.siteURL, topicID: "agent:" + run.id.uuidString,
+                title: run.goal, url: makers.latestURL!, provider: sampleProvider, model: sampleModel
             )
             agentRecord.status = .running
-            agentRecord.statusText = "Searching “stream error branch workaround”…"
+            agentRecord.statusText = "Searching “layer shift travel speed workaround”…"
             activities.insert(agentRecord, at: 0)
         }
         if AssistantDebug.has("-dc-summary-running") {
@@ -465,17 +467,17 @@ extension AppModel {
                                        title: unifiedNew.title, knownPostCount: 68)
         watchedMeta.newReplies = 3
         watchedMeta.lastCheckedAt = ago(8)
-        var watchedStream = WatchedTopic(siteURL: openAI.siteURL, topicID: messageStream.topicID, url: messageStream.url,
-                                         title: messageStream.title, knownPostCount: 35)
+        var watchedStream = WatchedTopic(siteURL: makers.siteURL, topicID: layerShifts.topicID, url: layerShifts.url,
+                                         title: layerShifts.title, knownPostCount: 35)
         watchedStream.lastCheckedAt = ago(40)
-        var watchedFridge = WatchedTopic(siteURL: homeAssistant.siteURL, topicID: fridge.topicID, url: fridge.url,
-                                         title: fridge.title, knownPostCount: 78)
-        watchedFridge.newReplies = 1
-        watchedFridge.lastCheckedAt = ago(90)
+        var watchedNAS = WatchedTopic(siteURL: homeLab.siteURL, topicID: lowPowerNAS.topicID, url: lowPowerNAS.url,
+                                         title: lowPowerNAS.title, knownPostCount: 78)
+        watchedNAS.newReplies = 1
+        watchedNAS.lastCheckedAt = ago(90)
 
         // Page state.
         let state = AssistantDebug.value("-dc-page-state").flatMap(PageContext.State.init(rawValue:)) ?? .topic
-        let openForum = openTopic.siteURL == openAI.siteURL ? openAI : meta
+        let openForum = openTopic.siteURL == makers.siteURL ? makers : meta
         var context: PageContext
         var selected: ForumTopic?
         switch state {
@@ -495,11 +497,11 @@ extension AppModel {
         }
 
         applyDebugSeed(AssistantDebugSeed(
-            forums: [meta, openAI, homeAssistant],
+            forums: [meta, makers, homeLab],
             sessions: sessions,
             activities: activities,
             agentRuns: [currentRun, olderRun],
-            watchedTopics: [watchedMeta, watchedStream, watchedFridge],
+            watchedTopics: [watchedMeta, watchedStream, watchedNAS],
             currentTopic: selected,
             currentForum: openForum,
             pageContext: context

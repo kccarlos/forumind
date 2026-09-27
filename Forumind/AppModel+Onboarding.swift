@@ -65,7 +65,7 @@ enum OnboardingStep: Int, CaseIterable, Identifiable, Hashable {
     /// Steps the user may skip past (optional setup).
     var allowsSkip: Bool {
         switch self {
-        case .provider, .forums, .sync: true
+        case .provider, .forums: true
         default: false
         }
     }

@@ -16,7 +16,7 @@ flowchart LR
       Forum["ForumService<br/>Discourse JSON / raw"]
       AI["AIService<br/>providers, streaming"]
       Store["PersistentStore<br/>state.json + Keychain"]
-      Sync["FolderSyncController / Engine"]
+      Sync["CloudSyncController / Engine<br/>CKSyncEngine transport"]
       UI <--> Model
       Model <--> Browser
       Model --> Forum
@@ -28,8 +28,8 @@ flowchart LR
   Browser <-- "pages, login" --> Discourse[(Discourse forum)]
   Forum <-- "JSON, /raw" --> Discourse
   AI <-- "prompts, answers" --> Provider[(AI provider<br/>or Apple Intelligence)]
-  Sync <-- "encrypted files" --> ICloud[(User's iCloud Drive folder)]
-  Store <-- "API keys, sync key" --> Keychain[(iCloud Keychain)]
+  Sync <-- "records, encrypted payloads<br/>+ silent pushes" --> ICloud[(CloudKit private database<br/>in the user's iCloud)]
+  Store <-- "API keys" --> Keychain[(iCloud Keychain)]
 ```
 
 ## Module map
@@ -68,7 +68,7 @@ only; a redirect to another origin is followed without them
 | File | Role |
 | --- | --- |
 | `AppModel.swift` | The main-actor `AppModel`: published state, the work queue, summaries, chats, watched topics, persistence hooks. |
-| `AppModel+Assistant.swift`, `+Browse.swift`, `+Onboarding.swift`, `+ContentBlocking.swift`, `+FolderSync.swift`, `+StateDebug.swift` | Feature slices of `AppModel` (and their DEBUG launch arguments). |
+| `AppModel+Assistant.swift`, `+Browse.swift`, `+Onboarding.swift`, `+ContentBlocking.swift`, `+CloudSync.swift`, `+StateDebug.swift` | Feature slices of `AppModel` (and their DEBUG launch arguments). |
 | `Models.swift` | Codable models: `AppSettings`, `TopicSession`, `AgentRun`, `WatchedTopic`, `WorkRecord`, provider configuration. |
 | `WatchSupport.swift` | Local notifications and the Background App Refresh task for watched topics. |
 
@@ -183,12 +183,26 @@ the bundled EasyList/EasyPrivacy rules in `ContentBlocking/`. Details:
 
 ### Sync
 
-`FolderSyncController.swift` (bookmark, status, scheduling),
-`FolderSyncEngine.swift` (pull/merge/push actor), `FolderSyncRecords.swift`
-(record schema and merge rules), `FolderSyncStorage.swift` (coordinated file
-I/O), `SyncKeyProvider.swift` (the AES-GCM key in iCloud Keychain),
-`FolderPicker.swift`, and `SettingsSyncPage.swift`. Details:
-[SYNC.md](SYNC.md).
+iCloud sync through CloudKit, on by default when an iCloud account is
+available:
+
+- `CloudSyncController.swift`: the status, on/off switch, account changes,
+  and scheduling (`app.cloudSync`, main actor).
+- `CloudSyncEngine.swift`: an actor with the mirror of the server's records,
+  the baseline, and the plan of each pass (merge, apply, queue).
+- `SyncRecords.swift`: the record model, units, merge rules, and payload
+  encoding.
+- `CloudSyncTransport.swift` (the transport protocol) and
+  `CloudKitTransport.swift` (`CKSyncEngine`, zone `Forumind`, record type
+  `SyncRecord` with an encrypted payload; compiled only with
+  `CLOUDKIT_ENABLED`, which the generator sets for signed builds).
+- `AppModel+CloudSync.swift`: app state to records and back
+  (`applyRemote`).
+- `SettingsSyncPage.swift`: Settings › iCloud Sync and the status text shared
+  with the onboarding step.
+
+`ForumindApp.swift`'s app delegate registers for remote notifications in
+CloudKit builds. Details: [SYNC.md](SYNC.md).
 
 ### Persistence and Keychain
 
@@ -210,7 +224,7 @@ the 50 most recent agent runs are kept.
 
 | Target | What it covers |
 | --- | --- |
-| `ForumindTests` | Unit tests: forum identity and URL building, the work queue and state transitions, incoming links, onboarding, agent sources, content blocking (compiles every bundled chunk in WebKit), folder sync (two simulated devices), Keychain sync, iPad layout math. |
+| `ForumindTests` | Unit tests: forum identity and URL building, the work queue and state transitions, incoming links, onboarding, agent sources, content blocking (compiles every bundled chunk in WebKit), CloudKit sync against a fake transport (two simulated devices), Keychain sync, iPad layout math. |
 | `ForumindUITests` | UI tests on simulators (Forums home, onboarding, settings navigation, share hand-off, iPad layouts) and smoke tests for physical devices. |
 
 See [DEVELOPMENT.md](DEVELOPMENT.md) for how to run them.

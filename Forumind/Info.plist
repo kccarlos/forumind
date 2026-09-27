@@ -35,6 +35,8 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>DCCloudKitContainer</key>
+	<string>iCloud.$(DC_IDENTIFIER_PREFIX)</string>
 	<key>DCAppGroupIdentifier</key>
 	<string>$(DC_APP_GROUP)</string>
 	<key>DCIdentifierPrefix</key>
@@ -58,6 +60,7 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>
+		<string>remote-notification</string>
 	</array>
 	<key>UILaunchScreen</key>
 	<dict/>

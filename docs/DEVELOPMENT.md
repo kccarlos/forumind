@@ -53,6 +53,50 @@ Don't commit a project generated with your team: run
 `Config/DevelopmentTeam.txt` aside, or unset `DEVELOPMENT_TEAM`) before
 committing project changes.
 
+### iCloud sync (CloudKit) and signing
+
+iCloud sync uses CloudKit, which only works in a build signed with the
+iCloud entitlement; an app that calls CloudKit without it crashes. So the
+generator turns CloudKit on **only when it finds a team**:
+
+| Generated with | CloudKit | Entitlements the app is signed with |
+| --- | --- | --- |
+| No team (the committed project, CI, forks without a team) | off: no `CLOUDKIT_ENABLED`; Settings shows "Sync needs a signed build" | `Forumind/Forumind.entitlements` (App Group only) |
+| A team | on: `-D CLOUDKIT_ENABLED` | `Forumind/Generated/Forumind.entitlements` (git-ignored) |
+
+With CloudKit on, the generator writes
+`Forumind/Generated/Forumind.entitlements` from the base file plus:
+
+- `com.apple.developer.icloud-services` = `CloudKit`,
+- `com.apple.developer.icloud-container-identifiers` =
+  `iCloud.<BUNDLE_ID_PREFIX>` (the app reads it from `DCCloudKitContainer`
+  in `Info.plist`),
+- `aps-environment` = `development`, for the silent pushes that announce
+  changes (exporting for TestFlight or the App Store switches it to
+  `production`),
+- and `com.apple.developer.private-cloud-compute` with `DC_ENABLE_PCC=YES`.
+
+`DC_ENABLE_CLOUDKIT=YES|NO` overrides the default, for example
+`DC_ENABLE_CLOUDKIT=NO` with a **free personal team** (free teams can't use
+CloudKit). With a paid team, the first signed build with
+`-allowProvisioningUpdates` (or Xcode's automatic signing) registers the
+container and the iCloud and Push Notifications capabilities on the App ID.
+
+**Don't strip signing from a CloudKit build.** A project generated with a
+team compiles `CLOUDKIT_ENABLED` in; building it with `CODE_SIGNING_ALLOWED=NO`
+removes the entitlement, and the app crashes when sync starts. For unsigned
+simulator runs and tests, regenerate without a team (or with
+`DC_ENABLE_CLOUDKIT=NO`), or build signed.
+
+**Forks** must use their own container: `BUNDLE_ID_PREFIX` also sets the
+container (`iCloud.<prefix>`), and containers can't be shared across teams.
+Deploy the fork's CloudKit schema as described in
+[SYNC.md](SYNC.md#cloudkit-schema).
+
+**Testing sync** needs two devices (or a device and a simulator signed in to
+iCloud) on the same Apple Account, both running a signed build. See
+[SYNC.md](SYNC.md#testing).
+
 ### Forks and your own bundle ID
 
 Every identifier comes from one prefix, `io.github.kccarlos.forumind`
@@ -70,6 +114,7 @@ BUNDLE_ID_PREFIX=com.example.forumind DEVELOPMENT_TEAM=ABCDE12345 \
 | Share extension | `<prefix>.share` |
 | App Group | `group.<prefix>` |
 | Keychain services, background task | `<prefix>.<name>` |
+| iCloud (CloudKit) container | `iCloud.<prefix>` |
 | Unit / UI tests | `<prefix>.tests`, `<prefix>.uitests` |
 
 ### Free (personal) team limits
@@ -83,8 +128,9 @@ A free Apple ID team can run the app on your own devices, with limits:
   Group inbox is unavailable.
 - Apple Intelligence through Private Cloud Compute needs an entitlement Apple
   grants to a paid team.
-- iCloud Drive folder sync and iCloud Keychain work, because they need no
-  iCloud entitlement.
+- iCloud sync (CloudKit) needs a paid team: generate with
+  `DC_ENABLE_CLOUDKIT=NO`. API keys still sync through iCloud Keychain, which
+  needs no iCloud entitlement.
 
 ## Build and run
 
@@ -183,9 +229,9 @@ They never overwrite real saved data, and Release builds ignore them.
 
 | Argument | Effect |
 | --- | --- |
-| `-dc-sample` | Loads offline sample data from three forums (required by the rest of this table). The Assistant opens by itself on iPhone. |
+| `-dc-sample` | Loads offline sample data from three forums: Discourse Meta and two fictional ones on reserved example domains (required by the rest of this table). The Assistant opens by itself on iPhone. |
 | `-dc-page-state <state>` | `loading`, `notForum`, `maybe`, `forumHome`, or `topic` (default). |
-| `-dc-topic meta\|openai` | Which sample topic is open. |
+| `-dc-topic meta\|makers` | Which sample topic is open: Discourse Meta, or the fictional Maker Space Community. |
 | `-dc-assistant-mode <mode>` | `summary`, `chat`, or `agent`. |
 | `-dc-open-manage` | Opens Manage. |
 | `-dc-manage-kind <kind>` | Manage filter: `all`, `summaries`, `agent`, `watched`, `activity`. |
@@ -193,15 +239,17 @@ They never overwrite real saved data, and Release builds ignore them.
 | `-dc-no-summary` | The open topic has no summary yet. |
 | `-dc-summary-running`, `-dc-chat-streaming`, `-dc-agent-running` | Work in progress. |
 | `-dc-chat-typing` | With `-dc-chat-streaming`: typing dots, no text yet. |
-| `-dc-stale-summary` | The `openai` sample topic's summary is behind the topic (stale notice). |
+| `-dc-stale-summary` | The `makers` sample topic's summary is behind the topic (stale notice). |
 | `-dc-scroll-sources` | Ask the forum: scrolls to the answer's sources. |
 | `-dc-focus-chat` | Raises the keyboard in the chat composer. |
 | `-dc-script <action>-after:<seconds>` | Changes state mid-use: `switch-provider`, `delete-key`, `remove-forum`, `unpin-forum`, `clear-all`, `reset-settings`. |
 
 With `-dc-page-state topic` or `forumHome`, the browser also loads the real
 forum page behind the Assistant, unless `-dc-forums-home` is also passed: then
-nothing is loaded and the Forums home stays up (fully offline). Sample forums
-always show letter monograms, never the forums' own icons. With
+nothing is loaded and the Forums home stays up (fully offline). The fictional
+forums (`-dc-topic makers`) live on reserved example domains that don't
+resolve, so use them with `-dc-forums-home`. Sample forums always show letter
+monograms, never the forums' own icons. With
 `-dc-apple-intelligence on-device` or `pcc`, the sample summaries, chats, and
 runs are labeled as Apple Intelligence runs and it is the selected provider.
 
@@ -215,7 +263,7 @@ runs are labeled as Apple Intelligence runs and it is the selected provider.
 
 | Argument | Effect |
 | --- | --- |
-| `-dc-seed-forums` | Pins three forums and adds two recent ones (icons are fetched live unless `-dc-no-forum-icons`). |
+| `-dc-seed-forums` | Pins three forums (Discourse Meta and two fictional ones) and adds two fictional recent ones (icons are fetched live unless `-dc-no-forum-icons`). With it or `-dc-sample`, the suggested forums are fictional too, so screenshots show no real companies. |
 | `-dc-no-forum-icons` | Shows letter monograms instead of the forums' own icons (implied by `-dc-sample`). |
 | `-dc-forums-home` | Starts on the Forums home. |
 | `-dc-open <url>` | Opens a page on launch. |
@@ -243,13 +291,12 @@ runs are labeled as Apple Intelligence runs and it is the selected provider.
 | Argument | Effect |
 | --- | --- |
 | `-dc-keychain-sync-probe` | Checks that synchronizable Keychain items work with this build's signing: adds, reads back, and deletes a test item, then shows the result in an alert and prints `DCPROBE` log lines. Skips the walkthrough so the alert can show. |
-| `-dc-sync-status <status>` | Shows a fake sync status: `off`, `needsFolderAccess`, `notInICloud`, `waitingForKey`, `syncing`, `upToDate`, `error`. |
-| `-dc-sync-prompt` | Shows the one-time sync prompt even if it was dismissed. |
-| `-dc-no-sync-prompt` | Never shows the sync prompt (UI tests). |
-| `-dc-sync-picker`, `-dc-sync-explain` | Settings › iCloud Sync: opens the folder picker / expands "How sync works". |
-| `-dc-sync-folder <path>` | Syncs with a plain directory, such as a folder on the host Mac (two-simulator checks). Without it, sync stays off under `-dc-sample` and UI tests. |
-| `-dc-sync-key <base64>` | With `-dc-sync-folder`: a fixed 32-byte key instead of iCloud Keychain, so two simulators can read each other's files. |
-| `-dc-sync-open-manage` | Opens Manage after launch (to check synced data). |
+| `-dc-sync-status <status>` | Shows a fake sync status in Settings › iCloud Sync and the walkthrough (the toggle follows it): `off`, `noAccount`, `restricted`, `unavailable`, `syncing`, `upToDate` (or `on`), `error`. The engine is untouched. |
+| `-dc-sync-explain` | Settings › iCloud Sync: expands "What syncs". |
+| `-dc-cloudkit-probe` | CloudKit builds: logs the iCloud account status and a save/fetch/delete round trip through a test record. |
+
+Sync stays off under `-dc-sample` and the UI tests' `-ui-test-*` arguments,
+so sample data never reaches iCloud.
 
 UI tests also use `-ui-test-sample-session`, `-ui-test-manage-swipe`, and
 `-ui-test-pull-mode`.

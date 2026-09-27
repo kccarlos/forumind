@@ -26,9 +26,19 @@ UI tests don't run in CI; run them locally
 plain `git diff` would always report changes. The check compares the object
 graph with UUIDs removed (`xcodeproj-tree.rb`) and the scheme without
 `BlueprintIdentifier` lines. It always generates with the defaults (no team,
-default bundle IDs, build 1), ignoring `DEVELOPMENT_TEAM`,
-`BUNDLE_ID_PREFIX`, `BUILD_NUMBER`, and `DC_ENABLE_PCC`. To fix a failure, run
-`ruby scripts/generate_project.rb` without those variables and commit.
+default bundle IDs, build 1, so no CloudKit and the committed base
+entitlements), ignoring `DEVELOPMENT_TEAM`, `BUNDLE_ID_PREFIX`,
+`BUILD_NUMBER`, `DC_ENABLE_PCC`, and `DC_ENABLE_CLOUDKIT`. To fix a failure,
+run `env -u DEVELOPMENT_TEAM ruby scripts/generate_project.rb` (and without
+the other variables, and without a `Config/DevelopmentTeam.txt`, which the
+check never sees) and commit.
+
+**iCloud sync in CI.** Pull request builds are unsigned and generated without
+a team, so CloudKit is off in them: no iCloud entitlement and no
+`CLOUDKIT_ENABLED`, and sync reports itself unavailable. That is intended: an
+app that calls CloudKit without the entitlement crashes, and unit tests never
+touch iCloud. Only the TestFlight job, which regenerates with
+`DEVELOPMENT_TEAM`, builds with CloudKit ([SYNC.md](SYNC.md)).
 
 **Simulator.** `pick-simulator.sh` reads `xcrun simctl list -j` and picks an
 iPhone on the newest iOS runtime, as `platform=iOS Simulator,id=<UDID>`, so the
@@ -61,7 +71,10 @@ flowchart LR
 3. **testflight** (when the App Store Connect secrets and the
    `DEVELOPMENT_TEAM` variable are set, and the `testflight` input is on):
    - regenerates the project with `DEVELOPMENT_TEAM`, `BUNDLE_ID_PREFIX`,
-     `DC_ENABLE_PCC`, and `BUILD_NUMBER` (the committed project has no team),
+     `DC_ENABLE_PCC`, `DC_ENABLE_CLOUDKIT`, and `BUILD_NUMBER` (the committed
+     project has no team). With a team, CloudKit is on: the app is signed
+     with the iCloud container `iCloud.<BUNDLE_ID_PREFIX>` and push
+     notifications, and the export switches `aps-environment` to production,
    - installs the API key and, if given, the distribution certificate and
      profiles (`import-signing.sh`),
    - archives with `xcodebuild archive -allowProvisioningUpdates` and API-key
@@ -145,6 +158,7 @@ gh secret set NVIDIA_API_KEY -R $R
 gh variable set DEVELOPMENT_TEAM -R $R --body 'YOURTEAMID'                          # required for TestFlight
 gh variable set BUNDLE_ID_PREFIX -R $R --body 'io.github.kccarlos.forumind' # optional (this is the default)
 gh variable set DC_ENABLE_PCC    -R $R --body 'YES'   # optional: only once Apple has assigned the PCC entitlement
+gh variable set DC_ENABLE_CLOUDKIT -R $R --body 'NO'  # optional: only to ship without iCloud sync (default: on with a team)
 ```
 
 | Name | Kind | Needed for |
@@ -158,6 +172,7 @@ gh variable set DC_ENABLE_PCC    -R $R --body 'YES'   # optional: only once Appl
 | `DEVELOPMENT_TEAM` | variable | TestFlight |
 | `BUNDLE_ID_PREFIX` | variable | Optional, forks |
 | `DC_ENABLE_PCC` | variable | Optional, `YES` to build with Private Cloud Compute ([APPLE_INTELLIGENCE.md](APPLE_INTELLIGENCE.md)) |
+| `DC_ENABLE_CLOUDKIT` | variable | Optional, `NO` to build without iCloud sync (default: on whenever `DEVELOPMENT_TEAM` is set) |
 | `CI_MACOS_RUNNER`, `CI_XCODE_APP` | variable | Optional runner override (below) |
 
 Signing notes:
@@ -170,6 +185,15 @@ Signing notes:
   `APPLE_CERTIFICATE_P12_BASE64`. Preflight warns if it's missing.
 - Create the app record in App Store Connect before the first upload (see
   [APP_STORE.md](APP_STORE.md)).
+- iCloud sync adds the **iCloud (CloudKit)** and **Push Notifications**
+  capabilities and the container `iCloud.<BUNDLE_ID_PREFIX>` to the app's App
+  ID. Automatic signing adds them on the first signed build; profiles made
+  before that are invalid for the app afterwards, so if you use
+  `APPLE_PROVISIONING_PROFILES_BASE64`, regenerate the App Store profile and
+  update the secret.
+- Deploy the CloudKit schema to production before the first TestFlight build
+  ([SYNC.md](SYNC.md#cloudkit-schema)); TestFlight and App Store builds use the
+  production environment.
 - Keep these secrets at **repository** level. Preflight has no environment,
   so it can't see environment-only secrets; the upload would always be
   skipped.

@@ -9,6 +9,10 @@
 # Without either, the project is generated with no team: simulator and
 # unsigned builds (CODE_SIGNING_ALLOWED=NO) still work.
 #
+# With a team, iCloud sync (CloudKit) is turned on and the app is signed with
+# the iCloud entitlements; set DC_ENABLE_CLOUDKIT=NO for a free personal team.
+# See docs/DEVELOPMENT.md.
+#
 # Forks can also build under their own identifiers with BUNDLE_ID_PREFIX
 # (default io.github.kccarlos.forumind).
 #

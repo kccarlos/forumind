@@ -47,6 +47,9 @@ env:
   DEVELOPMENT_TEAM: ${{ vars.DEVELOPMENT_TEAM }}
   BUNDLE_ID_PREFIX: ${{ vars.BUNDLE_ID_PREFIX }}
   DC_ENABLE_PCC: ${{ vars.DC_ENABLE_PCC || 'NO' }}
+  # Empty: CloudKit (iCloud sync) follows DEVELOPMENT_TEAM, so it is on in the
+  # TestFlight build. NO turns it off.
+  DC_ENABLE_CLOUDKIT: ${{ vars.DC_ENABLE_CLOUDKIT }}
 
 jobs:
   # `secrets` can't be used in a job-level `if:`, so compute what can run here.
@@ -173,7 +176,8 @@ jobs:
 
       - name: Generate project for this team and bundle ID
         # The committed project has no team and default IDs; regenerate with
-        # the repo variables (DEVELOPMENT_TEAM, BUNDLE_ID_PREFIX, DC_ENABLE_PCC).
+        # the repo variables (DEVELOPMENT_TEAM, BUNDLE_ID_PREFIX, DC_ENABLE_PCC,
+        # DC_ENABLE_CLOUDKIT). With a team, CloudKit is on.
         env:
           BUILD_NUMBER: ${{ github.run_number }}
         run: bundle exec ruby scripts/generate_project.rb

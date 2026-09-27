@@ -111,6 +111,28 @@ struct ForumDirectory: Equatable {
         )
     ]
 
+    #if DEBUG
+    /// Offered instead of `suggested` with `-dc-sample` / `-dc-seed-forums`,
+    /// so screenshots show fictional communities (reserved example domains).
+    static let sampleSuggested: [SuggestedForum] = [
+        SuggestedForum(
+            name: "Board Game Guild",
+            siteURL: "https://games.example.com",
+            description: "Rules questions, reviews, and game night meetups."
+        ),
+        SuggestedForum(
+            name: "Community Gardeners",
+            siteURL: "https://garden.example.net",
+            description: "Seed swaps, raised beds, and plot planning."
+        )
+    ]
+
+    static var usesSampleSuggestions: Bool {
+        let arguments = ProcessInfo.processInfo.arguments
+        return arguments.contains("-dc-sample") || arguments.contains("-dc-seed-forums")
+    }
+    #endif
+
     var pinned: [Forum] {
         forums.filter(\.isPinned).sorted { $0.pinOrder < $1.pinOrder }
     }

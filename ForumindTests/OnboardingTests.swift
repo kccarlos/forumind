@@ -19,7 +19,7 @@ final class OnboardingTests: XCTestCase {
     }
 
     func testOnlySetupStepsCanBeSkipped() {
-        XCTAssertEqual(OnboardingStep.allCases.filter(\.allowsSkip), [.provider, .forums, .sync])
+        XCTAssertEqual(OnboardingStep.allCases.filter(\.allowsSkip), [.provider, .forums])
         XCTAssertEqual(OnboardingStep.allCases.filter(\.hasTextInput), [.provider, .forums])
     }
 
@@ -71,21 +71,21 @@ final class OnboardingTests: XCTestCase {
     @MainActor
     func testSyncStatusPresentation() {
         let off = SyncStatusPresentation(.off)
-        XCTAssertEqual(off.action, .chooseFolder)
-        XCTAssertEqual(off.detail, "Choose a folder in iCloud Drive to sync your forums, summaries, chats and agent runs across devices.")
-        XCTAssertEqual(SyncStatusPresentation(.needsFolderAccess).action, .chooseFolderAgain)
-        XCTAssertEqual(SyncStatusPresentation(.notInICloud).action, .chooseAnotherFolder)
-        XCTAssertTrue(SyncStatusPresentation(.notInICloud).detail?.contains("isn't in iCloud Drive") == true)
-        XCTAssertTrue(SyncStatusPresentation(.waitingForKey).detail?.contains("Passwords and Keychain") == true)
+        XCTAssertNil(off.action)
+        XCTAssertEqual(off.shortLabel, "Off")
+        XCTAssertEqual(SyncStatusPresentation(.noAccount).detail, "Sign in to iCloud in the Settings app to sync across your devices.")
+        XCTAssertEqual(SyncStatusPresentation(.restricted).detail, "iCloud is turned off for Forumind in Settings › [your name] › iCloud.")
+        XCTAssertEqual(SyncStatusPresentation(.unavailable("Try later")).detail, "Try later")
         XCTAssertTrue(SyncStatusPresentation(.syncing).isBusy)
         XCTAssertEqual(SyncStatusPresentation(.upToDate).shortLabel, "On")
+        XCTAssertNil(SyncStatusPresentation(.upToDate).action)
         let error = SyncStatusPresentation(.error("Disk full"))
         XCTAssertEqual(error.detail, "Disk full")
         XCTAssertEqual(error.actionTitle, "Sync now")
 
         XCTAssertEqual(SyncDebug.parse("upToDate"), .upToDate)
-        XCTAssertEqual(SyncDebug.parse("needs-folder-access"), .needsFolderAccess)
-        XCTAssertEqual(SyncDebug.parse("waitingForKey"), .waitingForKey)
+        XCTAssertEqual(SyncDebug.parse("no-account"), .noAccount)
+        XCTAssertEqual(SyncDebug.parse("restricted"), .restricted)
         XCTAssertNil(SyncDebug.parse("nope"))
         XCTAssertEqual(SettingsPage.parse("sync"), .sync)
         XCTAssertEqual(SettingsPage.sync.title, "iCloud Sync")

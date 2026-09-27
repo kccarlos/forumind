@@ -1,14 +1,15 @@
 import CryptoKit
 import Foundation
 
-// MARK: - Folder sync records
+// MARK: - Sync records
 //
-// Every synced item is one "record" (one file). A record is a set of *units*
-// — a top-level field of the model's JSON, or a small group of fields that
-// must travel together — each with a `modifiedAt` stamp. Merging two copies
-// of a record picks, per unit, the one with the newest stamp (a few units
-// use max/min instead). The merge is commutative and deterministic, so every
-// device converges on the same plaintext bytes.
+// Every synced item is one "record" (one CloudKit record, see
+// CloudSyncController.swift). A record is a set of *units* — a top-level
+// field of the model's JSON, or a small group of fields that must travel
+// together — each with a `modifiedAt` stamp. Merging two copies of a record
+// picks, per unit, the one with the newest stamp (a few units use max/min
+// instead). The merge is commutative and deterministic, so every device
+// converges on the same plaintext bytes.
 //
 // Stamps come from diffing the local record against the baseline (the state
 // both sides last agreed on): an unchanged unit keeps its baseline stamp, a
@@ -16,7 +17,7 @@ import Foundation
 // this device did not touch cannot beat a remote edit.
 //
 // Dates are encoded as whole-second ISO 8601 everywhere (the local snapshot
-// uses the same encoding), so a value that went through a file compares
+// uses the same encoding), so a value that went through the server compares
 // equal to the in-memory one.
 
 /// A JSON value with a canonical encoding (sorted keys).
@@ -74,7 +75,7 @@ enum JSONValue: Codable, Equatable, Hashable {
     var isNull: Bool { self == .null }
 }
 
-enum FolderSyncCoding {
+enum SyncCoding {
     /// Canonical encoder: sorted keys, no whitespace, whole-second ISO dates.
     static func makeEncoder() -> JSONEncoder {
         let encoder = JSONEncoder()
@@ -110,7 +111,7 @@ enum FolderSyncCoding {
         hash((try? data(value)) ?? Data())
     }
 
-    /// Stamps are whole seconds (what survives a round trip through a file).
+    /// Stamps are whole seconds (what survives a round trip through the server).
     static func stamp(_ date: Date) -> Date {
         Date(timeIntervalSince1970: floor(date.timeIntervalSince1970))
     }
@@ -122,7 +123,7 @@ enum FolderSyncCoding {
     }
 }
 
-/// What a record holds (and the folder it lives in).
+/// What a record holds.
 enum SyncKind: String, Codable, CaseIterable, Comparable {
     case settings
     case forum
@@ -130,23 +131,13 @@ enum SyncKind: String, Codable, CaseIterable, Comparable {
     case run
     case watched
 
-    /// Folder inside the sync root; settings live in `settings.json` at the root.
-    var directory: String? {
-        switch self {
-        case .settings: nil
-        case .forum: "forums"
-        case .session: "sessions"
-        case .run: "runs"
-        case .watched: "watched"
-        }
-    }
-
     static func < (lhs: SyncKind, rhs: SyncKind) -> Bool {
         lhs.rawValue < rhs.rawValue
     }
 }
 
-/// The plaintext of one file. A tombstone has `deletedAt` and no fields.
+/// The plaintext of one record (the encrypted payload of a CloudKit record).
+/// A tombstone has `deletedAt` and no fields.
 struct SyncRecord: Codable, Equatable {
     var format = 1
     var kind: SyncKind
@@ -157,7 +148,7 @@ struct SyncRecord: Codable, Equatable {
     var deletedAt: Date?
 
     static func tombstone(kind: SyncKind, id: String, deletedAt: Date) -> SyncRecord {
-        SyncRecord(kind: kind, id: id, fields: nil, stamps: nil, deletedAt: FolderSyncCoding.stamp(deletedAt))
+        SyncRecord(kind: kind, id: id, fields: nil, stamps: nil, deletedAt: SyncCoding.stamp(deletedAt))
     }
 
     var isTombstone: Bool { deletedAt != nil }
@@ -168,15 +159,17 @@ struct SyncRecord: Codable, Equatable {
     }
 
     func canonicalData() throws -> Data {
-        try FolderSyncCoding.data(self)
+        try SyncCoding.data(self)
     }
 
-    /// `<root>/<dir>/<hex prefix of SHA-256(id)>.json`, or `settings.json`.
-    var fileName: String { Self.fileName(kind: kind, id: id) }
+    /// The CloudKit record name: `settings`, or a lowercase hex SHA-256
+    /// prefix of "kind/id" (ASCII-safe; topic keys contain `/` and may be
+    /// non-ASCII, and the real id stays inside the encrypted payload).
+    var recordName: String { Self.recordName(kind: kind, id: id) }
 
-    static func fileName(kind: SyncKind, id: String) -> String {
-        guard kind != .settings else { return "settings.json" }
-        return String(FolderSyncCoding.hash(Data(id.utf8)).prefix(32)) + ".json"
+    static func recordName(kind: SyncKind, id: String) -> String {
+        guard kind != .settings else { return "settings" }
+        return String(SyncCoding.hash(Data(recordKey(kind: kind, id: id).utf8)).prefix(40))
     }
 
     /// "kind/id": the key of this record in the baseline and in plans.
@@ -186,7 +179,7 @@ struct SyncRecord: Codable, Equatable {
 
 /// Settings that belong to one device and never sync. Any other setting —
 /// including ones added in later versions — syncs.
-enum FolderSyncSettings {
+enum SyncSettings {
     static let deviceLocalKeys: Set<String> = [
         "browserBarPosition",
         "hasCompletedOnboarding",
@@ -198,7 +191,7 @@ enum FolderSyncSettings {
 }
 
 /// How the units of each kind are built and merged.
-enum FolderSyncSchema {
+enum SyncSchema {
     enum Rule {
         case newest
         case max
@@ -207,7 +200,7 @@ enum FolderSyncSchema {
 
     /// Never synced: the fetched topic text (a device-local cache) and the
     /// time of this device's last reply check, which changes on every watch
-    /// check and would otherwise rewrite files on every device every 30 min.
+    /// check and would otherwise re-send records from every device every 30 min.
     static let sessionExcluded: Set<String> = ["source", "rawPages", "lastCheckedAt"]
     static let watchedExcluded: Set<String> = ["lastCheckedAt"]
 
@@ -274,18 +267,42 @@ enum FolderSyncSchema {
         return object
     }
 
+    /// A run's units. A run too big for one record (see `SyncPayload`)
+    /// keeps its goal message and the newest transcript messages that fit;
+    /// this is deterministic, so every device computes the same record.
+    static func runUnits(_ run: AgentRun) -> [String: JSONValue]? {
+        // Room for the record envelope (kind, id, stamps).
+        let limit = SyncPayload.maxBytes - 16 * 1024
+        guard var data = try? SyncCoding.data(run) else { return nil }
+        var value = run
+        if !SyncPayload.fits(data, limit: limit), run.transcript.count > 1 {
+            let head = Array(run.transcript.prefix(1))
+            var keep = run.transcript.count - 1
+            repeat {
+                keep /= 2
+                value.transcript = head + run.transcript.suffix(keep)
+                guard let encoded = try? SyncCoding.data(value) else { return nil }
+                data = encoded
+            } while keep > 0 && !SyncPayload.fits(data, limit: limit)
+        }
+        guard let object = (try? SyncCoding.makeDecoder().decode(JSONValue.self, from: data))?.objectValue else {
+            return nil
+        }
+        return units(kind: .run, object: object)
+    }
+
     // MARK: Settings
 
     /// Synced settings units (API keys and device-local settings removed).
     static func settingsUnits(_ settings: AppSettings) throws -> [String: JSONValue] {
-        guard var object = try FolderSyncCoding.json(settings.persistable).objectValue else { return [:] }
-        for key in FolderSyncSettings.deviceLocalKeys { object.removeValue(forKey: key) }
+        guard var object = try SyncCoding.json(settings.persistable).objectValue else { return [:] }
+        for key in SyncSettings.deviceLocalKeys { object.removeValue(forKey: key) }
         var units: [String: JSONValue] = [:]
         if let configurations = object.removeValue(forKey: "configurations")?.objectValue {
             for (provider, value) in configurations {
                 var configuration = value.objectValue ?? [:]
                 configuration.removeValue(forKey: "apiKey")
-                units[FolderSyncSettings.configurationPrefix + provider] = .object(configuration)
+                units[SyncSettings.configurationPrefix + provider] = .object(configuration)
             }
         }
         for (key, value) in object { units[key] = value }
@@ -295,21 +312,21 @@ enum FolderSyncSchema {
     /// `local` with synced units applied. API keys and device-local settings
     /// stay as they are on this device.
     static func applying(settingsUnits units: [String: JSONValue], to local: AppSettings) throws -> AppSettings {
-        guard var object = try FolderSyncCoding.json(local).objectValue else { return local }
+        guard var object = try SyncCoding.json(local).objectValue else { return local }
         var configurations = object["configurations"]?.objectValue ?? [:]
         for (name, value) in units where !value.isNull {
-            if name.hasPrefix(FolderSyncSettings.configurationPrefix) {
-                let provider = String(name.dropFirst(FolderSyncSettings.configurationPrefix.count))
+            if name.hasPrefix(SyncSettings.configurationPrefix) {
+                let provider = String(name.dropFirst(SyncSettings.configurationPrefix.count))
                 var configuration = value.objectValue ?? [:]
                 configuration["apiKey"] = configurations[provider]?.objectValue?["apiKey"] ?? .string("")
                 configurations[provider] = .object(configuration)
-            } else if !FolderSyncSettings.deviceLocalKeys.contains(name), name != "configurations" {
+            } else if !SyncSettings.deviceLocalKeys.contains(name), name != "configurations" {
                 object[name] = value
             }
         }
         object["configurations"] = .object(configurations)
-        var result = try FolderSyncCoding.decode(AppSettings.self, from: .object(object))
-        // Keys are never read from the folder, whatever it holds.
+        var result = try SyncCoding.decode(AppSettings.self, from: .object(object))
+        // Keys are never read from a synced record, whatever it holds.
         for provider in AIProvider.allCases {
             var configuration = result.configuration(for: provider)
             configuration.apiKey = local.configuration(for: provider).apiKey
@@ -319,9 +336,75 @@ enum FolderSyncSchema {
     }
 }
 
+// MARK: - Payload
+
+/// The bytes stored in a CloudKit record's `encryptedValues["payload"]`:
+/// one marker byte, then the record's canonical JSON — as is (`J`) or, for
+/// payloads over `compressionThreshold`, LZFSE-compressed (`Z`).
+///
+/// A CloudKit record holds at most 1 MB. Agent runs are the only records
+/// that can get near that: `SyncSchema.runUnits` drops the oldest transcript
+/// messages of a run whose payload would not fit in `maxBytes`, so the
+/// record that is sent is exactly the one the merge computed.
+enum SyncPayload {
+    static let maxBytes = 900_000
+    static let compressionThreshold = 128 * 1024
+    private static let plainMarker = UInt8(ascii: "J")
+    private static let compressedMarker = UInt8(ascii: "Z")
+
+    enum PayloadError: Error {
+        case unreadable
+    }
+
+    static func encode(_ record: SyncRecord) throws -> Data {
+        try encode(canonical: record.canonicalData())
+    }
+
+    static func encode(canonical: Data) throws -> Data {
+        if canonical.count > compressionThreshold, let compressed = compress(canonical) {
+            return Data([compressedMarker]) + compressed
+        }
+        return Data([plainMarker]) + canonical
+    }
+
+    /// The canonical JSON inside a payload.
+    static func canonical(from payload: Data) throws -> Data {
+        guard let marker = payload.first else { throw PayloadError.unreadable }
+        let body = payload.dropFirst()
+        switch marker {
+        case plainMarker:
+            return Data(body)
+        case compressedMarker:
+            guard let data = try? (Data(body) as NSData).decompressed(using: .lzfse) as Data else {
+                throw PayloadError.unreadable
+            }
+            return data
+        default:
+            throw PayloadError.unreadable
+        }
+    }
+
+    static func decode(_ payload: Data) throws -> (record: SyncRecord, canonical: Data) {
+        let canonical = try canonical(from: payload)
+        let record = try SyncCoding.makeDecoder().decode(SyncRecord.self, from: canonical)
+        return (record, canonical)
+    }
+
+    /// Whether JSON of this size fits a record (compressed if need be).
+    static func fits(_ json: Data, limit: Int = maxBytes) -> Bool {
+        if json.count <= limit { return true }
+        guard let compressed = compress(json) else { return false }
+        return compressed.count + 1 <= limit
+    }
+
+    private static func compress(_ data: Data) -> Data? {
+        try? (data as NSData).compressed(using: .lzfse) as Data
+    }
+}
+
 // MARK: - Merge
 
-enum FolderSyncMerge {
+enum SyncMerge {
     /// Merges copies of one record (local, remote, conflict versions).
     /// Commutative and associative: the result does not depend on order.
     static func merge(_ records: [SyncRecord]) -> SyncRecord? {
@@ -354,7 +437,7 @@ enum FolderSyncMerge {
             guard let aValue else { fields[unit] = bValue; stamps[unit] = bStamp; continue }
             guard let bValue else { fields[unit] = aValue; stamps[unit] = aStamp; continue }
             stamps[unit] = max(aStamp, bStamp)
-            switch FolderSyncSchema.rule(kind: a.kind, unit: unit) {
+            switch SyncSchema.rule(kind: a.kind, unit: unit) {
             case .max:
                 fields[unit] = order(aValue, bValue) >= 0 ? aValue : bValue
             case .min:
@@ -390,6 +473,6 @@ enum FolderSyncMerge {
     }
 
     private static func bytes(_ value: JSONValue) -> Data {
-        (try? FolderSyncCoding.data(value)) ?? Data()
+        (try? SyncCoding.data(value)) ?? Data()
     }
 }

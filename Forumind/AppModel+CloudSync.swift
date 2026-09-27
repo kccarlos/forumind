@@ -1,13 +1,13 @@
 import Foundation
 
-// Folder sync glue (FolderSyncController drives it; see FolderSyncRecords.swift
-// for the merge rules). Remote changes go through the same state as local
+// iCloud sync glue (CloudSyncController drives it; see SyncRecords.swift for
+// the merge rules). Remote changes go through the same state as local
 // edits: running work keeps its `RunSettings`, a job re-reads its session
 // before writing results, and work that is running here is never touched.
 extension AppModel {
     /// The synced part of the state (API keys stripped).
-    func folderSyncLocalState() -> FolderSyncLocalState {
-        FolderSyncLocalState(
+    func syncLocalState() -> SyncLocalState {
+        SyncLocalState(
             settings: settings.persistable,
             sessions: sessions,
             runs: agentRuns,
@@ -23,13 +23,13 @@ extension AppModel {
     /// it again. So is a delete of a session with work running, and any
     /// change to an agent run that is still running here.
     @discardableResult
-    func applyRemote(_ changes: FolderSyncChanges) -> Set<String> {
+    func applyRemote(_ changes: SyncChanges) -> Set<String> {
         var skipped: Set<String> = []
 
         var newSettings = settings
         if let change = changes.settings {
             if settings.persistable == change.expected,
-               let merged = try? FolderSyncSchema.applying(settingsUnits: change.units, to: settings) {
+               let merged = try? SyncSchema.applying(settingsUnits: change.units, to: settings) {
                 newSettings = merged
             } else {
                 skipped.insert(SyncRecord.recordKey(kind: .settings, id: "settings"))
@@ -95,7 +95,7 @@ extension AppModel {
     }
 
     private static func applying<Value: Equatable>(
-        _ changes: [FolderSyncRecordChange<Value>],
+        _ changes: [SyncRecordChange<Value>],
         to values: [Value],
         kind: SyncKind,
         id: KeyPath<Value, String>,

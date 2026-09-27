@@ -8,16 +8,42 @@ import SwiftUI
 import UserNotifications
 
 /// Registers the watched-topic background refresh and receives notification
-/// taps; both must be wired before launch finishes.
+/// taps; both must be wired before launch finishes. In CloudKit builds it
+/// also registers for the silent pushes that announce iCloud changes.
 final class AppDelegate: NSObject, UIApplicationDelegate {
+    /// Called for each remote (CloudKit) notification. The sync engine sets
+    /// it; without a handler the push is acknowledged with `.noData`.
+    @MainActor static var remoteNotificationHandler: (([AnyHashable: Any]) async -> UIBackgroundFetchResult)?
+
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         UNUserNotificationCenter.current().delegate = WatchNotifier.shared
         WatchBackgroundRefresh.register()
+        #if CLOUDKIT_ENABLED
+        // Silent pushes only: no permission prompt.
+        application.registerForRemoteNotifications()
+        #endif
         return true
     }
+
+    #if CLOUDKIT_ENABLED
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {}
+
+    /// Simulators without push support and devices offline end up here; sync
+    /// still runs on launch, foreground, and local changes.
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {}
+
+    @MainActor
+    func application(
+        _ application: UIApplication,
+        didReceiveRemoteNotification userInfo: [AnyHashable: Any]
+    ) async -> UIBackgroundFetchResult {
+        guard let handler = Self.remoteNotificationHandler else { return .noData }
+        return await handler(userInfo)
+    }
+    #endif
 }
 
 @main

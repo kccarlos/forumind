@@ -87,7 +87,7 @@ final class SettingsNavigationUITests: DCUITestCase {
         }
     }
 
-    func testSyncPageShowsStatusFolderAndKeyToggle() throws {
+    func testSyncPageShowsStatusTogglesAndDelete() throws {
         // `-dc-sync-status` fakes the displayed status (screenshots/tests only).
         let app = launch(["-dc-sample", "-dc-show-settings", "sync", "-dc-sync-status", "upToDate"])
 
@@ -95,36 +95,32 @@ final class SettingsNavigationUITests: DCUITestCase {
         let status = any(app, "syncStatus")
         XCTAssertTrue(status.waitForExistence(timeout: 5))
         XCTAssertTrue(status.label.contains("Up to date"), "Got “\(status.label)”.")
-        XCTAssertTrue(app.buttons["syncChangeFolder"].exists, "The folder row has no Change button.")
+        XCTAssertEqual(app.switches["syncEnabled"].value as? String, "1", "Sync with iCloud is on.")
         XCTAssertTrue(app.buttons["syncNow"].exists)
         let toggle = app.switches["syncAPIKeys"]
         XCTAssertTrue(reveal(toggle, in: app))
         XCTAssertEqual(toggle.value as? String, "1", "Sync API keys is on by default.")
-        let stop = app.buttons["syncStop"]
-        XCTAssertTrue(reveal(stop, in: app, swipes: 4))
-        stop.tap()
-        // Confirmation first; cancel leaves sync on.
-        let confirm = app.buttons["Stop syncing"]
-        XCTAssertTrue(confirm.waitForExistence(timeout: 5), "Stop syncing asks for confirmation.")
+        let delete = app.buttons["syncDeleteCloudData"]
+        XCTAssertTrue(reveal(delete, in: app, swipes: 4))
+        delete.tap()
+        // Confirmation first; cancel deletes nothing.
+        XCTAssertTrue(
+            app.staticTexts["Delete iCloud data?"].waitForExistence(timeout: 5),
+            "Delete iCloud data asks for confirmation."
+        )
         let cancel = app.buttons["Cancel"]
         if cancel.exists { cancel.tap() } else { app.tap() }
-        XCTAssertTrue(waitForGone(confirm, timeout: 5))
+        XCTAssertTrue(waitForGone(app.staticTexts["Delete iCloud data?"], timeout: 5))
     }
 
-    func testSyncPageOffOffersChooseFolder() throws {
-        let app = launch(["-dc-sample", "-dc-show-settings", "sync", "-dc-sync-status", "off"])
+    func testSyncPageShowsAccountFix() throws {
+        let app = launch(["-dc-sample", "-dc-show-settings", "sync", "-dc-sync-status", "noAccount"])
 
         XCTAssertTrue(app.navigationBars["iCloud Sync"].waitForExistence(timeout: 20))
-        XCTAssertTrue(any(app, "syncStatus").waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["syncStop"].exists, "Nothing to stop while sync is off.")
-        let action = app.buttons["syncStatusAction"]
-        XCTAssertTrue(waitForHittable(action))
-        action.tap()
-        // The Files folder picker appears (a remote view; any Cancel will do).
-        let cancel = app.buttons["Cancel"]
-        XCTAssertTrue(cancel.waitForExistence(timeout: 10), "The folder picker did not appear.")
-        cancel.tap()
-        XCTAssertTrue(app.navigationBars["iCloud Sync"].waitForExistence(timeout: 10))
+        let status = any(app, "syncStatus")
+        XCTAssertTrue(status.waitForExistence(timeout: 5))
+        XCTAssertTrue(status.label.contains("Sign in to iCloud"), "Got “\(status.label)”.")
+        XCTAssertFalse(app.buttons["syncStatusAction"].exists, "Nothing to retry without an account.")
     }
 
     /// A control each page is known for (moved out of the old single form).

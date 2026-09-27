@@ -37,12 +37,13 @@ final class OnboardingUITests: DCUITestCase {
         skipStep.tap()
         assertStep(5, progress)
 
-        // Sync across your devices: optional, skip for now (no folder picked).
-        XCTAssertTrue(app.buttons["onboardingSyncChooseFolder"].waitForExistence(timeout: 5))
-        XCTAssertTrue(waitForHittable(skipStep))
-        skipStep.tap()
+        // Sync across your devices: informational, with the iCloud toggle
+        // (on by default; left untouched).
+        XCTAssertTrue(app.switches["onboardingSyncToggle"].waitForExistence(timeout: 5))
+        XCTAssertFalse(skipStep.exists, "Only the provider and forums steps can be skipped.")
+        XCTAssertTrue(waitForHittable(next))
+        next.tap()
         assertStep(6, progress)
-        XCTAssertFalse(skipStep.exists, "Only the provider, forums, and sync steps can be skipped.")
 
         // Share → Privacy → Done.
         XCTAssertTrue(waitForHittable(next))
