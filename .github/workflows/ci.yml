@@ -1,0 +1,136 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PROJECT: Forumind.xcodeproj
+  SCHEME: Forumind
+  # Matches the local toolchain (Xcode 27.0, 27A266a). To fall back to the GA
+  # macOS 26 image, set repo variables CI_MACOS_RUNNER=macos-26 and
+  # CI_XCODE_APP=/Applications/Xcode_26.6.app.
+  XCODE_APP: ${{ vars.CI_XCODE_APP || '/Applications/Xcode_27.0.app' }}
+
+jobs:
+  # Cheap checks on Linux (macOS minutes are billed at a multiplier).
+  lint:
+    name: Lint (plists, scripts, workflows)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Lint property lists
+        run: scripts/ci/lint-plists.sh
+      - name: ShellCheck CI scripts
+        run: shellcheck scripts/ci/*.sh scripts/adblock/*.sh
+      - name: App Store metadata
+        # Length limits, keywords, URLs, and screenshot sizes in appstore/.
+        run: scripts/ci/check-appstore-metadata.sh
+      - name: Fastfile syntax
+        run: ruby -c fastlane/Fastfile
+      - name: Ad-blocking converter tests
+        # Rust syntax-case tests (adblock-rust, build-time only) + Python
+        # validator/chunking tests. ubuntu-latest ships cargo and python3.
+        run: scripts/adblock/run_tests.sh
+      - name: actionlint
+        run: |
+          bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash) latest "$RUNNER_TEMP"
+          "$RUNNER_TEMP/actionlint" -color
+
+  project-drift:
+    name: Generated project is up to date
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+      - name: Install xcodeproj gem
+        run: gem install xcodeproj --no-document
+      - name: Compare committed project with generator output
+        # Fails on drift; the log shows a UUID-free diff of what changed.
+        run: scripts/ci/check-project-drift.sh
+
+  build-test:
+    name: Build & unit tests
+    runs-on: ${{ vars.CI_MACOS_RUNNER || 'xcode-27' }}
+    timeout-minutes: 45
+    # DerivedData is intentionally not cached: no SPM packages, and Xcode's
+    # incremental cache hit rate across runners is poor for a project this size.
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select Xcode
+        run: scripts/ci/select-xcode.sh
+
+      - name: Pick simulator
+        id: sim
+        env:
+          SIM_PREFER: iPhone 17 Pro,iPhone 18 Pro,iPhone 17,iPhone Air
+        run: scripts/ci/pick-simulator.sh
+
+      - name: Build and test
+        env:
+          DESTINATION: ${{ steps.sim.outputs.destination }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+        run: |
+          set -o pipefail
+          formatter=(cat)
+          if command -v xcbeautify >/dev/null; then formatter=(xcbeautify --renderer github-actions); fi
+          xcodebuild test \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -destination "$DESTINATION" \
+            -only-testing:ForumindTests \
+            -derivedDataPath DerivedData \
+            -resultBundlePath TestResults.xcresult \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            | "${formatter[@]}"
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: TestResults-${{ github.run_id }}-${{ github.run_attempt }}.xcresult
+          path: TestResults.xcresult
+          retention-days: 14
+          if-no-files-found: ignore
+
+  release-build:
+    # Catches Release-only compile errors (for example code behind `#if DEBUG`
+    # that Release still references) without any signing material.
+    name: Release build (device, unsigned)
+    runs-on: ${{ vars.CI_MACOS_RUNNER || 'xcode-27' }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select Xcode
+        run: scripts/ci/select-xcode.sh
+
+      - name: Build Release for generic iOS
+        run: |
+          set -o pipefail
+          formatter=(cat)
+          if command -v xcbeautify >/dev/null; then formatter=(xcbeautify --renderer github-actions); fi
+          xcodebuild build \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            | "${formatter[@]}"

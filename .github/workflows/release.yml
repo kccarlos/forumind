@@ -1,0 +1,312 @@
+name: Release
+
+# Tag v1.2.3 (or run manually) to build, upload to TestFlight, and publish a
+# GitHub Release. Every signed step is skipped cleanly when the App Store
+# Connect secrets or the DEVELOPMENT_TEAM variable are missing, so forks and
+# fresh clones stay green. See docs/CI.md.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Marketing version (e.g. 1.2.0). Empty keeps the project's version.
+        type: string
+        default: ''
+      testflight:
+        description: Archive, sign, and upload to TestFlight
+        type: boolean
+        default: true
+      submit_metadata:
+        description: Upload App Store metadata from appstore/ with fastlane deliver
+        type: boolean
+        default: false
+      upload_screenshots:
+        description: Also upload screenshots from appstore/screenshots (replaces existing ones)
+        type: boolean
+        default: false
+      submit_for_review:
+        description: Submit the version for App Review after uploading metadata
+        type: boolean
+        default: false
+
+# Never cancel a release or upload midway.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  PROJECT: Forumind.xcodeproj
+  SCHEME: Forumind
+  XCODE_APP: ${{ vars.CI_XCODE_APP || '/Applications/Xcode_27.0.app' }}
+  # Repo variables (Settings -> Secrets and variables -> Actions -> Variables).
+  DEVELOPMENT_TEAM: ${{ vars.DEVELOPMENT_TEAM }}
+  BUNDLE_ID_PREFIX: ${{ vars.BUNDLE_ID_PREFIX }}
+  DC_ENABLE_PCC: ${{ vars.DC_ENABLE_PCC || 'NO' }}
+
+jobs:
+  # `secrets` can't be used in a job-level `if:`, so compute what can run here.
+  preflight:
+    name: Preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      asc: ${{ steps.check.outputs.asc }}
+      signing: ${{ steps.check.outputs.signing }}
+      metadata: ${{ steps.check.outputs.metadata }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - id: check
+        env:
+          HAS_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID != '' }}
+          HAS_ISSUER: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID != '' }}
+          HAS_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8_BASE64 != '' }}
+          HAS_P12: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 != '' }}
+          WANT_TESTFLIGHT: ${{ github.event_name != 'workflow_dispatch' || inputs.testflight }}
+          WANT_METADATA: ${{ github.event_name == 'workflow_dispatch' && inputs.submit_metadata }}
+        run: |
+          asc=false signing=false metadata=false
+          if [[ "$HAS_KEY_ID" == true && "$HAS_ISSUER" == true && "$HAS_P8" == true ]]; then
+            asc=true
+          else
+            echo "::notice::App Store Connect API key secrets are not set; skipping TestFlight and metadata."
+          fi
+          if [[ "$asc" == true && "$WANT_TESTFLIGHT" == true ]]; then
+            if [[ -z "$DEVELOPMENT_TEAM" ]]; then
+              echo "::warning::Repo variable DEVELOPMENT_TEAM is not set; skipping the signed archive."
+            else
+              signing=true
+              [[ "$HAS_P12" == true ]] || echo "::warning::APPLE_CERTIFICATE_P12_BASE64 is not set; the archive fails unless automatic signing can get a distribution certificate."
+            fi
+          fi
+          if [[ "$asc" == true && "$WANT_METADATA" == true ]]; then
+            metadata=true
+          fi
+          {
+            echo "asc=$asc"
+            echo "signing=$signing"
+            echo "metadata=$metadata"
+          } >>"$GITHUB_OUTPUT"
+      - id: version
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          # Tag v1.2.3 -> 1.2.3 (a pre-release suffix like -beta.1 is dropped:
+          # App Store versions are numbers only). Manual runs use the input.
+          version=""
+          if [[ "$REF_TYPE" == tag && "$REF_NAME" =~ ^v([0-9]+(\.[0-9]+){0,2})(-.*)?$ ]]; then
+            version="${BASH_REMATCH[1]}"
+          elif [[ -n "$INPUT_VERSION" ]]; then
+            if [[ ! "$INPUT_VERSION" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]]; then
+              echo "::error::version must look like 1.2.3 (got '$INPUT_VERSION')"
+              exit 1
+            fi
+            version="$INPUT_VERSION"
+          fi
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+          echo "Marketing version: ${version:-<project default>}, build number: $GITHUB_RUN_NUMBER"
+
+  simulator-build:
+    name: Unsigned simulator build
+    needs: preflight
+    runs-on: ${{ vars.CI_MACOS_RUNNER || 'xcode-27' }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - name: Select Xcode
+        run: scripts/ci/select-xcode.sh
+      - name: Build Release for iOS Simulator
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          set -o pipefail
+          extra=()
+          [[ -n "$VERSION" ]] && extra+=("MARKETING_VERSION=$VERSION")
+          xcodebuild build \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
+            "${extra[@]}" \
+            | xcbeautify --renderer github-actions
+      - name: Package .app
+        run: |
+          mkdir -p dist
+          ditto -c -k --sequesterRsrc --keepParent \
+            DerivedData/Build/Products/Release-iphonesimulator/Forumind.app \
+            dist/Forumind-simulator.app.zip
+      - uses: actions/upload-artifact@v7
+        with:
+          name: simulator-app
+          path: dist/Forumind-simulator.app.zip
+          if-no-files-found: error
+
+  testflight:
+    name: Archive & upload to TestFlight
+    needs: preflight
+    if: needs.preflight.outputs.signing == 'true'
+    runs-on: ${{ vars.CI_MACOS_RUNNER || 'xcode-27' }}
+    timeout-minutes: 90
+    environment: testflight
+    env:
+      APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      VERSION: ${{ needs.preflight.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Select Xcode
+        run: scripts/ci/select-xcode.sh
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+
+      - name: Generate project for this team and bundle ID
+        # The committed project has no team and default IDs; regenerate with
+        # the repo variables (DEVELOPMENT_TEAM, BUNDLE_ID_PREFIX, DC_ENABLE_PCC).
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: bundle exec ruby scripts/generate_project.rb
+
+      - name: Install signing material
+        env:
+          APP_STORE_CONNECT_API_KEY_P8_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8_BASE64 }}
+          APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_PROVISIONING_PROFILES_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILES_BASE64 }}
+        run: scripts/ci/import-signing.sh
+
+      - name: Archive
+        run: |
+          set -o pipefail
+          extra=()
+          [[ -n "$VERSION" ]] && extra+=("MARKETING_VERSION=$VERSION")
+          xcodebuild archive \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/Forumind.xcarchive \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$APP_STORE_CONNECT_API_KEY_ID" \
+            -authenticationKeyIssuerID "$APP_STORE_CONNECT_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
+            CODE_SIGN_STYLE=Automatic \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
+            "${extra[@]}" \
+            | xcbeautify --renderer github-actions
+
+      - name: Export IPA
+        run: |
+          set -o pipefail
+          scripts/ci/write-export-options.sh build/ExportOptions.plist
+          xcodebuild -exportArchive \
+            -archivePath build/Forumind.xcarchive \
+            -exportOptionsPlist build/ExportOptions.plist \
+            -exportPath build/export \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$APP_STORE_CONNECT_API_KEY_ID" \
+            -authenticationKeyIssuerID "$APP_STORE_CONNECT_ISSUER_ID" \
+            | xcbeautify --renderer github-actions
+          mkdir -p dist
+          cp build/export/*.ipa dist/Forumind.ipa
+          ditto -c -k --keepParent build/Forumind.xcarchive/dSYMs dist/Forumind-dSYMs.zip
+
+      - name: Upload to TestFlight
+        env:
+          APP_STORE_CONNECT_API_KEY_P8_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8_BASE64 }}
+          # Submitting for review in this run needs the processed build.
+          WAIT: ${{ github.event_name == 'workflow_dispatch' && inputs.submit_for_review }}
+        run: bundle exec fastlane beta ipa:dist/Forumind.ipa wait:"$WAIT"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ipa
+          path: dist/Forumind.ipa
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dsyms
+          path: dist/Forumind-dSYMs.zip
+          if-no-files-found: error
+
+      - name: Clean up signing material
+        if: always()
+        run: scripts/ci/cleanup-signing.sh
+
+  metadata:
+    name: App Store metadata
+    needs: [preflight, testflight]
+    # Runs after the TestFlight job when both were requested, or on its own.
+    if: >-
+      always() && needs.preflight.outputs.metadata == 'true' &&
+      (needs.testflight.result == 'success' || needs.testflight.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: testflight
+    env:
+      APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APP_STORE_CONNECT_API_KEY_P8_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8_BASE64 }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate metadata
+        run: scripts/ci/check-appstore-metadata.sh
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+      - name: Upload metadata with fastlane deliver
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+          SCREENSHOTS: ${{ inputs.upload_screenshots }}
+          SUBMIT: ${{ inputs.submit_for_review }}
+        run: |
+          bundle exec fastlane metadata \
+            version:"$VERSION" screenshots:"$SCREENSHOTS" submit:"$SUBMIT"
+
+  github-release:
+    name: GitHub Release
+    needs: [preflight, simulator-build, testflight]
+    # Runs on tags even when the TestFlight job was skipped (no secrets).
+    if: >-
+      always() && github.ref_type == 'tag' &&
+      needs.simulator-build.result == 'success' &&
+      (needs.testflight.result == 'success' || needs.testflight.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          # The simulator build, plus dSYMs when TestFlight ran (not the IPA).
+          pattern: '{simulator-app,dsyms}'
+          path: dist
+          merge-multiple: true
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          ls -la dist
+          prerelease=()
+          [[ "$TAG" == *-* ]] && prerelease=(--prerelease)
+          gh release create "$TAG" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$TAG" \
+            --generate-notes \
+            --verify-tag \
+            "${prerelease[@]}"

@@ -1,0 +1,30 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci
+
+  # fastlane and xcodeproj (Gemfile), used by the release workflow.
+  - package-ecosystem: bundler
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      ruby:
+        patterns: ["*"]
+    commit-message:
+      prefix: build
+
+  # adblock-rust converter (build-time only).
+  - package-ecosystem: cargo
+    directory: /scripts/adblock/converter
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: build

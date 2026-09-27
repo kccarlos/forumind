@@ -1,0 +1,16 @@
+# Apple Developer Team ID for signed (device / App Store) builds.
+#
+# Copy this file to Config/DevelopmentTeam.txt (git-ignored), put your
+# 10-character Team ID on a line of its own (no #), then run:
+#
+#   ruby scripts/generate_project.rb
+#
+# The DEVELOPMENT_TEAM environment variable takes precedence over this file.
+# Without either, the project is generated with no team: simulator and
+# unsigned builds (CODE_SIGNING_ALLOWED=NO) still work.
+#
+# Forks can also build under their own identifiers with BUNDLE_ID_PREFIX
+# (default io.github.kccarlos.forumind).
+#
+# Lines starting with # are ignored.
+# ABCDE12345

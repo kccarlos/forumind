@@ -1,0 +1,44 @@
+Forumind for iPhone and iPad
+Copyright 2026 kccarlos and Forumind contributors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+"Discourse" is a trademark of Civilized Discourse Construction Kit, Inc.
+Forumind is an independent project and is not affiliated with,
+endorsed by, or sponsored by Civilized Discourse Construction Kit, Inc. or
+any forum it can open.
+
+-------------------------------------------------------------------------------
+Third-party material bundled with the app
+-------------------------------------------------------------------------------
+
+EasyList and EasyPrivacy (converted content-blocking rules)
+  Files:   Forumind/ContentBlocking/ads-*.json,
+           Forumind/ContentBlocking/privacy-*.json,
+           Forumind/ContentBlocking/manifest.json
+  Authors: The EasyList authors (https://easylist.to/)
+  License: Creative Commons Attribution-ShareAlike 3.0 Unported (CC BY-SA 3.0),
+           https://creativecommons.org/licenses/by-sa/3.0/
+           (EasyList is dual-licensed GPLv3 / CC BY-SA 3.0; this project uses
+           it under CC BY-SA 3.0. See https://easylist.to/pages/licence.html.)
+  Changes: The filters were mechanically converted from Adblock Plus syntax to
+           WebKit content-blocker JSON, filters WebKit cannot express were
+           omitted, and the result was split into several files. The converted
+           files are a derivative work and are shared under CC BY-SA 3.0, not
+           under the Apache License. Full attribution, including the source
+           list versions, is in Forumind/ContentBlocking/ATTRIBUTION.md
+           and is shown in the app under Settings > About > Acknowledgements.
+
+-------------------------------------------------------------------------------
+Third-party tools used only at build time (not included in the app)
+-------------------------------------------------------------------------------
+
+adblock-rust (https://github.com/brave/adblock-rust)
+  License: Mozilla Public License 2.0 (MPL-2.0)
+  Use:     scripts/adblock/converter depends on the published crate (pinned in
+           scripts/adblock/converter/Cargo.lock) to convert the filter lists.
+           Its source is not vendored or modified, and none of it is compiled
+           into the app.
+
+The app has no other third-party code: it uses only Apple system frameworks
+and has no Swift packages, CocoaPods, or Carthage dependencies.

@@ -1,0 +1,1 @@
+summarize,summary,chat,community,thread,topic,reader,digest,TLDR,assistant,LLM,discussion,ad blocker

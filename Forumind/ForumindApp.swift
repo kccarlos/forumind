@@ -1,0 +1,154 @@
+//
+//  ForumindApp.swift
+//  Forumind
+//
+//
+
+import SwiftUI
+import UserNotifications
+
+/// Registers the watched-topic background refresh and receives notification
+/// taps; both must be wired before launch finishes.
+final class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        UNUserNotificationCenter.current().delegate = WatchNotifier.shared
+        WatchBackgroundRefresh.register()
+        return true
+    }
+}
+
+@main
+struct ForumindApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @Environment(\.scenePhase) private var scenePhase
+    @StateObject private var app: AppModel = {
+        let model = AppModel()
+        #if DEBUG
+        model.applyOnboardingDebugArguments()
+        #endif
+        return model
+    }()
+
+    var body: some Scene {
+        WindowGroup {
+            RootView(app: app)
+        }
+        .onChange(of: scenePhase) {
+            app.handleScenePhase(scenePhase)
+        }
+        .commands {
+            // Hardware keyboard: menu bar and the ⌘-hold overlay on iPad.
+            WorkspaceCommands()
+        }
+    }
+}
+
+/// ContentView plus the app-level covers: the first-launch walkthrough and
+/// provider setup requested by a shared link.
+private struct RootView: View {
+    @ObservedObject var app: AppModel
+    @State private var replayingOnboarding = false
+    @State private var showingProviderSetup = false
+    #if DEBUG
+    @State private var debugSettings: DebugSettingsRoute?
+    @State private var keychainProbeResult: String?
+    #endif
+
+    private var showsOnboarding: Binding<Bool> {
+        Binding(
+            get: { !app.settings.hasCompletedOnboarding || replayingOnboarding },
+            set: { presented in
+                if !presented {
+                    replayingOnboarding = false
+                    if !app.settings.hasCompletedOnboarding { app.completeOnboarding() }
+                }
+            }
+        )
+    }
+
+    var body: some View {
+        ContentView(app: app)
+            .environment(\.replayOnboarding, ReplayOnboardingAction { replayingOnboarding = true })
+            .fullScreenCover(isPresented: showsOnboarding) {
+                OnboardingFlow(app: app, initialStep: initialStep) {
+                    replayingOnboarding = false
+                }
+            }
+            .sheet(isPresented: $showingProviderSetup, onDismiss: {
+                app.needsProviderSetup = false
+            }) {
+                ProviderSetupSheet(app: app)
+            }
+            .onChange(of: app.settings.hasCompletedOnboarding) {
+                presentProviderSetupIfNeeded()
+            }
+            .onChange(of: app.needsProviderSetup) { presentProviderSetupIfNeeded() }
+            // A request that arrived during the walkthrough is shown after it.
+            .onChange(of: replayingOnboarding) { presentProviderSetupIfNeeded() }
+            // "Sync API keys" (Settings › iCloud Sync, reset, or a synced
+            // settings change): move keys between iCloud Keychain and local.
+            .onChange(of: app.settings.syncAPIKeys) { _, synchronizes in
+                let keys = Dictionary(uniqueKeysWithValues: AIProvider.allCases.map {
+                    ($0, app.settings.configuration(for: $0).apiKey)
+                })
+                KeychainProviderKeyStore.shared.setSynchronizes(synchronizes, keys: keys)
+            }
+            #if DEBUG
+            .fullScreenCover(item: $debugSettings) { route in
+                NavigationStack {
+                    SettingsRootView(app: app, initialPage: route.page)
+                        .navigationTitle("Settings")
+                        .navigationBarTitleDisplayMode(.inline)
+                }
+            }
+            .alert(
+                "Keychain sync probe",
+                isPresented: Binding(get: { keychainProbeResult != nil }, set: { if !$0 { keychainProbeResult = nil } })
+            ) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(keychainProbeResult ?? "")
+            }
+            .task {
+                if KeychainSyncProbe.isRequested {
+                    keychainProbeResult = KeychainSyncProbe.run().summary
+                }
+                if OnboardingDebug.arguments.contains("-dc-panel-settings") {
+                    try? await Task.sleep(for: .seconds(1))
+                    app.panelRoute = .settings
+                    app.presentAssistant = true
+                }
+                if let value = OnboardingDebug.settingsPage {
+                    debugSettings = DebugSettingsRoute(page: SettingsPage.parse(value))
+                }
+            }
+            #endif
+    }
+
+    private var initialStep: OnboardingStep {
+        #if DEBUG
+        if let step = OnboardingDebug.initialStep, !replayingOnboarding { return step }
+        #endif
+        return .welcome
+    }
+
+    /// A shared link needs an AI provider first; not over the walkthrough.
+    private func presentProviderSetupIfNeeded() {
+        guard app.needsProviderSetup, app.settings.hasCompletedOnboarding, !replayingOnboarding else { return }
+        if app.isProviderReady {
+            app.needsProviderSetup = false
+        } else {
+            showingProviderSetup = true
+        }
+    }
+}
+
+#if DEBUG
+private struct DebugSettingsRoute: Identifiable {
+    var page: SettingsPage?
+    var id: String { page?.rawValue ?? "root" }
+}
+#endif

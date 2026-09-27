@@ -1,0 +1,39 @@
+Forumind helps you catch up on any Discourse forum in seconds. It's a forum browser with an AI assistant beside it: summarize long topics, ask follow-up questions, and let the assistant search the whole forum for you, with links to the posts it used.
+
+SKIP THE SCROLL
+Get the main points of a 500-reply topic without reading every post: the original post, what people are saying, and tips from the thread. Later, tap Check for new replies and only the new posts are read.
+
+ASK QUESTIONS
+Chat about the topic you're reading: "What did people decide?" or "Is there a workaround?" Edit a question to branch the conversation, and set instructions just for that topic.
+
+ASK THE FORUM
+Ask a question and the assistant searches the forum, reads the most relevant topics, and answers with numbered sources you can tap to check.
+
+ANY DISCOURSE FORUM
+Open a forum and the app recognizes it. Pin the forums you use most; the ones you visit show up under Recent. If a forum needs you to log in, log in right in the app. Your login is sent only to that forum.
+
+SHARE FROM SAFARI OR CHROME
+Share any forum page to Forumind to open it in the app, summarize it, chat about it, or ask the forum.
+
+WATCH TOPICS
+Get a notification when a topic you care about has new replies.
+
+YOUR CHOICE OF AI
+Use Apple Intelligence where it's available: no account and no key needed. Or bring your own provider: OpenAI, Anthropic, Google Gemini, OpenRouter, Groq, xAI, DeepSeek, NVIDIA NIM, or a model running on your own computer with Ollama or LM Studio.
+
+A CLEANER BROWSER
+The built-in browser blocks ads and trackers using the EasyList and EasyPrivacy filter lists. Allow ads on any site with one tap.
+
+ON ALL YOUR DEVICES
+Built for iPhone and iPad, with the forum and the assistant side by side on iPad. Sync your forums, summaries, chats, and settings through a folder in your own iCloud Drive, encrypted with a key kept in your iCloud Keychain.
+
+PRIVATE BY DESIGN
+- No accounts, no analytics, no ads, no tracking.
+- There are no Forumind servers. The app talks directly to the forum and to the AI you choose.
+- API keys are stored in your Keychain.
+- Your history stays on your devices and in your own iCloud.
+
+FREE AND OPEN SOURCE
+Forumind is free and open source under the Apache License 2.0. If you use your own AI provider, that provider may charge you for usage.
+
+Forumind is an independent app and is not affiliated with or endorsed by Civilized Discourse Construction Kit, Inc. Discourse is a trademark of its respective owner.

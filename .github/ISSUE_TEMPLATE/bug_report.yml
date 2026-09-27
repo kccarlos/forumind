@@ -1,0 +1,64 @@
+name: Bug report
+description: Something in the app doesn't work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Please don't paste API keys, forum cookies, or private forum content.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open https://meta.discourse.org/t/...
+        2. Tap Assistant > Summary
+        3. ...
+  - type: input
+    id: forum
+    attributes:
+      label: Forum address
+      description: A public forum where it happens, if it's forum-specific.
+      placeholder: meta.discourse.org
+  - type: dropdown
+    id: provider
+    attributes:
+      label: AI provider
+      options:
+        - Apple Intelligence
+        - OpenAI
+        - Anthropic
+        - Google Gemini
+        - OpenRouter
+        - Groq
+        - xAI
+        - DeepSeek
+        - NVIDIA NIM
+        - Ollama
+        - LM Studio
+        - Not related to AI
+  - type: input
+    id: device
+    attributes:
+      label: Device and iOS version
+      placeholder: iPhone 17, iOS 27.0
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      description: Settings > About (for example 1.0.0 (42)), or "built from source at <commit>".
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots or anything else

@@ -1,0 +1,4 @@
+[
+{"action":{"selector":"#cxense-recs-in-article","type":"css-display-none"},"trigger":{"url-filter":".*"}},
+{"action":{"selector":".embed-responsive-trendmd","type":"css-display-none"},"trigger":{"url-filter":".*"}}
+]

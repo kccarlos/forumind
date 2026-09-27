@@ -1,0 +1,85 @@
+name: Update filter lists
+
+# Weekly refresh of the bundled ad/tracker blocking rules
+# (Forumind/ContentBlocking) from EasyList + EasyPrivacy.
+# Opens or updates a single PR on branch `bot/update-filter-lists` when the
+# converted rules change; does nothing when they don't.
+#
+# Requires the repo setting Settings -> Actions -> General -> "Allow GitHub
+# Actions to create and approve pull requests" (otherwise the PR step fails
+# with "GitHub Actions is not permitted to create or approve pull requests").
+#
+# Note: PRs opened with GITHUB_TOKEN do not trigger `pull_request` workflows
+# (GitHub's recursion guard). Close/reopen the PR, or push to its branch, to
+# run CI on it — see docs/AD_BLOCKING.md.
+
+on:
+  schedule:
+    - cron: '17 6 * * 1' # Mondays 06:17 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: update-filter-lists
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    name: Convert lists and open PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Converter tests
+        run: scripts/adblock/run_tests.sh
+
+      - name: Download, convert, validate
+        id: update
+        run: |
+          set -o pipefail
+          scripts/adblock/update_rules.sh | tee "$RUNNER_TEMP/update.log"
+          {
+            echo 'summary<<EOF_SUMMARY'
+            cat "$RUNNER_TEMP/update.log"
+            echo 'EOF_SUMMARY'
+          } >>"$GITHUB_OUTPUT"
+          if [[ -z "$(git status --porcelain -- Forumind/ContentBlocking)" ]]; then
+            echo "changed=false" >>"$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >>"$GITHUB_OUTPUT"
+            echo "version=$(jq -r .version Forumind/ContentBlocking/manifest.json)" >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: Open or update pull request
+        if: steps.update.outputs.changed == 'true'
+        # Commits as github-actions[bot], never a personal identity. Both are
+        # set explicitly: the action's default *author* is github.actor (the
+        # person who dispatched or last edited the schedule).
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+          committer: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+          branch: bot/update-filter-lists
+          delete-branch: true
+          add-paths: Forumind/ContentBlocking
+          commit-message: "chore(adblock): update filter lists to ${{ steps.update.outputs.version }}"
+          title: "chore(adblock): update filter lists (${{ steps.update.outputs.version }})"
+          body: |
+            Automated weekly refresh of EasyList + EasyPrivacy (CC BY-SA 3.0),
+            converted by `scripts/adblock/update_rules.sh`.
+
+            ```
+            ${{ steps.update.outputs.summary }}
+            ```
+
+            Before merging, let the `Build & unit tests` job run
+            (`ContentBlockingRulesTests` compiles every chunk in WebKit).
+            PRs opened with `GITHUB_TOKEN` don't start CI automatically:
+            close and reopen this PR to trigger it.

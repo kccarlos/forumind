@@ -1,0 +1,101 @@
+# App Store Connect lanes for Forumind. Building is done with plain
+# xcodebuild (see .github/workflows/release.yml); fastlane only talks to App
+# Store Connect: TestFlight uploads, metadata, screenshots, and submission.
+#
+# Authentication is an App Store Connect API key, read from the environment:
+#   APP_STORE_CONNECT_API_KEY_ID, APP_STORE_CONNECT_ISSUER_ID,
+#   APP_STORE_CONNECT_API_KEY_P8_BASE64 (base64 of the AuthKey_XXXX.p8 file)
+# Optional: BUNDLE_ID_PREFIX (default io.github.kccarlos.forumind).
+#
+#   bundle exec fastlane beta ipa:dist/Forumind.ipa
+#   bundle exec fastlane metadata [version:1.0.0] [screenshots:true] [submit:true]
+
+default_platform(:ios)
+
+DEFAULT_BUNDLE_ID = "io.github.kccarlos.forumind"
+
+# Absolute path inside the repository, whichever directory fastlane runs from.
+def repo_path(*parts)
+  root = [Dir.pwd, File.expand_path("..", Dir.pwd)].find do |dir|
+    File.directory?(File.join(dir, "appstore"))
+  end
+  UI.user_error!("Can't find the repository root (no appstore/ directory)") unless root
+  File.join(root, *parts)
+end
+
+def app_identifier_from_env
+  prefix = ENV["BUNDLE_ID_PREFIX"].to_s.strip
+  prefix.empty? ? DEFAULT_BUNDLE_ID : prefix
+end
+
+def truthy?(value)
+  %w[1 true yes].include?(value.to_s.strip.downcase)
+end
+
+def asc_api_key
+  %w[APP_STORE_CONNECT_API_KEY_ID APP_STORE_CONNECT_ISSUER_ID APP_STORE_CONNECT_API_KEY_P8_BASE64].each do |name|
+    UI.user_error!("#{name} is not set") if ENV[name].to_s.empty?
+  end
+  app_store_connect_api_key(
+    key_id: ENV["APP_STORE_CONNECT_API_KEY_ID"],
+    issuer_id: ENV["APP_STORE_CONNECT_ISSUER_ID"],
+    key_content: ENV["APP_STORE_CONNECT_API_KEY_P8_BASE64"],
+    is_key_content_base64: true,
+    in_house: false
+  )
+end
+
+platform :ios do
+  desc "Upload an exported IPA to TestFlight"
+  desc "Options: ipa (default dist/Forumind.ipa), wait (wait for processing; default false)"
+  lane :beta do |options|
+    ipa = File.expand_path(options[:ipa] || repo_path("dist", "Forumind.ipa"), repo_path)
+    UI.user_error!("No IPA at #{ipa}") unless File.file?(ipa)
+    notes_path = repo_path("appstore", "metadata", "en-US", "release_notes.txt")
+
+    wait = truthy?(options[:wait])
+
+    upload_options = {
+      api_key: asc_api_key,
+      app_identifier: app_identifier_from_env,
+      ipa: ipa,
+      skip_waiting_for_build_processing: !wait,
+      distribute_external: false
+    }
+    # "What to Test" can only be set once the build has finished processing.
+    upload_options[:changelog] = File.read(notes_path).strip if wait && File.file?(notes_path)
+    upload_to_testflight(**upload_options)
+  end
+
+  desc "Upload App Store metadata (and optionally screenshots) from appstore/"
+  desc "Options: version (App Store version to edit), screenshots (true to upload), submit (true to submit for review)"
+  lane :metadata do |options|
+    submit = truthy?(options[:submit])
+    version = options[:version].to_s.strip
+
+    deliver_options = {
+      api_key: asc_api_key,
+      app_identifier: app_identifier_from_env,
+      metadata_path: repo_path("appstore", "metadata"),
+      screenshots_path: repo_path("appstore", "screenshots"),
+      skip_binary_upload: true,
+      skip_app_version_update: version.empty?,
+      skip_screenshots: !truthy?(options[:screenshots]),
+      overwrite_screenshots: true,
+      force: true, # no interactive HTML preview
+      submit_for_review: submit,
+      automatic_release: false,
+      run_precheck_before_submit: false,
+      precheck_include_in_app_purchases: false,
+      submission_information: {
+        add_id_info_uses_idfa: false,
+        # Uses only exempt, OS-provided encryption (TLS, CryptoKit AES-GCM);
+        # matches ITSAppUsesNonExemptEncryption = NO. See docs/APP_STORE.md.
+        export_compliance_uses_encryption: true,
+        export_compliance_is_exempt: true
+      }
+    }
+    deliver_options[:app_version] = version unless version.empty?
+    deliver(**deliver_options)
+  end
+end
