@@ -140,21 +140,9 @@ struct OnboardingWelcomePage: View {
     }
 
     private var hero: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 44, style: .continuous)
-                .fill(DCTheme.brandGradient)
-                .frame(width: 164, height: 164)
-                .shadow(color: Color(hex: 0x4A6BFF, opacity: 0.35), radius: 24, y: 12)
-            Image(systemName: "bubble.left.and.text.bubble.right.fill")
-                .font(.system(size: 70, weight: .semibold))
-                .foregroundStyle(.white)
-                .offset(y: 4)
-            Image(systemName: "sparkles")
-                .font(.system(size: 30, weight: .bold))
-                .foregroundStyle(.white.opacity(0.95))
-                .offset(x: 52, y: -52)
-        }
-        .padding(.vertical, DCTheme.spacingS)
+        BrandMark(size: 164)
+            .shadow(color: Color(hex: 0x4A6BFF, opacity: 0.35), radius: 24, y: 12)
+            .padding(.vertical, DCTheme.spacingS)
         .accessibilityHidden(true)
     }
 }
@@ -628,14 +616,7 @@ struct ShareSheetIllustration: View {
 
     private var appIcon: some View {
         VStack(spacing: 6) {
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .fill(DCTheme.brandGradient)
-                .frame(width: 52, height: 52)
-                .overlay {
-                    Image(systemName: "bubble.left.and.text.bubble.right.fill")
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundStyle(.white)
-                }
+            BrandMark(size: 52)
                 .padding(3)
                 .overlay {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)

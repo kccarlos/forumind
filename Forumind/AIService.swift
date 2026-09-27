@@ -20,14 +20,16 @@ class AIService {
         provider: AIProvider,
         customPrompt: String,
         batchLimit: Int = SummaryBatchLimit.default,
-        onDelta: @escaping @MainActor (String) -> Void
+        onDelta: @escaping @MainActor (String) -> Void,
+        onProgress: @escaping @MainActor (SummaryProgressEvent) -> Void = { _ in }
     ) async throws -> String {
         if provider == .appleIntelligence {
             return try await appleIntelligenceSummary(
                 content: content,
                 configuration: configuration,
                 customPrompt: customPrompt,
-                onDelta: onDelta
+                onDelta: onDelta,
+                onProgress: onProgress
             )
         }
         return try await hierarchicalSummary(
@@ -37,7 +39,8 @@ class AIService {
             customPrompt: customPrompt,
             batchLimit: SummaryBatchLimit.normalized(batchLimit),
             maxLevel: 4,
-            onDelta: onDelta
+            onDelta: onDelta,
+            onProgress: onProgress
         )
     }
 
@@ -50,16 +53,18 @@ class AIService {
         customPrompt: String,
         batchLimit: Int,
         maxLevel: Int,
-        onDelta: @escaping @MainActor (String) -> Void
+        onDelta: @escaping @MainActor (String) -> Void,
+        onProgress: @escaping @MainActor (SummaryProgressEvent) -> Void = { _ in }
     ) async throws -> String {
         let chunks = PromptBuilder.splitForHierarchicalSummary(content, limit: batchLimit)
         if chunks.count == 1 {
+            await onProgress(.finalStarted(combining: false))
             return try await streamText(
                 system: PromptBuilder.summarySystem(custom: customPrompt),
                 messages: [ChatMessage(role: .user, content: content)],
                 configuration: configuration,
                 provider: provider,
-                onDelta: onDelta
+                onDelta: Self.counting(onDelta, onProgress: onProgress)
             )
         }
 
@@ -70,7 +75,8 @@ class AIService {
             level: 1,
             configuration: configuration,
             provider: provider,
-            onDelta: onDelta
+            onDelta: onDelta,
+            onProgress: onProgress
         )
         var level = 2
         // Bounded so a model that answers at length cannot fold indefinitely.
@@ -86,12 +92,14 @@ class AIService {
                 level: level,
                 configuration: configuration,
                 provider: provider,
-                onDelta: onDelta
+                onDelta: onDelta,
+                onProgress: onProgress
             )
             level += 1
         }
 
         await onDelta("\n\n_Combining section summaries…_\n")
+        await onProgress(.finalStarted(combining: true))
         return try await streamText(
             system: PromptBuilder.summarySystem(custom: customPrompt),
             messages: [
@@ -103,8 +111,21 @@ class AIService {
             ],
             configuration: configuration,
             provider: provider,
-            onDelta: onDelta
+            onDelta: Self.counting(onDelta, onProgress: onProgress)
         )
+    }
+
+    /// Passes deltas through and reports how many characters have arrived.
+    private static func counting(
+        _ onDelta: @escaping @MainActor (String) -> Void,
+        onProgress: @escaping @MainActor (SummaryProgressEvent) -> Void
+    ) -> @MainActor (String) -> Void {
+        let received = StreamedCharacters()
+        return { delta in
+            onDelta(delta)
+            received.count += delta.count
+            onProgress(.streamed(characters: received.count))
+        }
     }
 
     private func summarizeBatches(
@@ -112,21 +133,25 @@ class AIService {
         level: Int,
         configuration: ProviderConfiguration,
         provider: AIProvider,
-        onDelta: @escaping @MainActor (String) -> Void
+        onDelta: @escaping @MainActor (String) -> Void,
+        onProgress: @escaping @MainActor (SummaryProgressEvent) -> Void
     ) async throws -> [String] {
         var partials: [String] = []
         for (index, chunk) in chunks.enumerated() {
             try Task.checkCancellation()
             let stage = level == 1 ? "section" : "level \(level) section"
             await onDelta("\n\n_Reading \(stage) \(index + 1) of \(chunks.count)…_\n")
+            await onProgress(.batchStarted(level: level, index: index, count: chunks.count))
             let partial = try await streamText(
                 system: PromptBuilder.chunkPrompt,
                 messages: [ChatMessage(role: .user, content: chunk)],
                 configuration: configuration,
                 provider: provider,
-                onDelta: { _ in }
+                // Batch text is not shown; its length still moves the bar.
+                onDelta: Self.counting({ _ in }, onProgress: onProgress)
             )
             partials.append(partial)
+            await onProgress(.batchFinished(level: level, index: index, count: chunks.count))
         }
         return partials
     }
@@ -527,4 +552,10 @@ class AIService {
             throw AssistantError.http(http.statusCode, String(detail.prefix(500)))
         }
     }
+}
+
+/// Characters a summary request has streamed so far (only touched by the
+/// main-actor delta closure).
+private final class StreamedCharacters: @unchecked Sendable {
+    var count = 0
 }

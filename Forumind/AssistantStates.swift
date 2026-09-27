@@ -68,10 +68,7 @@ struct AssistantForumIcon: View {
         let shape = RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
         ZStack {
             if siteURL == nil {
-                shape.fill(DCTheme.brandGradient)
-                Image(systemName: "sparkles")
-                    .font(.system(size: size * 0.5, weight: .semibold))
-                    .foregroundStyle(.white)
+                BrandMark(size: size)
             } else {
                 shape.fill(tint)
                 Text(monogram)
@@ -249,11 +246,44 @@ struct ProviderSetupCard: View {
 // MARK: - Progress
 
 /// Determinate bar that animates to its value, or a sliding indeterminate one.
+///
+/// Motion is computed from the clock (`TimelineView`), not started by
+/// `onAppear`, so the bar moves whenever it is on screen — however and whenever
+/// `value` changed (a job going from its fetch to the AI phase, a view
+/// appearing mid-transition). While a job runs, a determinate bar carries a
+/// sheen so a long step never looks frozen. With Reduce Motion the sweep and
+/// sheen become a gentle pulse.
 struct AssistantProgressBar: View {
     let value: Double?
     var tint: Color = DCTheme.summaryTint
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var sweep = false
+
+    /// Width of the indeterminate segment, as a fraction of the track.
+    static let segment = 0.3
+    /// Seconds for one sweep there and back.
+    static let sweepPeriod: TimeInterval = 2.2
+    static let sheenPeriod: TimeInterval = 2.2
+    static let pulsePeriod: TimeInterval = 2.4
+
+    /// Leading edge of the indeterminate segment (fraction of the track
+    /// width) at `time`: glides back and forth between -0.1 and 0.8, so the
+    /// segment is always mostly on the track (never an empty bar, no snap).
+    static func sweepOffset(at time: TimeInterval, period: TimeInterval = sweepPeriod) -> Double {
+        let wave = (1 - cos(time / period * 2 * .pi)) / 2
+        return -0.1 + 0.9 * wave
+    }
+
+    /// 0…1 through the current sweep, eased at both ends.
+    static func sweepPhase(at time: TimeInterval, period: TimeInterval) -> Double {
+        let phase = (time / period).truncatingRemainder(dividingBy: 1)
+        return (1 - cos(max(phase, 0) * .pi)) / 2
+    }
+
+    /// A slow breathing opacity between `low` and `high` (Reduce Motion).
+    static func pulse(at time: TimeInterval, low: Double, high: Double) -> Double {
+        let wave = (1 + sin(time / pulsePeriod * 2 * .pi)) / 2
+        return low + (high - low) * wave
+    }
 
     var body: some View {
         GeometryReader { proxy in
@@ -261,30 +291,64 @@ struct AssistantProgressBar: View {
             ZStack(alignment: .leading) {
                 Capsule().fill(tint.opacity(0.14))
                 if let value {
-                    Capsule()
-                        .fill(LinearGradient(colors: [tint, DCTheme.brandPurple], startPoint: .leading, endPoint: .trailing))
-                        .frame(width: max(8, width * min(max(value, 0), 1)))
-                        .animation(DCMotion.respecting(reduceMotion), value: value)
+                    determinate(value: value, width: width)
+                        .transition(.opacity)
                 } else {
-                    Capsule()
-                        .fill(tint)
-                        .frame(width: width * 0.3)
-                        .offset(x: reduceMotion ? width * 0.35 : (sweep ? width * 0.8 : -width * 0.1))
-                        .opacity(reduceMotion ? 0.6 : 1)
+                    indeterminate(width: width)
+                        .transition(.opacity)
                 }
             }
             .clipShape(Capsule())
+            .animation(.easeInOut(duration: 0.3), value: value == nil)
         }
         .frame(height: 6)
-        .onAppear {
-            guard value == nil, !reduceMotion else { return }
-            withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
-                sweep = true
-            }
-        }
         .accessibilityElement()
         .accessibilityLabel("Progress")
         .accessibilityValue(value.map { "\(Int(($0 * 100).rounded())) percent" } ?? "In progress")
+    }
+
+    private func determinate(value: Double, width: CGFloat) -> some View {
+        let fill = max(8, width * min(max(value, 0), 1))
+        let sheen = max(24, fill * 0.35)
+        return TimelineView(.animation(minimumInterval: 1 / 30)) { context in
+            let time = context.date.timeIntervalSinceReferenceDate
+            Capsule()
+                .fill(LinearGradient(colors: [tint, DCTheme.brandPurple], startPoint: .leading, endPoint: .trailing))
+                .overlay(alignment: .leading) {
+                    if !reduceMotion {
+                        // A highlight gliding along the filled part.
+                        LinearGradient(
+                            colors: [.white.opacity(0), .white.opacity(0.45), .white.opacity(0)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                        .frame(width: sheen)
+                        .offset(x: -sheen + (fill + sheen) * Self.sweepPhase(at: time, period: Self.sheenPeriod))
+                        .blendMode(.plusLighter)
+                    }
+                }
+                .clipShape(Capsule())
+                .opacity(reduceMotion ? Self.pulse(at: time, low: 0.7, high: 1) : 1)
+        }
+        .frame(width: fill)
+        .animation(DCMotion.respecting(reduceMotion), value: value)
+    }
+
+    private func indeterminate(width: CGFloat) -> some View {
+        TimelineView(.animation(minimumInterval: 1 / 60)) { context in
+            let time = context.date.timeIntervalSinceReferenceDate
+            if reduceMotion {
+                Capsule()
+                    .fill(tint)
+                    .opacity(Self.pulse(at: time, low: 0.25, high: 0.65))
+            } else {
+                Capsule()
+                    .fill(LinearGradient(colors: [tint.opacity(0.6), tint, DCTheme.brandPurple], startPoint: .leading, endPoint: .trailing))
+                    .frame(width: width * Self.segment)
+                    .offset(x: width * Self.sweepOffset(at: time))
+            }
+        }
+        .frame(width: width, alignment: .leading)
     }
 }
 

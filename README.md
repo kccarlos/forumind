@@ -1,3 +1,5 @@
+<img src="docs/brand/forumind-mark.svg" alt="Forumind icon" width="96" height="96">
+
 # Forumind for iPhone and iPad
 
 **Catch up on any Discourse forum in seconds.** Summarize long topics, ask

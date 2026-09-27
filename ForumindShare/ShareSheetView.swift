@@ -170,31 +170,7 @@ private struct AppGlyph: View {
     @ScaledMetric(relativeTo: .headline) private var size: CGFloat = 48
 
     var body: some View {
-        Group {
-            if let icon = UIImage(named: "AppIcon") {
-                Image(uiImage: icon)
-                    .resizable()
-                    .interpolation(.high)
-            } else {
-                ZStack {
-                    LinearGradient(
-                        colors: [.indigo, .blue],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                    Image(systemName: "bubble.left.and.text.bubble.right.fill")
-                        .font(.system(size: size * 0.45, weight: .semibold))
-                        .foregroundStyle(.white)
-                }
-            }
-        }
-        .frame(width: size, height: size)
-        .clipShape(RoundedRectangle(cornerRadius: size * 0.225, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: size * 0.225, style: .continuous)
-                .stroke(Color.primary.opacity(0.08))
-        }
-        .accessibilityHidden(true)
+        BrandMark(size: size)
     }
 }
 

@@ -36,11 +36,7 @@ enum DCTheme {
     static let brandBlue = Color(light: 0x3A5BE0, dark: 0x7B93FF)
     static let brandPurple = Color(light: 0x8E2DB5, dark: 0xC77DEB)
     static let brandInk = Color(light: 0x17132B, dark: 0xF2F0FA)
-    static let brandGradient = LinearGradient(
-        colors: [Color(hex: 0x4A6BFF), Color(hex: 0xC13AE0)],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
-    )
+    static let brandGradient = BrandPalette.gradient
 
     /// One color per assistant capability, used for icons and accents.
     static let summaryTint = brandBlue

@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="512" height="512" role="img" aria-label="Forumind">
+  <!-- Forumind brand mark. Same geometry as Forumind/BrandMarkShapes.swift
+       (glyph drawn in a 100-unit box, placed at 64% on a rounded tile). -->
+  <defs>
+    <linearGradient id="fm-brand" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4A6BFF"/>
+      <stop offset="1" stop-color="#C13AE0"/>
+    </linearGradient>
+    <path id="fm-front" d="M78 36 L46 36 A16 16 0 0 0 30 52 L30 66 A16 16 0 0 0 46 82 L79 82 Q88.75 85.15 95.5 92.5 Q94 87.25 94 77 L94 52 A16 16 0 0 0 78 36 Z"/>
+    <mask id="fm-cut" maskUnits="userSpaceOnUse" x="-10" y="-10" width="120" height="120">
+      <rect x="-10" y="-10" width="120" height="120" fill="#fff"/>
+      <use href="#fm-front" fill="#000" stroke="#000" stroke-width="9" stroke-linejoin="round"/>
+    </mask>
+    <mask id="fm-lines" maskUnits="userSpaceOnUse" x="-10" y="-10" width="120" height="120">
+      <rect x="-10" y="-10" width="120" height="120" fill="#fff"/>
+      <rect x="41" y="45.25" width="42" height="6.5" rx="3.25" fill="#000"/>
+      <rect x="41" y="55.75" width="42" height="6.5" rx="3.25" fill="#000"/>
+      <rect x="41" y="66.25" width="27" height="6.5" rx="3.25" fill="#000"/>
+    </mask>
+  </defs>
+  <rect width="100" height="100" rx="27" fill="url(#fm-brand)"/>
+  <g transform="translate(17.232 18) scale(0.64)" fill="#fff">
+    <path mask="url(#fm-cut)" fill-opacity="0.55" d="M19 12 L45 12 A15 15 0 0 1 60 27 L60 39 A15 15 0 0 1 45 54 L19 54 Q9.25 57.15 2.5 64.5 Q4 59.25 4 49 L4 27 A15 15 0 0 1 19 12 Z"/>
+    <use href="#fm-front" mask="url(#fm-lines)"/>
+    <path d="M81 2 Q82.92 13.76 93 16 Q82.92 18.24 81 30 Q79.08 18.24 69 16 Q79.08 13.76 81 2 Z"/>
+  </g>
+</svg>

@@ -55,7 +55,12 @@ app_target = project.new_target(:application, "Forumind", :ios, "17.0")
 app_target.product_reference.name = "Forumind.app"
 
 # Compiled into both the app and the share extension.
-shared_source_names = ["AppIdentity.swift", "IncomingLink.swift"]
+shared_source_names = [
+  "AppIdentity.swift",
+  "BrandMark.swift",
+  "BrandMarkShapes.swift",
+  "IncomingLink.swift"
+]
 shared_source_references = []
 
 Dir.glob(File.join(root, "Forumind", "**", "*.swift")).sort.each do |path|
@@ -175,9 +180,6 @@ Dir.glob(File.join(root, "ForumindShare", "**", "*.js")).sort.each do |path|
   reference = share_group.new_file(path.delete_prefix("#{root}/ForumindShare/"))
   share_target.resources_build_phase.add_file_reference(reference)
 end
-# The sheet shows the app icon; the share-sheet row icon comes from the app.
-share_icon = app_group.new_file("Assets.xcassets/AppIcon.appiconset/AppIcon.png")
-share_target.resources_build_phase.add_file_reference(share_icon)
 share_group.new_file("Info.plist")
 share_group.new_file("ForumindShare.entitlements")
 share_privacy = share_group.new_file("PrivacyInfo.xcprivacy")

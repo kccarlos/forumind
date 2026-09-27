@@ -322,7 +322,7 @@ struct AgentView: View {
                 }
             }
             if !run.status.isTerminal {
-                AssistantProgressBar(value: nil, tint: DCTheme.agentTint)
+                AssistantProgressBar(value: activeRecord?.progress, tint: DCTheme.agentTint)
             }
         }
         .dcCard(tint: run.status.isTerminal ? .clear : DCTheme.agentTint)

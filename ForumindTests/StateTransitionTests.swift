@@ -689,6 +689,69 @@ final class StateTransitionTests: XCTestCase {
         XCTAssertEqual(app.activities.first?.status, .completed)
     }
 
+    // MARK: 12. Progress
+
+    /// The fetch fills the summary's first 40%; each summary step reported by
+    /// the provider moves it on with a status, and completion reaches 100%.
+    func testSummaryReportsItsStepsAsProgress() async throws {
+        let harness = makeHarness()
+        let app = harness.app
+        select(app, .ollama, model: "model-a")
+        XCTAssertTrue(app.enqueueSummary(for: topic("1")))
+        try await waitUntil { harness.ai.waiting == 1 }
+        let running = try XCTUnwrap(app.activities.first)
+        XCTAssertEqual(running.phase, "generating")
+        XCTAssertEqual(try XCTUnwrap(running.progress), WorkProgress.summary(ai: 0), accuracy: 1e-9)
+        XCTAssertEqual(running.statusText, "Summarizing part 1 of 2…")
+
+        harness.ai.gated = false
+        harness.ai.releaseAll()
+        try await waitUntil { app.activities.allSatisfy(\.status.isTerminal) }
+        XCTAssertEqual(app.activities.first?.progress, 1)
+    }
+
+    /// A chat answer has no knowable progress: the bar is indeterminate
+    /// (nil) while the model answers.
+    func testChatIsIndeterminateWhileAnswering() async throws {
+        var session = TopicSession(siteURL: site, topicID: "1", url: topic("1").url, title: "Topic 1")
+        session.source = "Existing source"
+        let harness = makeHarness(snapshot: AppSnapshot(sessions: [session]))
+        let app = harness.app
+        select(app, .ollama, model: "model-a")
+        app.select(topic: topic("1"))
+        app.chatDraft = "A question"
+        app.sendChat()
+        try await waitUntil { harness.ai.waiting == 1 }
+        let running = try XCTUnwrap(app.activities.first)
+        XCTAssertEqual(running.phase, "generating")
+        XCTAssertNil(running.progress)
+        harness.ai.releaseAll()
+        try await waitUntil { app.activities.allSatisfy(\.status.isTerminal) }
+    }
+
+    /// The agent's bar is the steps used of its budget.
+    func testAgentProgressFollowsItsSteps() async throws {
+        let planner = SteppingPlanner()
+        let harness = makeHarness(planner: planner)
+        let app = harness.app
+        select(app, .ollama, model: "model-a")
+        app.settings.agentMaxSteps = 9
+
+        app.startAgentRun(goal: "Keep looking", siteURL: site)
+        var seen: [Double] = []
+        for step in 1...3 {
+            try await waitUntil { planner.calls == step && planner.isWaiting }
+            let progress = try XCTUnwrap(app.activities.first { $0.type == .agent }?.progress)
+            XCTAssertEqual(progress, WorkProgress.agent(completedSteps: step - 1, maxSteps: 9), accuracy: 1e-9)
+            seen.append(progress)
+            planner.release()
+        }
+        XCTAssertEqual(seen, seen.sorted())
+        XCTAssertGreaterThan(seen.last ?? 0, 0)
+        app.cancel(record: try XCTUnwrap(app.activities.first { $0.type == .agent }))
+        planner.release()
+    }
+
     // MARK: Helpers
 
     private struct Harness {
@@ -834,8 +897,10 @@ private final class StateAIStub: AIService {
         provider: AIProvider,
         customPrompt: String,
         batchLimit: Int = SummaryBatchLimit.default,
-        onDelta: @escaping @MainActor (String) -> Void
+        onDelta: @escaping @MainActor (String) -> Void,
+        onProgress: @escaping @MainActor (SummaryProgressEvent) -> Void = { _ in }
     ) async throws -> String {
+        await onProgress(.batchStarted(level: 1, index: 0, count: 2))
         let call = Call(kind: "summary", provider: provider, configuration: configuration,
                         batchLimit: batchLimit, customPrompt: customPrompt)
         await arrive(call, delta: "[\(call.label)]", onDelta: onDelta)

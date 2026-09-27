@@ -267,6 +267,57 @@ final class AppleIntelligenceTests: XCTestCase {
         }
     }
 
+    /// Every batch, fold and the final pass is reported, in order, so the
+    /// record's bar can follow the whole pipeline.
+    func testSummaryReportsEachBatchAndTheFinalPass() async throws {
+        let fake = FakeAppleIntelligence()
+        fake.replies = [.success("Partial summary.")]
+        let service = AIService(appleIntelligence: fake)
+        let post = "A reply with a data point and some advice about the card.\n\n\n"
+        var events: [SummaryProgressEvent] = []
+        var tracker = SummaryProgressTracker()
+        var fractions: [Double] = []
+        _ = try await service.generateSummary(
+            content: String(repeating: post, count: 500),
+            configuration: configuration,
+            provider: .appleIntelligence,
+            customPrompt: "",
+            onDelta: { _ in },
+            onProgress: { event in
+                events.append(event)
+                fractions.append(tracker.apply(event))
+            }
+        )
+        let started = events.compactMap { event -> (Int, Int)? in
+            if case let .batchStarted(level, _, count) = event, level == 1 { return (1, count) }
+            return nil
+        }
+        let finished = events.filter {
+            if case .batchFinished(level: 1, _, _) = $0 { return true }
+            return false
+        }
+        XCTAssertGreaterThan(started.count, 3)
+        XCTAssertEqual(started.count, started.first?.1)
+        XCTAssertEqual(finished.count, started.count)
+        XCTAssertTrue(events.contains(.finalStarted(combining: true)))
+        XCTAssertTrue(events.contains { if case .streamed = $0 { return true }; return false },
+                      "batch text moves the bar while it streams")
+        XCTAssertEqual(fractions, fractions.sorted())
+        XCTAssertGreaterThanOrEqual(fractions.last ?? 0, SummaryProgressTracker.foldsEnd)
+
+        // A short topic is one pass.
+        events = []
+        _ = try await service.generateSummary(
+            content: "Short topic.",
+            configuration: configuration,
+            provider: .appleIntelligence,
+            customPrompt: "",
+            onDelta: { _ in },
+            onProgress: { events.append($0) }
+        )
+        XCTAssertEqual(events.first, .finalStarted(combining: false))
+    }
+
     func testContextOverflowRetriesWithSmallerBatches() async throws {
         let fake = FakeAppleIntelligence()
         fake.replies = [.failure(AppleIntelligenceError.contextExceeded), .success("Fits now.")]

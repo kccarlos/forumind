@@ -1528,6 +1528,16 @@ final class AppModel: ObservableObject {
         lastWatchCheck = Date()
     }
 
+    /// Advances a seeded running record (DEBUG sample only), the way a real
+    /// job would: progress moves forward only.
+    func debugAdvanceSample(recordID: UUID, progress: Double, statusText: String? = nil) {
+        guard activities.first(where: { $0.id == recordID })?.status == .running else { return }
+        mutateRecord(recordID) {
+            $0.progress = WorkProgress.advanced(from: $0.progress, to: progress)
+            if let statusText { $0.statusText = statusText }
+        }
+    }
+
     private func seedUITestManageSession() {
         guard let deleteURL = URL(
             string: "https://meta.discourse.org/t/ui-test-delete/999997"
@@ -1653,6 +1663,8 @@ final class AppModel: ObservableObject {
             $0.status = .running
             $0.phase = "fetching"
             $0.statusText = "Reading forum responses…"
+            // A restored record starts over; progress then only moves forward.
+            $0.progress = nil
             $0.startedAt = Date()
             $0.provider = context.provider
             $0.model = context.configuration.model
@@ -1824,20 +1836,26 @@ final class AppModel: ObservableObject {
             $0.statusText = fetch.newPosts > 0 && session.hasSummary
                 ? "Updating summary with \(fetch.newPosts) new posts…"
                 : "Generating summary…"
-            $0.progress = nil
+            // The fetch filled its share of the bar; each summary step fills the rest.
+            $0.progress = WorkProgress.advanced(from: $0.progress, to: WorkProgress.summary(ai: 0))
         }
         summaryStreams[recordID] = ""
+        let progress = summaryProgressOutput(recordID: recordID)
+        defer { progress.cancel() }
+        let feed = SummaryProgressFeed(output: progress, map: WorkProgress.summary(ai:))
         let summary = try await aiService.generateSummary(
             content: fetch.content,
             configuration: context.configuration,
             provider: context.provider,
             customPrompt: context.topicInstructions,
-            batchLimit: context.batchLimit
-        ) { delta in
-            // Deltas of a cancelled job must not recreate its stream.
-            guard self.isLive(recordID) else { return }
-            self.summaryStreams[recordID, default: ""] += delta
-        }
+            batchLimit: context.batchLimit,
+            onDelta: { delta in
+                // Deltas of a cancelled job must not recreate its stream.
+                guard self.isLive(recordID) else { return }
+                self.summaryStreams[recordID, default: ""] += delta
+            },
+            onProgress: { feed.handle($0) }
+        )
 
         try ensureLive(recordID)
         session = sessions[record.topicKey] ?? session
@@ -1884,6 +1902,7 @@ final class AppModel: ObservableObject {
         mutateRecord(recordID) {
             $0.phase = "generating"
             $0.statusText = "Answering follow-up question…"
+            // How long an answer takes is unknowable: indeterminate until done.
             $0.progress = nil
         }
         // Cleared or edited while the topic was being read: nothing to ask.
@@ -1951,6 +1970,7 @@ final class AppModel: ObservableObject {
         mutateRecord(recordID) {
             $0.phase = "planning"
             $0.statusText = "Planning…"
+            $0.progress = WorkProgress.agent(completedSteps: 0, maxSteps: context.agentMaxSteps)
         }
 
         let configuration = context.configuration
@@ -1989,6 +2009,10 @@ final class AppModel: ObservableObject {
             mutateRecord(recordID) {
                 $0.phase = "running"
                 $0.statusText = "Step \(stepsUsed): \(Self.describe(action))"
+                $0.progress = WorkProgress.advanced(
+                    from: $0.progress,
+                    to: WorkProgress.agent(completedSteps: stepsUsed - 1, maxSteps: maxSteps, within: 0.1)
+                )
             }
 
             if action.tool == AgentPrompt.finalAnswerTool || outOfBudget {
@@ -2012,12 +2036,16 @@ final class AppModel: ObservableObject {
                 return
             }
 
+            let completedSteps = stepsUsed - 1
             do {
                 let (outcome, observation) = try await executeAgentTool(
                     action,
                     run: &run,
                     recordID: recordID,
-                    context: context
+                    context: context,
+                    stepProgress: { within in
+                        WorkProgress.agent(completedSteps: completedSteps, maxSteps: maxSteps, within: within)
+                    }
                 )
                 step.outcome = outcome
                 step.topicID = action.arguments["topic_id"]
@@ -2047,6 +2075,12 @@ final class AppModel: ObservableObject {
             step.finishedAt = Date()
             run.steps.append(step)
             storeAgentRun(run)
+            mutateRecord(recordID) {
+                $0.progress = WorkProgress.advanced(
+                    from: $0.progress,
+                    to: WorkProgress.agent(completedSteps: stepsUsed, maxSteps: maxSteps)
+                )
+            }
             save()
         }
     }
@@ -2081,7 +2115,8 @@ final class AppModel: ObservableObject {
         _ action: AgentAction,
         run: inout AgentRun,
         recordID: UUID,
-        context: RunSettings
+        context: RunSettings,
+        stepProgress: @escaping @Sendable (_ within: Double) -> Double
     ) async throws -> (String, String) {
         let configuration = context.configuration
         let provider = context.provider
@@ -2113,7 +2148,10 @@ final class AppModel: ObservableObject {
             return ("\(listings.count) topics", AgentPrompt.format(listings: listings, limit: 30))
 
         case "read_topic":
-            let session = try await readTopicForAgent(action, run: &run, recordID: recordID, context: context)
+            let session = try await readTopicForAgent(
+                action, run: &run, recordID: recordID, context: context,
+                progress: { stepProgress(0.1 + 0.8 * $0) }
+            )
             let bounded = PromptBuilder.boundedForumContext(
                 session.source,
                 limit: context.agentReadLimit
@@ -2124,10 +2162,16 @@ final class AppModel: ObservableObject {
             )
 
         case "summarize_topic":
-            var session = try await readTopicForAgent(action, run: &run, recordID: recordID, context: context)
+            var session = try await readTopicForAgent(
+                action, run: &run, recordID: recordID, context: context,
+                progress: { stepProgress(0.1 + 0.3 * $0) }
+            )
             mutateRecord(recordID) {
                 $0.statusText = "Summarizing \(session.title)…"
             }
+            let progress = summaryProgressOutput(recordID: recordID, keepsStatusText: true)
+            defer { progress.cancel() }
+            let feed = SummaryProgressFeed(output: progress) { stepProgress(0.4 + 0.55 * $0) }
             let summary = try await aiService.generateSummary(
                 content: session.source,
                 configuration: configuration,
@@ -2136,8 +2180,10 @@ final class AppModel: ObservableObject {
                     topic: session.instructions,
                     global: context.globalInstructions
                 ),
-                batchLimit: context.batchLimit
-            ) { _ in }
+                batchLimit: context.batchLimit,
+                onDelta: { _ in },
+                onProgress: { feed.handle($0) }
+            )
             try ensureLive(recordID)
             session = sessions[session.topicKey] ?? session
             session.summary = summary
@@ -2219,7 +2265,8 @@ final class AppModel: ObservableObject {
         _ action: AgentAction,
         run: inout AgentRun,
         recordID: UUID,
-        context: RunSettings
+        context: RunSettings,
+        progress: @escaping @Sendable (_ fetched: Double) -> Double
     ) async throws -> TopicSession {
         let topicID = try requiredTopicID(action)
         if !run.topicIDs.contains(topicID) {
@@ -2258,7 +2305,9 @@ final class AppModel: ObservableObject {
             knownTotalPosts: session.totalPosts,
             cookieHeader: cookies,
             resourceLoader: webViewResourceLoader
-        ) { _ in }
+        ) { fetchProgress in
+            await self.advanceProgress(recordID: recordID, to: progress(fetchProgress.fraction))
+        }
         // Cancelled (or its forum's data deleted) while the page fetch was
         // finishing: do not write the session back.
         try ensureLive(recordID)
@@ -2276,10 +2325,35 @@ final class AppModel: ObservableObject {
     }
 
     private func updateFetchProgress(recordID: UUID, progress: ForumFetchProgress) {
+        // A late page report of a cancelled job must not touch its record.
+        guard isLive(recordID) else { return }
         mutateRecord(recordID) {
             $0.phase = "fetching"
             $0.statusText = progress.message
-            $0.progress = progress.fraction
+            $0.progress = WorkProgress.advanced(
+                from: $0.progress,
+                to: WorkProgress.fetch(progress.fraction, type: $0.type)
+            )
+        }
+    }
+
+    /// Moves a running job's determinate progress forward (never back).
+    private func advanceProgress(recordID: UUID, to fraction: Double) {
+        guard isLive(recordID) else { return }
+        mutateRecord(recordID) {
+            $0.progress = WorkProgress.advanced(from: $0.progress, to: fraction)
+        }
+    }
+
+    /// Throttled progress writes for a summary step; ignored once the job is
+    /// no longer live. `keepsStatusText` leaves the caller's status (agent steps).
+    private func summaryProgressOutput(recordID: UUID, keepsStatusText: Bool = false) -> ThrottledProgress {
+        ThrottledProgress { [weak self] fraction, statusText in
+            guard let self, self.isLive(recordID) else { return }
+            self.mutateRecord(recordID) {
+                $0.progress = WorkProgress.advanced(from: $0.progress, to: fraction)
+                if let statusText, !keepsStatusText { $0.statusText = statusText }
+            }
         }
     }
 

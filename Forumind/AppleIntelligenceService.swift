@@ -63,7 +63,8 @@ extension AIService {
         content: String,
         configuration: ProviderConfiguration,
         customPrompt: String,
-        onDelta: @escaping @MainActor (String) -> Void
+        onDelta: @escaping @MainActor (String) -> Void,
+        onProgress: @escaping @MainActor (SummaryProgressEvent) -> Void = { _ in }
     ) async throws -> String {
         let backend = try appleIntelligence.requireBackend()
         let contextTokens = await appleIntelligence.contextTokens(for: backend)
@@ -83,7 +84,10 @@ extension AIService {
                     customPrompt: customPrompt,
                     batchLimit: batchLimit,
                     maxLevel: AppleIntelligenceBudget.maxFoldLevels,
-                    onDelta: onDelta
+                    onDelta: onDelta,
+                    // A retry restarts the batches; the record's progress
+                    // holds until the new pass catches up (it never goes back).
+                    onProgress: onProgress
                 )
             } catch AppleIntelligenceError.contextExceeded
                 where attempt < 2 && batchLimit > AppleIntelligenceBudget.minimumBatchCharacters {

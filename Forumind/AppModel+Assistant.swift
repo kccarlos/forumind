@@ -422,6 +422,8 @@ extension AppModel {
         activities.append(record(.chat, layerShifts, 45, text: "Answered"))
         activities.append(record(.summary, stepperHeat, 120, status: .failed, text: "Failed"))
 
+        // Running samples advance like real jobs (every half second).
+        var sampleTickers: [@MainActor (Int) -> Void] = []
         var currentRun = run
         if AssistantDebug.has("-dc-agent-running") {
             currentRun.status = .running
@@ -438,13 +440,39 @@ extension AppModel {
             )
             agentRecord.status = .running
             agentRecord.statusText = "Searching “layer shift travel speed workaround”…"
+            agentRecord.progress = WorkProgress.agent(completedSteps: 3, maxSteps: 8, within: 0.1)
             activities.insert(agentRecord, at: 0)
+            sampleTickers.append { [weak self] tick in
+                // Reading, then summarizing, the step's topic.
+                let within = min(0.1 + Double(tick) * 0.04, 0.95)
+                self?.debugAdvanceSample(
+                    recordID: agentRecord.id,
+                    progress: WorkProgress.agent(completedSteps: 3, maxSteps: 8, within: within)
+                )
+            }
         }
         if AssistantDebug.has("-dc-summary-running") {
             var summaryRecord = record(.summary, openTopic, 0, status: .running, text: "Summarizing posts 41–60 of 68…")
             summaryRecord.phase = "summarizing"
             summaryRecord.progress = 0.62
             activities.insert(summaryRecord, at: 0)
+            sampleTickers.append { [weak self] tick in
+                // Parts 4…7 of 7, then the final pass, as a real run reports them.
+                var tracker = SummaryProgressTracker()
+                let part = min(3 + tick / 4, 7)
+                if part < 7 {
+                    tracker.apply(.batchStarted(level: 1, index: part, count: 7))
+                    tracker.apply(.streamed(characters: (tick % 4) * 300))
+                } else {
+                    tracker.apply(.finalStarted(combining: true))
+                    tracker.apply(.streamed(characters: (tick - 16) * 250))
+                }
+                self?.debugAdvanceSample(
+                    recordID: summaryRecord.id,
+                    progress: WorkProgress.summary(ai: tracker.fraction),
+                    statusText: tracker.statusText
+                )
+            }
             summaryStreams[summaryRecord.id] = """
             ## Original post
             The Discourse team merged the separate **New** and **Unread** lists into one *unified new view*.
@@ -529,6 +557,15 @@ extension AppModel {
             assistantMode = AssistantMode.allCases.first { $0.rawValue.lowercased() == mode } ?? .summary
         }
         if AssistantDebug.has("-dc-open-manage") { panelRoute = .activity }
+        if !sampleTickers.isEmpty {
+            let tickers = sampleTickers
+            Task { @MainActor in
+                for tick in 1...120 {
+                    try? await Task.sleep(for: .milliseconds(500))
+                    tickers.forEach { $0(tick) }
+                }
+            }
+        }
         // Show the Assistant pane on iPhone once the UI is up (sent twice in
         // case the first arrives before ContentView observes it).
         Task { @MainActor [weak self] in

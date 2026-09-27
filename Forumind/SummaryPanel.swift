@@ -1433,12 +1433,19 @@ struct WorkProgressCard: View {
                         .animation(DCMotion.quick, value: record.statusText)
                 }
                 Spacer(minLength: 4)
-                if let progress = record.progress {
-                    Text(progress, format: .percent.precision(.fractionLength(0)))
-                        .font(.subheadline.weight(.semibold).monospacedDigit())
-                        .foregroundStyle(tint)
-                        .contentTransition(.numericText())
-                        .animation(DCMotion.quick, value: progress)
+                if showsPercent {
+                    // The slot keeps its width while the value is unknown
+                    // (queued), so the header never reflows.
+                    ZStack(alignment: .trailing) {
+                        Text(verbatim: "100%").hidden()
+                        if let progress = record.progress {
+                            Text(progress, format: .percent.precision(.fractionLength(0)))
+                                .foregroundStyle(tint)
+                                .contentTransition(.numericText(countsDown: false))
+                                .animation(DCMotion.quick, value: progress)
+                        }
+                    }
+                    .font(.subheadline.weight(.semibold).monospacedDigit())
                 }
                 Button("Cancel", role: .destructive, action: cancel)
                     .font(.subheadline.weight(.medium))
@@ -1450,6 +1457,9 @@ struct WorkProgressCard: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("workProgressCard")
     }
+
+    /// Chat's answer phase is indeterminate, so it shows no percentage.
+    private var showsPercent: Bool { record.type != .chat }
 
     private var taskTitle: String {
         switch record.type {

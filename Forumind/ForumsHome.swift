@@ -64,12 +64,7 @@ struct ForumsHome: View {
 
     private var header: some View {
         HStack(alignment: .center, spacing: DCTheme.spacingM) {
-            Image(systemName: "sparkles")
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(.white)
-                .frame(width: 40, height: 40)
-                .background(DCTheme.brandGradient, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
-                .accessibilityHidden(true)
+            BrandMark(size: 40)
             VStack(alignment: .leading, spacing: 0) {
                 Text("Forumind")
                     .font(.title2.weight(.bold))

@@ -321,6 +321,23 @@ scripts/adblock/run_tests.sh        # converter tests
 Then run the unit tests and commit `Forumind/ContentBlocking/`. See
 [AD_BLOCKING.md](AD_BLOCKING.md).
 
+## Logo and app icon
+
+The logo is drawn in code: `Forumind/BrandMarkShapes.swift` (shapes and
+brand colors) and `Forumind/BrandMark.swift` (`BrandMark(size:style:)`).
+Both are plain SwiftUI with no UIKit, so the app icon is rendered from the
+same code on macOS. After changing them, re-render the icons:
+
+```sh
+scripts/brand/render_app_icon.sh
+```
+
+It writes the light (opaque), dark and tinted 1024 px icons into
+`Forumind/Assets.xcassets/AppIcon.appiconset/` and
+`docs/brand/forumind-icon-1024.png`. Check the light icon has no alpha
+channel with `sips -g hasAlpha`. `docs/brand/forumind-mark.svg` uses the
+same coordinates; update it by hand.
+
 ## Platform notes
 
 - iOS can suspend the app in the background. Queued work is saved and resumes

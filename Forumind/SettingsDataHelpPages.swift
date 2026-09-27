@@ -226,16 +226,8 @@ struct SettingsAboutPage: View {
         Form {
             Section {
                 VStack(spacing: DCTheme.spacingM) {
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .fill(DCTheme.brandGradient)
-                        .frame(width: 84, height: 84)
-                        .overlay {
-                            Image(systemName: "bubble.left.and.text.bubble.right.fill")
-                                .font(.system(size: 36, weight: .semibold))
-                                .foregroundStyle(.white)
-                        }
+                    BrandMark(size: 84)
                         .shadow(color: Color(hex: 0x4A6BFF, opacity: 0.3), radius: 12, y: 6)
-                        .accessibilityHidden(true)
                     Text("Forumind").font(.title3.weight(.bold))
                     Text("Summaries, chat, and answers for any Discourse forum.")
                         .font(.subheadline)
