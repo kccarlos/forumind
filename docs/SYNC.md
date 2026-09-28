@@ -193,11 +193,24 @@ any release that adds a record type or field), open
 to production. Without it, every save in a TestFlight or App Store build
 fails.
 
+Fields only appear in the development schema once a record has used them, and
+syncing alone may never write some of them (`deletedAt` is only set on a
+deleted item). Before deploying:
+
+1. Run a signed development build once with `-dc-cloudkit-probe`; the probe
+   saves a record with every field below, so the development schema is
+   complete.
+2. In CloudKit Console, compare `SyncRecord`'s fields with the table below.
+3. Deploy, then check the same fields in the **Production** environment.
+
+A field missing from Production makes every save fail with "cannot create or
+modify field … in production schema".
+
 | Record type | Field | Type | Notes |
 |---|---|---|---|
 | `SyncRecord` | `kind` | String | `settings`, `forum`, `session`, `run`, `watched` |
 | | `formatVersion` | Int(64) | payload format (1) |
-| | `deletedAt` | Date/Time | tombstones only |
+| | `deletedAt` | Date/Time | set on deleted items; written (as empty) on every save, so it must exist |
 | | `payload` | Bytes, **encrypted** | the record's JSON (id, units, stamps) |
 
 Zone: `Forumind` (custom zone in the private database). No indexes are

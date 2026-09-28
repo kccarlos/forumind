@@ -392,6 +392,11 @@ final class CloudKitTransport: CloudSyncTransport, @unchecked Sendable {
             record["kind"] = "probe" as NSString
             record["formatVersion"] = CloudRecord.formatVersion as NSNumber
             record.encryptedValues["payload"] = Data(token.utf8) as NSData
+            // Every field the app writes must appear here: running the probe
+            // on a development build creates them in the development schema,
+            // which is what gets deployed to Production. A field missing from
+            // Production makes every save fail ("cannot create or modify field").
+            record["deletedAt"] = Date() as NSDate
             _ = try await database.save(record)
             let fetched = try await database.record(for: record.recordID)
             let roundTrip = (fetched.encryptedValues["payload"] as? Data).map { String(decoding: $0, as: UTF8.self) }
