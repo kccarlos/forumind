@@ -140,7 +140,7 @@ struct ForumTile: View {
         .contentShape(RoundedRectangle(cornerRadius: DCTheme.cardCornerRadius, style: .continuous))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(forum.displayName)
-        .accessibilityValue(isCurrent ? "\(forum.host), current forum" : forum.host)
+        .accessibilityValue(isCurrent ? String(localized: "\(forum.host), current forum", comment: "Accessibility value of a pinned forum tile; the placeholder is the forum's host") : forum.host)
         .accessibilityAddTraits(.isButton)
     }
 }
@@ -196,7 +196,7 @@ struct ForumSwitcherLabel: View {
                     .foregroundStyle(DCTheme.brandGradient)
                     .frame(width: 22, height: 22)
             }
-            Text(forum?.displayName ?? "Forums")
+            Text(forum?.displayName ?? String(localized: "Forums"))
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
@@ -250,7 +250,7 @@ struct ForumSwitcherPanel: View {
         .frame(maxHeight: 460)
     }
 
-    private func header(_ title: String) -> some View {
+    private func header(_ title: LocalizedStringKey) -> some View {
         Text(title)
             .font(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
@@ -272,7 +272,7 @@ struct ForumSwitcherPanel: View {
     }
 
     private func action(
-        _ title: String,
+        _ title: LocalizedStringKey,
         systemImage: String,
         identifier: String,
         perform: @escaping () -> Void
@@ -335,7 +335,7 @@ struct AddForumSheet: View {
                         Image(systemName: "globe")
                             .foregroundStyle(.secondary)
                             .accessibilityHidden(true)
-                        TextField("meta.discourse.org", text: $address)
+                        TextField("meta.discourse.org" as String, text: $address)  // An address example: not translated
                             .textContentType(.URL)
                             .keyboardType(.URL)
                             .autocorrectionDisabled()
@@ -421,7 +421,7 @@ struct AddForumSheet: View {
                 DCHaptics.warning()
                 isAdding = false
                 errorMessage = (error as? LocalizedError)?.errorDescription
-                    ?? "Couldn’t reach that forum. Check the address and your connection."
+                    ?? String(localized: "Couldn’t reach that forum. Check the address and your connection.")
             }
         }
     }
@@ -477,7 +477,8 @@ extension View {
     /// points at its tile or row instead of the middle of the list.
     func forumRemovalDialog(_ forum: Binding<Forum?>, app: AppModel, for target: Forum? = nil) -> some View {
         confirmationDialog(
-            forum.wrappedValue.map { "Remove \($0.displayName)?" } ?? "Remove forum?",
+            forum.wrappedValue.map { String(localized: "Remove \($0.displayName)?", comment: "Confirmation title; the placeholder is the forum name") }
+                ?? String(localized: "Remove forum?"),
             isPresented: Binding(
                 get: { forum.wrappedValue.map { target == nil || $0.siteURL == target?.siteURL } ?? false },
                 set: { if !$0 { forum.wrappedValue = nil } }

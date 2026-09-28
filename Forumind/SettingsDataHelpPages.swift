@@ -86,14 +86,15 @@ struct SettingsDataPage: View {
         }
         .formStyle(.grouped)
         .confirmationDialog(
-            "Clear saved data for \(clearingSiteURL.map(name(for:)) ?? "this forum")?",
+            clearingSiteURL.map { String(localized: "Clear saved data for \(name(for: $0))?", comment: "Confirmation title; the argument is a forum name") }
+                ?? String(localized: "Clear saved data for this forum?"),
             isPresented: Binding(get: { clearingSiteURL != nil }, set: { if !$0 { clearingSiteURL = nil } }),
             titleVisibility: .visible,
             presenting: clearingSiteURL
         ) { siteURL in
             Button("Clear saved data", role: .destructive) {
                 withAnimation { app.clearSavedData(forSiteURL: siteURL) }
-                status = "Cleared saved data for \(name(for: siteURL))."
+                status = String(localized: "Cleared saved data for \(name(for: siteURL)).", comment: "The argument is a forum name")
                 DCHaptics.success()
             }
             Button("Cancel", role: .cancel) {}
@@ -107,7 +108,7 @@ struct SettingsDataPage: View {
         ) {
             Button("Clear all saved data", role: .destructive) {
                 withAnimation { app.clearAllSavedData() }
-                status = "All saved data cleared."
+                status = String(localized: "All saved data cleared.")
                 DCHaptics.success()
             }
             Button("Cancel", role: .cancel) {}
@@ -121,7 +122,7 @@ struct SettingsDataPage: View {
         ) {
             Button("Reset to defaults", role: .destructive) {
                 app.resetSettings()
-                status = "Settings reset to defaults."
+                status = String(localized: "Settings reset to defaults.")
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -134,7 +135,7 @@ struct SettingsDataPage: View {
     }
 
     private func itemsText(_ count: Int) -> String {
-        count == 1 ? "1 saved item" : "\(count) saved items"
+        String(localized: "\(count) saved items", comment: "Saved summaries, chats and answers for one forum")
     }
 }
 
@@ -159,7 +160,7 @@ struct SettingsHelpPage: View {
                 }
                 .accessibilityIdentifier("replayOnboarding")
                 NavigationLink(value: SettingsPage.sharing) {
-                    SettingsRowLabel(page: .sharing, title: "How to share from Safari or Chrome")
+                    SettingsRowLabel(page: .sharing, title: String(localized: "How to share from Safari or Chrome"))
                 }
             }
 

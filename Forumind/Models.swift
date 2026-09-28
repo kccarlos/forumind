@@ -19,16 +19,17 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .appleIntelligence: "Apple Intelligence"
+        // Apple's own name per language ("Apple 智能" in Simplified Chinese).
+        case .appleIntelligence: String(localized: "Apple Intelligence", comment: "AI provider name. Use Apple's official name for Apple Intelligence in this language.")
         case .openRouter: "OpenRouter"
         case .openAI: "OpenAI"
         case .anthropic: "Anthropic"
         case .groq: "Groq"
         case .gemini: "Google Gemini"
-        case .ollama: "Ollama (Local)"
+        case .ollama: String(localized: "Ollama (Local)", comment: "AI provider name: Ollama running on the user's own computer. Keep \"Ollama\".")
         case .xAI: "xAI Grok"
         case .deepSeek: "DeepSeek"
-        case .lmStudio: "LM Studio (Local)"
+        case .lmStudio: String(localized: "LM Studio (Local)", comment: "AI provider name: LM Studio running on the user's own computer. Keep \"LM Studio\".")
         case .nvidia: "NVIDIA NIM"
         }
     }
@@ -97,6 +98,22 @@ struct ProviderConfiguration: Codable, Equatable {
     }
 }
 
+/// Which job a model is chosen for. Summaries, chat and watched-topic
+/// refreshes use the assistant model; Ask the forum (planning, answers and
+/// follow-ups) uses the agent model. See `AppModel+Models.swift`.
+enum ModelRole: String, Codable, CaseIterable, Identifiable {
+    case assistant
+    case agent
+
+    var id: String { rawValue }
+}
+
+/// A provider and one of its models: what a role runs with.
+struct ModelSelection: Codable, Hashable {
+    var provider: AIProvider
+    var model: String
+}
+
 struct FavoriteModel: Codable, Hashable, Identifiable {
     var provider: AIProvider
     var model: String
@@ -112,8 +129,8 @@ enum BrowserBarPosition: String, Codable, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .top: "Top"
-        case .bottom: "Bottom"
+        case .top: String(localized: "Top", comment: "Browser address bar position: at the top of the screen")
+        case .bottom: String(localized: "Bottom", comment: "Browser address bar position: at the bottom of the screen")
         }
     }
 }
@@ -133,12 +150,20 @@ enum SummaryBatchLimit {
     }
 
     static func label(_ value: Int) -> String {
-        value >= 1_000_000 ? "1M characters" : "\(value / 1_000)k characters"
+        value >= 1_000_000
+            ? String(localized: "1M characters", comment: "Summary batch size: one million characters of text")
+            : String(localized: "\(value / 1_000)k characters", comment: "Summary batch size in thousands of characters, e.g. 55k characters")
     }
 }
 
 struct AppSettings: Codable, Equatable {
+    /// The assistant model's provider, kept equal to `assistantModel.provider`
+    /// for builds that predate model roles (they sync settings too).
     var selectedProvider: AIProvider = .openRouter
+    /// Summaries, chat and watched-topic refreshes.
+    var assistantModel = ModelSelection(provider: .openRouter, model: AIProvider.openRouter.defaultModel)
+    /// Ask the forum: planning, answers and follow-ups.
+    var agentModel = ModelSelection(provider: .openRouter, model: AIProvider.openRouter.defaultModel)
     var configurations: [String: ProviderConfiguration] = Dictionary(
         uniqueKeysWithValues: AIProvider.allCases.map {
             ($0.rawValue, ProviderConfiguration(provider: $0))
@@ -155,21 +180,26 @@ struct AppSettings: Codable, Equatable {
     var watchAutoRefreshSummaries = true
     /// False on a fresh install until the walkthrough finishes.
     var hasCompletedOnboarding = false
-    /// Built-in browser: block ads (EasyList). On by default.
-    var contentBlockingEnabled = true
-    /// Built-in browser: block trackers (EasyPrivacy). On by default.
-    var blockTrackers = true
+    /// Built-in browser: block ads (EasyList). Off by default, out of respect
+    /// for forum owners who rely on ads.
+    var contentBlockingEnabled = false
+    /// Built-in browser: block trackers (EasyPrivacy). Off by default.
+    var blockTrackers = false
     /// Hosts (lowercased, no "www.") where blocking is off; subdomains match.
     var adBlockAllowedSites: [String] = []
     /// API keys are stored as iCloud Keychain (synchronizable) items. On by
     /// default. Turning it off keeps a local copy and leaves the synced item
     /// in place for the user's other devices.
     var syncAPIKeys = true
+    /// How quickly requests go to one forum (see ForumRequestPacing.swift).
+    var forumRequestPace: ForumRequestPace = .default
 
     init() {}
 
     private enum CodingKeys: String, CodingKey {
         case selectedProvider
+        case assistantModel
+        case agentModel
         case configurations
         case favoriteModels
         case systemPrompt
@@ -185,6 +215,7 @@ struct AppSettings: Codable, Equatable {
         case blockTrackers
         case adBlockAllowedSites
         case syncAPIKeys
+        case forumRequestPace
     }
 
     // Snapshots written by earlier versions lack the newer keys; a missing key
@@ -203,6 +234,13 @@ struct AppSettings: Codable, Equatable {
         )
         favoriteModels = try container.decodeIfPresent([FavoriteModel].self, forKey: .favoriteModels)
             ?? []
+        // Settings from before model roles: both roles take the selected
+        // provider and its model. A legacy build that changed the provider
+        // later wins over the assistant role (see `reconcileModelRoles`).
+        let legacy = ModelSelection(provider: selectedProvider, model: configuration(for: selectedProvider).model)
+        assistantModel = try container.decodeIfPresent(ModelSelection.self, forKey: .assistantModel) ?? legacy
+        agentModel = try container.decodeIfPresent(ModelSelection.self, forKey: .agentModel) ?? legacy
+        if assistantModel.provider != selectedProvider { assistantModel = legacy }
         systemPrompt = try container.decodeIfPresent(String.self, forKey: .systemPrompt) ?? ""
         forumContextLimit = try container.decodeIfPresent(Int.self, forKey: .forumContextLimit)
             ?? 30_000
@@ -237,11 +275,15 @@ struct AppSettings: Codable, Equatable {
         contentBlockingEnabled = try container.decodeIfPresent(
             Bool.self,
             forKey: .contentBlockingEnabled
-        ) ?? true
-        blockTrackers = try container.decodeIfPresent(Bool.self, forKey: .blockTrackers) ?? true
+        ) ?? false
+        blockTrackers = try container.decodeIfPresent(Bool.self, forKey: .blockTrackers) ?? false
         adBlockAllowedSites = (try container.decodeIfPresent([String].self, forKey: .adBlockAllowedSites) ?? [])
             .compactMap(ContentBlockingRules.normalizedHost)
         syncAPIKeys = try container.decodeIfPresent(Bool.self, forKey: .syncAPIKeys) ?? true
+        // Missing (older snapshots) or unknown (a newer build's value): the
+        // polite default.
+        forumRequestPace = (try? container.decodeIfPresent(ForumRequestPace.self, forKey: .forumRequestPace))
+            .flatMap { $0 } ?? .default
     }
 
     func configuration(for provider: AIProvider) -> ProviderConfiguration {
@@ -405,22 +447,25 @@ struct TopicExportPayload: Equatable {
                 sections.append(title)
             }
             if let url, !url.absoluteString.isEmpty {
-                sections.append("Post URL: \(url.absoluteString)")
+                sections.append(String(localized: "Post URL: \(url.absoluteString)", comment: "Exported text: line with the forum post's address"))
             }
         }
         if !options.excludeSummary,
            !summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            sections.append("Summary:\n\(summary)")
+            sections.append(String(localized: "Summary:\n\(summary)", comment: "Exported text: heading followed by the AI summary"))
         }
         if !options.excludePostAndResponses, !source.isEmpty {
-            sections.append("Full post:\n\(source)")
+            sections.append(String(localized: "Full post:\n\(source)", comment: "Exported text: heading followed by the forum post and its replies"))
         }
         if !options.excludeChatHistory, !history.isEmpty {
             let transcript = history.map { message in
-                let role = message.role == .user ? "User" : "Assistant"
+                let role = message.role == .user
+                    ? String(localized: "User", comment: "Exported chat transcript: label for the user's messages")
+                    : String(localized: "Assistant", comment: "Exported chat transcript: label for the AI's messages")
                 return "\(role):\n\(message.content)"
             }
-            sections.append("Chat history:\n\(transcript.joined(separator: "\n\n"))")
+            let joined = transcript.joined(separator: "\n\n")
+            sections.append(String(localized: "Chat history:\n\(joined)", comment: "Exported text: heading followed by the chat transcript"))
         }
         return sections.joined(separator: "\n\n")
     }
@@ -443,7 +488,7 @@ enum ForumPreview {
         guard lines.count > visibleLines else { return source }
         let omitted = lines.count - visibleLines
         return lines.prefix(headLines).joined(separator: "\n")
-            + "\n\n[… \(omitted) middle lines omitted from the preview …]\n\n"
+            + "\n\n" + String(localized: "[… \(omitted) middle lines omitted from the preview …]", comment: "Shown in the middle of a long forum post preview") + "\n\n"
             + lines.suffix(tailLines).joined(separator: "\n")
     }
 }
@@ -485,7 +530,7 @@ struct ForumTopic: Equatable, Identifiable {
             url: canonicalURL,
             title: normalizedTitle?.isEmpty == false
                 ? normalizedTitle!
-                : "\(name) topic \(topicID)"
+                : String(localized: "\(name) topic \(topicID)", comment: "Fallback title of a forum topic: forum name, then the topic's number")
         )
     }
 }
@@ -722,7 +767,7 @@ struct WorkRecord: Codable, Identifiable, Equatable {
     var model: String
     var status: WorkStatus = .queued
     var phase = "queued"
-    var statusText = "Waiting for an available worker…"
+    var statusText = String(localized: "Waiting for an available worker…", comment: "Status of queued AI work (summary, chat or research) before it starts")
     var progress: Double?
     var error = ""
     /// Per-run override of the hierarchical-summary batch size; nil uses the
@@ -866,19 +911,19 @@ enum AssistantError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .noTopic:
-            "Open a Discourse topic first."
+            String(localized: "Open a Discourse topic first.")
         case .noForum:
-            "Open a Discourse forum first."
+            String(localized: "Open a Discourse forum first.")
         case .missingConfiguration(let message):
             message
         case .invalidResponse:
-            "The server returned an invalid response."
+            String(localized: "The server returned an invalid response.")
         case .http(let status, let message):
-            "HTTP \(status): \(message)"
+            String(localized: "HTTP \(status): \(message)", comment: "Error: HTTP status code, then the server's message")
         case .emptyResponse:
-            "The AI provider returned an empty response."
+            String(localized: "The AI provider returned an empty response.")
         case .cancelled:
-            "The operation was cancelled."
+            String(localized: "The operation was cancelled.")
         }
     }
 }

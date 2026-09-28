@@ -17,8 +17,8 @@ final class IPadLayoutUITests: DCUITestCase {
     func testRotatingAcrossTheSplitThresholdKeepsTheSettingsPage() throws {
         try skipUnlessPad("iPad layout")
         let app = launch(sample + ["-dc-panel-settings", "provider"], orientation: .landscapeLeft)
-        let providerPage = app.navigationBars["AI provider"]
-        XCTAssertTrue(waitOrDump(providerPage, timeout: 20, in: app), "Settings › AI provider did not open in the panel.")
+        let providerPage = app.navigationBars["AI models"]
+        XCTAssertTrue(waitOrDump(providerPage, timeout: 20, in: app), "Settings › AI models did not open in the panel.")
         XCTAssertFalse(app.segmentedControls["workspacePicker"].exists, "Landscape should be side by side.")
         snapshot("rotation-1-landscape")
 

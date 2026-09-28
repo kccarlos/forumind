@@ -152,11 +152,11 @@ extension CloudSendFailure {
     /// A short message for Settings.
     var message: String {
         switch self {
-        case .serverRecordChanged: "Another device changed the same item; merging."
-        case .zoneNotFound, .unknownItem: "The iCloud copy changed; uploading again."
-        case .quotaExceeded: "Your iCloud storage is full."
-        case .notAuthenticated: "Sign in to iCloud to sync."
-        case .retryLater: "iCloud is busy or offline; syncing will retry."
+        case .serverRecordChanged: String(localized: "Another device changed the same item; merging.", comment: "iCloud sync status message")
+        case .zoneNotFound, .unknownItem: String(localized: "The iCloud copy changed; uploading again.", comment: "iCloud sync status message")
+        case .quotaExceeded: String(localized: "Your iCloud storage is full.", comment: "iCloud sync status message")
+        case .notAuthenticated: String(localized: "Sign in to iCloud to sync.", comment: "iCloud sync status message")
+        case .retryLater: String(localized: "iCloud is busy or offline; syncing will retry.", comment: "iCloud sync status message")
         case .other(let message): message
         }
     }

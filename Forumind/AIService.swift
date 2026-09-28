@@ -98,7 +98,8 @@ class AIService {
             level += 1
         }
 
-        await onDelta("\n\n_Combining section summaries…_\n")
+        let combining = String(localized: "Combining section summaries…", comment: "Shown in a long summary while the section summaries are merged")
+        await onDelta("\n\n_\(combining)_\n")
         await onProgress(.finalStarted(combining: true))
         return try await streamText(
             system: PromptBuilder.summarySystem(custom: customPrompt),
@@ -139,8 +140,10 @@ class AIService {
         var partials: [String] = []
         for (index, chunk) in chunks.enumerated() {
             try Task.checkCancellation()
-            let stage = level == 1 ? "section" : "level \(level) section"
-            await onDelta("\n\n_Reading \(stage) \(index + 1) of \(chunks.count)…_\n")
+            let reading = level == 1
+                ? String(localized: "Reading section \(index + 1) of \(chunks.count)…", comment: "Shown in a long summary while each section of the discussion is summarized")
+                : String(localized: "Reading level \(level) section \(index + 1) of \(chunks.count)…", comment: "Shown in a very long summary while section summaries are condensed again; level is 2, 3, …")
+            await onDelta("\n\n_\(reading)_\n")
             await onProgress(.batchStarted(level: level, index: index, count: chunks.count))
             let partial = try await streamText(
                 system: PromptBuilder.chunkPrompt,
@@ -276,7 +279,7 @@ class AIService {
         provider: AIProvider
     ) async throws {
         if provider.requiresAPIKey && configuration.apiKey.isEmpty {
-            throw AssistantError.missingConfiguration("\(provider.displayName) API key is required.")
+            throw AssistantError.missingConfiguration(String(localized: "\(provider.displayName) API key is required.", comment: "Error; the placeholder is the AI provider's name"))
         }
         _ = try await discoverModels(configuration: configuration, provider: provider)
     }
@@ -469,14 +472,14 @@ class AIService {
     ) throws {
         guard !configuration.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else {
-            throw AssistantError.missingConfiguration("Choose a model in Settings.")
+            throw AssistantError.missingConfiguration(String(localized: "Choose a model in Settings."))
         }
         guard URL(string: configuration.baseURL) != nil else {
-            throw AssistantError.missingConfiguration("Enter a valid provider URL.")
+            throw AssistantError.missingConfiguration(String(localized: "Enter a valid provider URL."))
         }
         if provider.requiresAPIKey && configuration.apiKey.isEmpty {
             throw AssistantError.missingConfiguration(
-                "\(provider.displayName) API key is required. Add it in Settings › AI provider."
+                String(localized: "\(provider.displayName) API key is required. Add it in Settings › AI models.", comment: "Error; the placeholder is the AI provider's name. Settings › AI models names the app's own Settings pages.")
             )
         }
     }

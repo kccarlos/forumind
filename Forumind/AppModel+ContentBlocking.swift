@@ -6,6 +6,7 @@ import Foundation
 //   `settings.adBlockAllowedSites`   edited directly; applied at once
 // - `contentRules`                     the shared rule library (manifest, phase)
 // - `contentBlockingStatus(for:)`      what the browser bar shows for a page
+// - `turnOnContentBlocking()`           the shield's "Turn on ad blocking"
 // - `isAdBlockingAllowed(on:)`, `setAdsAllowed(_:on:)`,
 //   `removeAllowedSites(atOffsets:)`
 //
@@ -15,15 +16,22 @@ import Foundation
 extension AppModel {
     var contentRules: ContentRuleLibrary { browser.contentBlocker.library }
 
-    /// Starts the rule library and applies the saved policy. Called from
-    /// `init` before the first page load.
+    /// Applies the saved policy, and starts the rule library only when
+    /// something is blocked. Called from `init` before the first page load.
+    /// Blocking is off by default: then nothing is looked up or compiled
+    /// and the first page load never waits.
     func configureContentBlocking() {
-        browser.applyContentBlocking(effectiveContentBlockingPolicy)
-        contentRules.start()
+        let policy = effectiveContentBlockingPolicy
+        browser.applyContentBlocking(policy)
+        if !policy.enabledCategories.isEmpty {
+            contentRules.start()
+        }
     }
 
     /// Settings edits apply right away; the page shown now reloads only when
     /// the change affects it. Browsing has no running work to protect.
+    /// Turning blocking on for the first time starts the lists (compiled in
+    /// the background on a first run); the page reloads once they're ready.
     func contentBlockingSettingsDidChange(from old: AppSettings) {
         guard old.contentBlockingEnabled != settings.contentBlockingEnabled
             || old.blockTrackers != settings.blockTrackers
@@ -31,9 +39,36 @@ extension AppModel {
         else {
             return
         }
-        if browser.applyContentBlocking(effectiveContentBlockingPolicy), !browser.showsForumsHome {
+        let policy = effectiveContentBlockingPolicy
+        let needsStart = !policy.enabledCategories.isEmpty && contentRules.phase == .idle
+        if needsStart { contentRules.start() }
+        guard browser.applyContentBlocking(policy), !browser.showsForumsHome else { return }
+        if needsStart || contentRules.isPreparing {
+            let page = browser.currentURL
+            Task { [weak self] in
+                guard let self else { return }
+                await self.contentRules.waitUntilReady()
+                // Still on that page, and still blocking.
+                guard self.browser.currentURL == page,
+                      !self.effectiveContentBlockingPolicy.enabledCategories.isEmpty,
+                      !self.browser.showsForumsHome
+                else {
+                    return
+                }
+                self.browser.reload()
+            }
+        } else {
             browser.reload()
         }
+    }
+
+    /// The shield's "Turn on ad blocking": ads and trackers, for every site.
+    func turnOnContentBlocking() {
+        // One settings change, so the page reloads once.
+        var updated = settings
+        updated.contentBlockingEnabled = true
+        updated.blockTrackers = true
+        settings = updated
     }
 
     var effectiveContentBlockingPolicy: ContentBlockingPolicy {

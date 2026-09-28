@@ -12,10 +12,10 @@ enum ExpandedPanelRoute: String, Identifiable {
 
     var title: String {
         switch self {
-        case .topic: "Assistant"
-        case .post: "Post & responses"
-        case .activity: "Manage"
-        case .settings: "Settings"
+        case .topic: String(localized: "Assistant")
+        case .post: String(localized: "Post & responses")
+        case .activity: String(localized: "Manage", comment: "Screen title: manage saved summaries, chats, runs and activity")
+        case .settings: String(localized: "Settings")
         }
     }
 }
@@ -175,11 +175,24 @@ struct AssistantPanel: View {
 
     /// Off-forum pages name the page's host instead of a forum.
     private var headerSubtitle: String {
+        // Ask the forum names its own model here (the topic modes show theirs
+        // under the topic title).
+        if bodyKind == .agent, let headerForum {
+            return "\(headerForum.host) · \(app.providerSummary(for: .agent))"
+        }
         if let headerForum { return headerForum.host }
         switch app.assistantPageState {
-        case .notForum: return app.pageContext.url?.host.map { "\($0) · not a Discourse forum" } ?? "Not a Discourse forum"
-        case .maybe: return app.pageContext.url?.host.map { "\($0) · checking…" } ?? "Checking this page…"
-        default: return app.pageContext.url == nil && app.currentForum == nil ? "No forum open" : "Loading page…"
+        case .notForum:
+            return app.pageContext.url?.host.map {
+                String(localized: "\($0) · not a Discourse forum", comment: "Assistant header subtitle; the placeholder is a website host")
+            } ?? String(localized: "Not a Discourse forum")
+        case .maybe:
+            return app.pageContext.url?.host.map {
+                String(localized: "\($0) · checking…", comment: "Assistant header subtitle while checking whether a site is a forum; the placeholder is a website host")
+            } ?? String(localized: "Checking this page…")
+        default:
+            return app.pageContext.url == nil && app.currentForum == nil
+                ? String(localized: "No forum open") : String(localized: "Loading page…")
         }
     }
 
@@ -243,16 +256,16 @@ struct AssistantPanel: View {
     }
 
     private var metaLine: String {
-        var parts = [app.providerSummary]
+        var parts = [app.providerSummary(for: .assistant)]
         if let session = app.currentSession, let count = session.totalPosts, count > 0 {
-            parts.append("\(count) posts")
+            parts.append(String(localized: "\(count) posts"))
         }
         return parts.joined(separator: " · ")
     }
 
     private func headerIcon(
         _ systemImage: String,
-        label: String,
+        label: LocalizedStringKey,
         identifier: String,
         action: @escaping () -> Void
     ) -> some View {
@@ -329,19 +342,7 @@ struct AssistantPanel: View {
                 .disabled(app.currentTopic == nil)
             }
 
-            if !app.settings.favoriteModels.isEmpty {
-                Menu {
-                    ForEach(app.settings.favoriteModels) { favorite in
-                        Button {
-                            app.activateFavorite(favorite)
-                        } label: {
-                            Text("\(favorite.provider.displayName) · \(favorite.model)")
-                        }
-                    }
-                } label: {
-                    Label("Switch model", systemImage: "star")
-                }
-            }
+            modelSwitcher
 
             if app.assistantMode == .chat, !(app.currentSession?.history.isEmpty ?? true) {
                 Button(role: .destructive) {
@@ -368,7 +369,38 @@ struct AssistantPanel: View {
         .accessibilityIdentifier("assistantMoreMenu")
     }
 
-    private func subHeader(_ title: String) -> some View {
+    /// Favorites for the current mode's model (Summary and Chat share one,
+    /// Ask the forum has its own); the other role is never changed.
+    private var modelSwitcher: some View {
+        let role = app.currentRole
+        let current = app.selection(for: role)
+        return Menu {
+            Section(app.providerSummary(for: role)) {
+                ForEach(app.settings.favoriteModels) { favorite in
+                    Button {
+                        DCHaptics.tap()
+                        app.activateFavorite(favorite, for: role)
+                    } label: {
+                        if ModelSelection(provider: favorite.provider, model: favorite.model) == current {
+                            Label("\(favorite.provider.displayName) · \(favorite.model)", systemImage: "checkmark")
+                        } else {
+                            Text("\(favorite.provider.displayName) · \(favorite.model)")
+                        }
+                    }
+                }
+            }
+            Button {
+                withAnimation(DCMotion.respecting(reduceMotion)) { app.panelRoute = .settings }
+            } label: {
+                Label("AI models…", systemImage: "gearshape")
+            }
+        } label: {
+            Label(role.switcherTitle, systemImage: "cpu")
+        }
+        .accessibilityIdentifier("modelSwitcher")
+    }
+
+    private func subHeader(_ title: LocalizedStringKey) -> some View {
         HStack {
             Button {
                 withAnimation(DCMotion.respecting(reduceMotion)) {
@@ -401,7 +433,7 @@ struct AssistantPanel: View {
     // MARK: Body
 
     private var providerCard: some View {
-        ProviderSetupCard {
+        ProviderSetupCard(app: app, role: app.currentRole) {
             withAnimation(DCMotion.respecting(reduceMotion)) {
                 app.panelRoute = .settings
             }
@@ -419,7 +451,7 @@ struct AssistantPanel: View {
                 ChatThread(
                     app: app,
                     activeChat: activeChat,
-                    showsProviderCard: !app.isProviderReady,
+                    showsProviderCard: !app.isProviderReady(for: .assistant),
                     onSetUpProvider: { app.panelRoute = .settings },
                     onShowInstructions: { showingInstructions = true },
                     onCreateSummary: {
@@ -430,7 +462,7 @@ struct AssistantPanel: View {
             case .agent:
                 AgentView(
                     app: app,
-                    showsProviderCard: !app.isProviderReady,
+                    showsProviderCard: !app.isProviderReady(for: .agent),
                     onSetUpProvider: { app.panelRoute = .settings }
                 ) { url in
                     openInBrowser(url)
@@ -447,7 +479,7 @@ struct AssistantPanel: View {
     private func stateContent(_ kind: BodyKind) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                if !app.isProviderReady, kind != .loading {
+                if !app.isProviderReady(for: app.currentRole), kind != .loading {
                     providerCard
                 }
                 switch kind {
@@ -482,14 +514,18 @@ struct AssistantPanel: View {
         return app.currentSession?.summary ?? ""
     }
 
-    private var forumName: String {
-        app.assistantForum?.displayName ?? "the forum"
+    /// The small caps line above the topic title.
+    private var topicEyebrow: String {
+        if let name = app.assistantForum?.displayName {
+            return String(localized: "Topic on \(name)", comment: "Eyebrow above a topic title; the placeholder is a forum name")
+        }
+        return String(localized: "Topic on the forum", comment: "Eyebrow above a topic title when the forum name is unknown")
     }
 
     private var summaryContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                if !app.isProviderReady {
+                if !app.isProviderReady(for: .assistant) {
                     providerCard
                 }
 
@@ -531,12 +567,12 @@ struct AssistantPanel: View {
     private var summaryHero: some View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Topic on \(forumName)".uppercased())
+                Text(topicEyebrow.uppercased())
                     .font(.caption.weight(.bold))
                     .kerning(0.8)
                     .foregroundStyle(DCTheme.summaryTint)
                     .lineLimit(1)
-                Text(app.currentTopic?.title ?? "No topic open")
+                Text(app.currentTopic?.title ?? String(localized: "No topic open"))
                     .font(.title3.weight(.bold))
                     .fixedSize(horizontal: false, vertical: true)
                 Text(
@@ -613,10 +649,10 @@ struct AssistantPanel: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
                 if !session.model.isEmpty {
-                    DCPill(text: session.model, systemImage: "cpu", tint: .secondary)
+                    DCPill(text: AppleIntelligenceBackend.displayModel(session.model), systemImage: "cpu", tint: .secondary)
                 }
                 if let count = session.summaryPostCount ?? session.totalPosts, count > 0 {
-                    DCPill(text: "\(count) posts", systemImage: "text.bubble", tint: DCTheme.summaryTint)
+                    DCPill(text: String(localized: "\(count) posts"), systemImage: "text.bubble", tint: DCTheme.summaryTint)
                 }
                 if let date = session.summaryUpdatedAt {
                     DCPill(
@@ -627,7 +663,11 @@ struct AssistantPanel: View {
                     )
                 }
                 if session.kept {
-                    DCPill(text: "Kept", systemImage: "pin.fill", tint: DCTheme.warning)
+                    DCPill(
+                        text: String(localized: "Kept", comment: "Badge: the user chose to keep this summary (not cleared automatically)"),
+                        systemImage: "pin.fill",
+                        tint: DCTheme.warning
+                    )
                 }
             }
         }
@@ -705,8 +745,8 @@ private struct StaleSummaryNotice: View {
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(
-                        newReplies.map { "Stale summary — \($0) newer replies" }
-                            ?? "Stale summary — newer replies are available."
+                        newReplies.map { String(localized: "Stale summary — \($0) newer replies") }
+                            ?? String(localized: "Stale summary — newer replies are available.")
                     )
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(DCTheme.warning)
@@ -752,7 +792,7 @@ private struct ChatThread: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 12) {
                         if showsProviderCard {
-                            ProviderSetupCard(onSetUp: onSetUpProvider)
+                            ProviderSetupCard(app: app, role: .assistant, onSetUp: onSetUpProvider)
                         }
 
                         summaryCard
@@ -917,12 +957,28 @@ private struct ChatThread: View {
         .dcCard(tint: DCTheme.chatTint)
     }
 
-    private static let suggestions: [(String, String)] = [
-        ("Key takeaways", "What are the key takeaways?"),
-        ("Warnings", "Are there any warnings or important caveats?"),
-        ("Latest replies", "What do the latest replies add?"),
-        ("Disagreements", "Where do people disagree, and why?")
-    ]
+    /// (chip title, question put in the composer). The question is sent as
+    /// the user's own words, so it is in the app's language.
+    private static var suggestions: [(String, String)] {
+        [
+            (
+                String(localized: "Key takeaways", comment: "Chat suggestion chip"),
+                String(localized: "What are the key takeaways?", comment: "Chat question filled in by the Key takeaways chip")
+            ),
+            (
+                String(localized: "Warnings", comment: "Chat suggestion chip"),
+                String(localized: "Are there any warnings or important caveats?", comment: "Chat question filled in by the Warnings chip")
+            ),
+            (
+                String(localized: "Latest replies", comment: "Chat suggestion chip"),
+                String(localized: "What do the latest replies add?", comment: "Chat question filled in by the Latest replies chip")
+            ),
+            (
+                String(localized: "Disagreements", comment: "Chat suggestion chip"),
+                String(localized: "Where do people disagree, and why?", comment: "Chat question filled in by the Disagreements chip")
+            )
+        ]
+    }
 
     private var suggestionFlow: some View {
         ChipFlowLayout(spacing: 8) {
@@ -1249,8 +1305,8 @@ private struct ContextLimitControl: View {
 
     private var formattedLimit: String {
         app.settings.forumContextLimit >= 1_000_000
-            ? "1M characters"
-            : "\(app.settings.forumContextLimit / 1_000)k characters"
+            ? String(localized: "1M characters", comment: "Chat context size: one million characters")
+            : String(localized: "\(app.settings.forumContextLimit / 1_000)k characters", comment: "Chat context size in thousands of characters, e.g. 60k characters")
     }
 }
 
@@ -1463,10 +1519,10 @@ struct WorkProgressCard: View {
 
     private var taskTitle: String {
         switch record.type {
-        case .summary: "Creating summary"
-        case .pull: "Pulling post + replies"
-        case .chat: "Answering"
-        case .agent: "Asking the forum"
+        case .summary: String(localized: "Creating summary")
+        case .pull: String(localized: "Pulling post + replies")
+        case .chat: String(localized: "Answering")
+        case .agent: String(localized: "Asking the forum")
         }
     }
 }

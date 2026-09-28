@@ -21,7 +21,7 @@ struct SyncStatusPresentation: Equatable {
 
     var actionTitle: String? {
         switch action {
-        case .syncNow: "Sync now"
+        case .syncNow: String(localized: "Sync now")
         case nil: nil
         }
     }
@@ -48,59 +48,59 @@ struct SyncStatusPresentation: Equatable {
         switch status {
         case .off:
             self.init(
-                title: "Sync is off",
-                detail: "Turn on Sync with iCloud to keep your forums, summaries and chats on your iPhone and iPad.",
+                title: String(localized: "Sync is off"),
+                detail: String(localized: "Turn on Sync with iCloud to keep your forums, summaries and chats on your iPhone and iPad."),
                 symbol: "icloud.slash",
                 tint: .secondary,
-                shortLabel: "Off"
+                shortLabel: String(localized: "Off", comment: "Sync status, short value in the Settings row: sync is off")
             )
         case .noAccount:
             self.init(
-                title: "Not signed in to iCloud",
-                detail: "Sign in to iCloud in the Settings app to sync across your devices.",
+                title: String(localized: "Not signed in to iCloud"),
+                detail: String(localized: "Sign in to iCloud in the Settings app to sync across your devices."),
                 symbol: "person.crop.circle.badge.exclamationmark",
                 tint: DCTheme.warning,
-                shortLabel: "Not signed in"
+                shortLabel: String(localized: "Not signed in", comment: "Sync status, short value in the Settings row: no iCloud account")
             )
         case .restricted:
             self.init(
-                title: "iCloud isn’t available to Forumind",
-                detail: "iCloud is turned off for Forumind in Settings › [your name] › iCloud.",
+                title: String(localized: "iCloud isn’t available to Forumind"),
+                detail: String(localized: "iCloud is turned off for Forumind in Settings › [your name] › iCloud."),
                 symbol: "exclamationmark.icloud",
                 tint: DCTheme.warning,
-                shortLabel: "Unavailable"
+                shortLabel: String(localized: "Unavailable", comment: "Sync status, short value in the Settings row")
             )
         case .unavailable(let reason):
             self.init(
-                title: "iCloud is unavailable",
+                title: String(localized: "iCloud is unavailable"),
                 detail: reason,
                 symbol: "icloud.slash",
                 tint: DCTheme.warning,
-                shortLabel: "Unavailable"
+                shortLabel: String(localized: "Unavailable", comment: "Sync status, short value in the Settings row")
             )
         case .syncing:
             self.init(
-                title: "Syncing…",
+                title: String(localized: "Syncing…"),
                 symbol: "arrow.triangle.2.circlepath.icloud",
                 tint: DCTheme.brandBlue,
-                shortLabel: "Syncing",
+                shortLabel: String(localized: "Syncing", comment: "Sync status, short value in the Settings row"),
                 isBusy: true
             )
         case .upToDate:
             self.init(
-                title: "Up to date",
+                title: String(localized: "Up to date"),
                 symbol: "checkmark.icloud.fill",
                 tint: DCTheme.success,
-                shortLabel: "On"
+                shortLabel: String(localized: "On", comment: "Sync status, short value in the Settings row: sync is on and up to date")
             )
         case .error(let message):
             self.init(
-                title: "Sync didn’t finish",
+                title: String(localized: "Sync didn’t finish"),
                 detail: message,
                 symbol: "xmark.icloud",
                 tint: DCTheme.danger,
                 action: .syncNow,
-                shortLabel: "Error"
+                shortLabel: String(localized: "Error", comment: "Sync status, short value in the Settings row: the last sync failed")
             )
         }
     }
@@ -326,26 +326,26 @@ struct SyncExplainer: View {
                 OnboardingFeatureRow(
                     symbol: "arrow.triangle.2.circlepath",
                     tint: DCTheme.brandBlue,
-                    title: "What syncs",
-                    detail: "Your forums, summaries and chats (with their instructions and kept items), Ask the forum runs, watched topics, and settings. API keys sync through iCloud Keychain."
+                    title: String(localized: "What syncs"),
+                    detail: String(localized: "Your forums, summaries and chats (with their instructions and kept items), Ask the forum runs, watched topics, and settings. API keys sync through iCloud Keychain.")
                 )
                 OnboardingFeatureRow(
                     symbol: "iphone",
                     tint: DCTheme.chatTint,
-                    title: "What stays on this device",
-                    detail: "The work queue and activity log, cached forum pages, the browser bar position, and whether sync is on here."
+                    title: String(localized: "What stays on this device"),
+                    detail: String(localized: "The work queue and activity log, cached forum pages, the browser bar position, and whether sync is on here.")
                 )
                 OnboardingFeatureRow(
                     symbol: "lock.fill",
                     tint: DCTheme.brandPurple,
-                    title: "End-to-end encrypted",
-                    detail: "Your data is stored in your own iCloud account and encrypted with keys only your devices have. Neither Apple nor the developer can read it."
+                    title: String(localized: "End-to-end encrypted"),
+                    detail: String(localized: "Your data is stored in your own iCloud account and encrypted with keys only your devices have. Neither Apple nor the developer can read it.")
                 )
                 OnboardingFeatureRow(
                     symbol: "arrow.left.arrow.right",
                     tint: DCTheme.success,
-                    title: "Newest change wins",
-                    detail: "Each item keeps its most recent edit. A chat you cleared on one device stays cleared on the others."
+                    title: String(localized: "Newest change wins"),
+                    detail: String(localized: "Each item keeps its most recent edit. A chat you cleared on one device stays cleared on the others.")
                 )
             }
             .padding(.vertical, DCTheme.spacingS)
@@ -391,10 +391,10 @@ enum SyncDebug {
         case "off": .off
         case "noaccount": .noAccount
         case "restricted": .restricted
-        case "unavailable": .unavailable("iCloud is temporarily unavailable. Forumind will try again automatically.")
+        case "unavailable": .unavailable(String(localized: "iCloud is temporarily unavailable. Forumind will try again automatically."))
         case "syncing": .syncing
         case "uptodate", "on": .upToDate
-        case "error": .error("Couldn’t reach iCloud. Check your connection and try again.")
+        case "error": .error(String(localized: "Couldn’t reach iCloud. Check your connection and try again."))
         default: nil
         }
     }

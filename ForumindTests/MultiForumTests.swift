@@ -227,7 +227,7 @@ final class MultiForumTests: XCTestCase {
                 return Self.response(request, 404, "<html>not discourse</html>")
             }
         }
-        let app = AppModel(store: temporaryStore(), forumService: ForumService(session: session))
+        let app = AppModel(store: temporaryStore(), forumService: ForumService(session: session, pacer: ForumRequestPacer(clock: InstantPacingClock())))
 
         let added = try await app.addForum(fromAddress: "meta.discourse.org/t/some/1", pin: true)
         XCTAssertEqual(added.siteURL, meta)
@@ -318,7 +318,7 @@ final class MultiForumTests: XCTestCase {
             }
             return Self.response(request, 200, "raw")
         }
-        let service = ForumService(session: session)
+        let service = ForumService(session: session, pacer: ForumRequestPacer(clock: InstantPacingClock()))
         let result = try await service.fetchTopic(
             siteURL: folder,
             topicID: "77",
@@ -357,7 +357,7 @@ final class MultiForumTests: XCTestCase {
         ])
         let app = AppModel(
             store: temporaryStore(),
-            forumService: ForumService(session: session),
+            forumService: ForumService(session: session, pacer: ForumRequestPacer(clock: InstantPacingClock())),
             aiService: AIService(session: session),
             planner: planner
         )
@@ -478,7 +478,7 @@ final class MultiForumTests: XCTestCase {
         let planner = GatedPlanner()
         let app = AppModel(
             store: temporaryStore(),
-            forumService: ForumService(session: session),
+            forumService: ForumService(session: session, pacer: ForumRequestPacer(clock: InstantPacingClock())),
             aiService: AIService(session: session),
             planner: planner
         )
@@ -507,10 +507,7 @@ final class MultiForumTests: XCTestCase {
     /// Work only starts with a connected provider; a local one needs no key.
     @MainActor
     private func useLocalProvider(_ app: AppModel) {
-        app.settings.selectedProvider = .ollama
-        var configuration = app.settings.configuration(for: .ollama)
-        configuration.model = "test-model"
-        app.setConfiguration(configuration, for: .ollama)
+        app.selectModel(ModelSelection(provider: .ollama, model: "test-model"), for: .both)
     }
 
     private func temporaryStore() -> PersistentStore {

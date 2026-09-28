@@ -1,6 +1,6 @@
 # Ad and tracker blocking
 
-The in-app browser blocks ads and trackers with WebKit **content rule lists**
+The in-app browser can block ads and trackers with WebKit **content rule lists**
 (`WKContentRuleList`, Safari content-blocker JSON). The rules come from
 **EasyList** (ads) and **EasyPrivacy** (trackers). They are converted at
 **build time**, and the output is committed to the repo and bundled with the
@@ -187,12 +187,21 @@ roughly 1.5 MB). We **don't ship** them:
 `ContentBlocker.swift` and `AppModel+ContentBlocking.swift` load the bundled
 chunks into the browser's `WKUserContentController`:
 
+- **Off by default.** Ads and trackers are both off for new installs and for
+  saved settings without the keys, out of respect for forum owners who rely
+  on ads. While both are off, the app doesn't look up, compile or attach any
+  list, and page loads never wait for them (`ContentRuleLibrary` stays
+  `idle`). Turning either on (Settings › Browser, or **Turn on ad blocking**
+  in the address-bar shield, which turns on both) starts the lookups or the
+  first compile in the background; lists attach as they're ready and the
+  page reloads once they are. Settings reads only the manifest, to show the
+  lists' date.
 - **Caching.** Each chunk is stored in `WKContentRuleListStore` as
   `dc-<list>-<manifest version>-x<exceptions hash>`. A relaunch only looks the
   lists up (near-instant). The first launch, or a new list version, compiles
   them one at a time in the background (about 3 s in total on a simulator) and
   attaches each to the web view as soon as it's ready, so no page load waits
-  for compiling; a launch load waits at most 300 ms for the lookups. Old
+  for compiling; a load waits at most 300 ms for the lookups. Old
   versions are removed from the store afterwards. A chunk that fails to
   compile is logged and skipped.
 - **Always allowed.** Because `ignore-previous-rules` only works within one
@@ -202,12 +211,15 @@ chunks into the browser's `WKUserContentController`:
   app's in-page `fetch()` and forum sign-in never break), plus sign-in and
   captcha providers (Google, Apple, GitHub, Discord, Facebook, Microsoft, X,
   reCAPTCHA, hCaptcha, Turnstile).
-- **Per-site allow.** Sites the user allows (from the shield in the address
-  bar), and sign-in pages such as `accounts.google.com`, get no lists while
-  they are the main frame; the switch happens in `decidePolicyFor` before each
-  main-frame navigation.
+- **Per-site allow.** While blocking is on, sites the user allows (from the
+  shield in the address bar), and sign-in pages such as `accounts.google.com`,
+  get no lists while they are the main frame; the switch happens in
+  `decidePolicyFor` before each main-frame navigation.
+- **Address-bar shield.** Green while blocking on the page, a plain shield
+  while blocking is off (its menu offers **Turn on ad blocking**), and a
+  slashed shield on an allowed site or a sign-in page.
 - **Settings.** Settings › Browser turns ads and trackers on or off
-  separately (both on by default). Changes apply at once and reload the
+  separately (both off by default). Changes apply at once and reload the
   current page only when they change what is blocked on it.
 - WebKit reports no per-page block count, so the app shows none.
 

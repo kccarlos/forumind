@@ -24,6 +24,21 @@ enum AppleIntelligenceBackend: String, Codable, Equatable {
         }
     }
 
+    /// The backend's name as shown in the UI (localized). `label` stays
+    /// English because it is stored as the job's model and parsed back.
+    var displayName: String {
+        switch self {
+        case .privateCloudCompute: String(localized: "Private Cloud Compute", comment: "Apple Intelligence backend: Apple's Private Cloud Compute servers. Apple's feature name.")
+        case .onDevice: String(localized: "On-device", comment: "Apple Intelligence backend: the model runs on this iPhone or iPad.")
+        }
+    }
+
+    /// A stored model name for display: the localized backend name for an
+    /// Apple Intelligence run, any other model name unchanged.
+    static func displayModel(_ model: String) -> String {
+        Self(label: model)?.displayName ?? model
+    }
+
     init?(label: String) {
         switch label.trimmingCharacters(in: .whitespacesAndNewlines) {
         case Self.privateCloudCompute.label: self = .privateCloudCompute
@@ -48,26 +63,26 @@ enum AppleIntelligenceUnavailableReason: Equatable {
 
     var title: String {
         switch self {
-        case .requiresNewerOS: "Requires iOS 26 or later"
-        case .deviceNotEligible: "Device not supported"
-        case .appleIntelligenceNotEnabled: "Turn on Apple Intelligence in Settings"
-        case .modelNotReady: "Model downloading…"
-        case .unsupportedLanguage: "Not available in your region or language"
+        case .requiresNewerOS: String(localized: "Requires iOS 26 or later", comment: "Apple Intelligence status")
+        case .deviceNotEligible: String(localized: "Device not supported", comment: "Apple Intelligence status")
+        case .appleIntelligenceNotEnabled: String(localized: "Turn on Apple Intelligence in Settings", comment: "Apple Intelligence status")
+        case .modelNotReady: String(localized: "Model downloading…", comment: "Apple Intelligence status")
+        case .unsupportedLanguage: String(localized: "Not available in your region or language", comment: "Apple Intelligence status")
         }
     }
 
     var detail: String {
         switch self {
         case .requiresNewerOS:
-            "Apple Intelligence needs iOS 26 or later on a supported iPhone or iPad. Choose another provider below."
+            String(localized: "Apple Intelligence needs iOS 26 or later on a supported iPhone or iPad. Choose another provider below.")
         case .deviceNotEligible:
-            "This iPhone or iPad doesn’t support Apple Intelligence. Choose another provider below."
+            String(localized: "This iPhone or iPad doesn’t support Apple Intelligence. Choose another provider below.")
         case .appleIntelligenceNotEnabled:
-            "Open Settings › Apple Intelligence & Siri and turn on Apple Intelligence, then come back."
+            String(localized: "Open Settings › Apple Intelligence & Siri and turn on Apple Intelligence, then come back.")
         case .modelNotReady:
-            "Apple Intelligence is still getting ready on this device. Keep it on Wi‑Fi and power, then try again in a few minutes."
+            String(localized: "Apple Intelligence is still getting ready on this device. Keep it on Wi‑Fi and power, then try again in a few minutes.")
         case .unsupportedLanguage:
-            "Apple Intelligence isn’t available for this device’s language or region yet. Choose another provider below."
+            String(localized: "Apple Intelligence isn’t available for this device’s language or region yet. Choose another provider below.")
         }
     }
 }
@@ -91,7 +106,7 @@ enum AppleIntelligenceStatus: Equatable {
 
     var title: String {
         switch self {
-        case .available(let backend): "Ready · \(backend.label)"
+        case .available(let backend): String(localized: "Ready · \(backend.displayName)", comment: "Apple Intelligence status: ready, then the backend (On-device or Private Cloud Compute)")
         case .unavailable(let reason): reason.title
         }
     }
@@ -99,9 +114,9 @@ enum AppleIntelligenceStatus: Equatable {
     var detail: String {
         switch self {
         case .available(.privateCloudCompute):
-            "Runs on Apple’s Private Cloud Compute: requests go only to Apple, aren’t stored, and aren’t visible to anyone, including Apple."
+            String(localized: "Runs on Apple’s Private Cloud Compute: requests go only to Apple, aren’t stored, and aren’t visible to anyone, including Apple.")
         case .available(.onDevice):
-            "Runs entirely on this device. Nothing leaves your iPhone or iPad. The on-device model is small, so long discussions are summarized in more steps."
+            String(localized: "Runs entirely on this device. Nothing leaves your iPhone or iPad. The on-device model is small, so long discussions are summarized in more steps.")
         case .unavailable(let reason):
             reason.detail
         }
@@ -152,7 +167,10 @@ enum AppleIntelligenceDefaults {
     /// The user never set up a provider: the stock OpenRouter selection, no
     /// keys, no edited configurations, no favorites.
     static func isUntouched(_ settings: AppSettings) -> Bool {
-        guard settings.selectedProvider == .openRouter, settings.favoriteModels.isEmpty else {
+        let stock = AppSettings()
+        guard settings.selectedProvider == .openRouter, settings.favoriteModels.isEmpty,
+              settings.assistantModel == stock.assistantModel, settings.agentModel == stock.agentModel
+        else {
             return false
         }
         return AIProvider.allCases.allSatisfy { provider in
@@ -281,41 +299,50 @@ enum AppleIntelligenceError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .unavailable(let reason):
-            "Apple Intelligence: \(reason.title). \(reason.detail)"
+            String(localized: "Apple Intelligence: \(reason.title). \(reason.detail)", comment: "Error: Apple Intelligence is unavailable. First placeholder: short reason; second: what to do.")
         case .contextExceeded:
-            "This is too long for Apple Intelligence on this device, even in smaller parts. Try a shorter question, or choose a hosted provider in Settings › AI provider for very long discussions."
+            String(localized: "This is too long for Apple Intelligence on this device, even in smaller parts. Try a shorter question, or choose a hosted provider in Settings › AI models for very long discussions.")
         case .guardrailViolation:
-            "Apple Intelligence declined because the discussion touches content its safety guidelines don’t allow. Try another provider for this topic."
+            String(localized: "Apple Intelligence declined because the discussion touches content its safety guidelines don’t allow. Try another provider for this topic.")
         case .refusal:
-            "Apple Intelligence declined to answer this request. Rephrase it or try another provider."
+            String(localized: "Apple Intelligence declined to answer this request. Rephrase it or try another provider.")
         case .unsupportedLanguage:
-            "Apple Intelligence doesn’t support this discussion’s language yet. Choose another provider in Settings › AI provider."
+            String(localized: "Apple Intelligence doesn’t support this discussion’s language yet. Choose another provider in Settings › AI models.")
         case .rateLimited(let date):
-            "Apple Intelligence is busy handling other requests\(Self.retryHint(date))."
+            if let time = Self.retryTime(date) {
+                String(localized: "Apple Intelligence is busy handling other requests; try again after \(time).", comment: "Error. The placeholder is a time of day, e.g. 3:45 PM.")
+            } else {
+                String(localized: "Apple Intelligence is busy handling other requests; try again in a little while.")
+            }
         case .quotaReached(let date):
-            "You’ve reached today’s Private Cloud Compute limit for this app\(Self.retryHint(date)). You can switch to another provider meanwhile."
+            if let time = Self.retryTime(date) {
+                String(localized: "You’ve reached today’s Private Cloud Compute limit for this app; try again after \(time). You can switch to another provider meanwhile.", comment: "Error. The placeholder is a time of day, e.g. 3:45 PM.")
+            } else {
+                String(localized: "You’ve reached today’s Private Cloud Compute limit for this app; try again in a little while. You can switch to another provider meanwhile.")
+            }
         case .busy:
-            "Apple Intelligence is still answering another request. Try again in a moment."
+            String(localized: "Apple Intelligence is still answering another request. Try again in a moment.")
         case .network:
-            "Couldn’t reach Apple’s Private Cloud Compute. Check your connection and try again."
+            String(localized: "Couldn’t reach Apple’s Private Cloud Compute. Check your connection and try again.")
         case .serviceUnavailable:
-            "Apple’s Private Cloud Compute is unavailable right now. Try again later."
+            String(localized: "Apple’s Private Cloud Compute is unavailable right now. Try again later.")
         case .timeout:
-            "Apple Intelligence took too long to answer. Try again."
+            String(localized: "Apple Intelligence took too long to answer. Try again.")
         case .modelNotReady:
-            "The Apple Intelligence model isn’t ready yet (it may still be downloading). Try again in a few minutes."
+            String(localized: "The Apple Intelligence model isn’t ready yet (it may still be downloading). Try again in a few minutes.")
         case .guidedGenerationFailed:
-            "Apple Intelligence couldn’t produce a valid agent step."
+            String(localized: "Apple Intelligence couldn’t produce a valid agent step.")
         case .unsupportedRequest:
-            "Apple Intelligence can’t handle this kind of request."
+            String(localized: "Apple Intelligence can’t handle this kind of request.")
         case .other(let message):
-            "Apple Intelligence failed: \(message)"
+            String(localized: "Apple Intelligence failed: \(message)", comment: "Error. The placeholder is the system's error message.")
         }
     }
 
-    private static func retryHint(_ date: Date?) -> String {
-        guard let date, date > Date() else { return "; try again in a little while" }
-        return "; try again after \(date.formatted(date: .omitted, time: .shortened))"
+    /// The reset time, formatted for the current locale; nil when unknown or past.
+    private static func retryTime(_ date: Date?) -> String? {
+        guard let date, date > Date() else { return nil }
+        return date.formatted(date: .omitted, time: .shortened)
     }
 }
 
@@ -457,8 +484,8 @@ extension AppleIntelligenceServing {
 // MARK: - App model glue
 
 extension AppModel {
-    /// Selects Apple Intelligence for a user who never configured a provider
-    /// (once). Called when provider setup appears.
+    /// Selects Apple Intelligence for both model roles, for a user who never
+    /// configured a provider (once). Called when provider setup appears.
     func applyAppleIntelligenceDefaultIfNeeded(
         status: AppleIntelligenceStatus? = nil,
         defaults: UserDefaults = .standard
@@ -473,7 +500,11 @@ extension AppModel {
             return
         }
         defaults.set(true, forKey: AppleIntelligenceDefaults.appliedKey)
-        settings.selectedProvider = .appleIntelligence
+        // Both roles: a new user starts with one model for everything.
+        selectModel(
+            ModelSelection(provider: .appleIntelligence, model: AIProvider.appleIntelligence.defaultModel),
+            for: .both
+        )
     }
 }
 

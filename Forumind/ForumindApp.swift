@@ -104,9 +104,9 @@ private struct RootView: View {
                 }
             }
             .sheet(isPresented: $showingProviderSetup, onDismiss: {
-                app.needsProviderSetup = false
+                app.needsProviderSetup = nil
             }) {
-                ProviderSetupSheet(app: app)
+                ProviderSetupSheet(app: app, role: app.needsProviderSetup ?? .assistant)
             }
             .onChange(of: app.settings.hasCompletedOnboarding) {
                 presentProviderSetupIfNeeded()
@@ -131,10 +131,10 @@ private struct RootView: View {
                 }
             }
             .alert(
-                "Keychain sync probe",
+                Text(verbatim: "Keychain sync probe"),
                 isPresented: Binding(get: { keychainProbeResult != nil }, set: { if !$0 { keychainProbeResult = nil } })
             ) {
-                Button("OK", role: .cancel) {}
+                Button(role: .cancel) {} label: { Text(verbatim: "OK") }
             } message: {
                 Text(keychainProbeResult ?? "")
             }
@@ -163,9 +163,9 @@ private struct RootView: View {
 
     /// A shared link needs an AI provider first; not over the walkthrough.
     private func presentProviderSetupIfNeeded() {
-        guard app.needsProviderSetup, app.settings.hasCompletedOnboarding, !replayingOnboarding else { return }
-        if app.isProviderReady {
-            app.needsProviderSetup = false
+        guard let role = app.needsProviderSetup, app.settings.hasCompletedOnboarding, !replayingOnboarding else { return }
+        if app.isProviderReady(for: role) {
+            app.needsProviderSetup = nil
         } else {
             showingProviderSetup = true
         }

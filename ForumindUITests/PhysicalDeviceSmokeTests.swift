@@ -222,7 +222,7 @@ final class PhysicalDeviceSmokeTests: DCUITestCase {
 
         // Settings is a root list; summary batching lives in Summaries & chat.
         app.buttons["openSettings"].tap()
-        XCTAssertTrue(app.staticTexts["AI provider"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["AI models"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["settingsRow-browser"].exists)
         app.buttons["settingsRow-summaries"].tap()
         XCTAssertTrue(app.navigationBars["Summaries & chat"].waitForExistence(timeout: 10))
@@ -323,7 +323,7 @@ final class PhysicalDeviceSmokeTests: DCUITestCase {
 
         // Settings: the agent budget is under Ask the forum, watch options under Watched topics.
         app.buttons["openSettings"].tap()
-        XCTAssertTrue(app.staticTexts["AI provider"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["AI models"].waitForExistence(timeout: 10))
         app.buttons["settingsRow-agent"].tap()
         XCTAssertTrue(app.navigationBars["Ask the forum"].waitForExistence(timeout: 10))
         XCTAssertTrue(any(app, "agentMaxSteps").waitForExistence(timeout: 5))

@@ -13,7 +13,7 @@ in `scripts/ci/` also run locally.
 
 | Job | Runner | What it does |
 | --- | --- | --- |
-| `lint` | `ubuntu-latest` | Validates tracked `.plist`, `.entitlements`, and `.xcprivacy` files (`lint-plists.sh`); ShellChecks `scripts/ci` and `scripts/adblock`; runs the ad-blocking converter tests; checks App Store metadata lengths and screenshot sizes (`check-appstore-metadata.sh`); checks `fastlane/Fastfile` syntax; runs `actionlint`. |
+| `lint` | `ubuntu-latest` | Validates tracked `.plist`, `.entitlements`, and `.xcprivacy` files (`lint-plists.sh`); ShellChecks `scripts/ci` and `scripts/adblock`; runs the ad-blocking converter tests; checks App Store metadata lengths and screenshot sizes and opacity (`check-appstore-metadata.sh`); checks `fastlane/Fastfile` syntax; runs `actionlint`. |
 | `project-drift` | `ubuntu-latest` | Runs `scripts/generate_project.rb` in a temporary copy and fails if the committed `Forumind.xcodeproj` differs (`check-project-drift.sh`). |
 | `build-test` | `xcode-27` | Picks an iPhone simulator and runs the `ForumindTests` unit tests, unsigned. Uploads the `.xcresult` bundle on failure. |
 | `release-build` | `xcode-27` | Builds the **Release** configuration for a generic iOS device, unsigned, to catch errors that only show up in Release (for example, code that is only compiled in DEBUG). |

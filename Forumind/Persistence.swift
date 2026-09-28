@@ -334,7 +334,7 @@ struct KeychainStore {
             throw NSError(
                 domain: NSOSStatusErrorDomain,
                 code: Int(status),
-                userInfo: [NSLocalizedDescriptionKey: "Unable to store API key in Keychain."]
+                userInfo: [NSLocalizedDescriptionKey: String(localized: "Unable to store API key in Keychain.")]
             )
         }
     }

@@ -72,9 +72,9 @@ enum ForumDirectoryError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .invalidAddress:
-            "Enter a forum address such as meta.discourse.org."
+            String(localized: "Enter a forum address such as meta.discourse.org.", comment: "Add forum error; keep the example address as is")
         case .notDiscourse(let host):
-            "\(host) doesn’t look like a Discourse forum."
+            String(localized: "\(host) doesn’t look like a Discourse forum.", comment: "Add forum error; the placeholder is a web address such as forum.example.com")
         }
     }
 }
@@ -87,45 +87,49 @@ struct ForumDirectory: Equatable {
         SuggestedForum(
             name: "Discourse Meta",
             siteURL: "https://meta.discourse.org",
-            description: "Discourse’s own community for features, support, and plugins."
+            description: String(localized: "Discourse’s own community for features, support, and plugins.", comment: "Description of a suggested forum")
         ),
         SuggestedForum(
             name: "OpenAI Developer Community",
             siteURL: "https://community.openai.com",
-            description: "Developers discussing the OpenAI API, models, and tools."
+            description: String(localized: "Developers discussing the OpenAI API, models, and tools.", comment: "Description of a suggested forum")
         ),
         SuggestedForum(
             name: "Cursor Community Forum",
             siteURL: "https://forum.cursor.com",
-            description: "Help, bug reports, and tips for the Cursor code editor."
+            description: String(localized: "Help, bug reports, and tips for the Cursor code editor.", comment: "Description of a suggested forum")
         ),
         SuggestedForum(
             name: "Discussions on Python.org",
             siteURL: "https://discuss.python.org",
-            description: "Python language ideas, packaging, and help."
+            description: String(localized: "Python language ideas, packaging, and help.", comment: "Description of a suggested forum")
         ),
         SuggestedForum(
             name: "Home Assistant Community",
             siteURL: "https://community.home-assistant.io",
-            description: "Home automation setups, integrations, and troubleshooting."
+            description: String(localized: "Home automation setups, integrations, and troubleshooting.", comment: "Description of a suggested forum")
         )
     ]
 
     #if DEBUG
     /// Offered instead of `suggested` with `-dc-sample` / `-dc-seed-forums`,
     /// so screenshots show fictional communities (reserved example domains).
-    static let sampleSuggested: [SuggestedForum] = [
-        SuggestedForum(
-            name: "Board Game Guild",
-            siteURL: "https://games.example.com",
-            description: "Rules questions, reviews, and game night meetups."
-        ),
-        SuggestedForum(
-            name: "Community Gardeners",
-            siteURL: "https://garden.example.net",
-            description: "Seed swaps, raised beds, and plot planning."
-        )
-    ]
+    /// Names in the app's language (SampleContent.swift).
+    static var sampleSuggested: [SuggestedForum] {
+        let text = SampleContent.current
+        return [
+            SuggestedForum(
+                name: text.boardGames.name,
+                siteURL: text.boardGames.siteURL,
+                description: text.boardGamesDescription
+            ),
+            SuggestedForum(
+                name: text.gardeners.name,
+                siteURL: text.gardeners.siteURL,
+                description: text.gardenersDescription
+            )
+        ]
+    }
 
     static var usesSampleSuggestions: Bool {
         let arguments = ProcessInfo.processInfo.arguments

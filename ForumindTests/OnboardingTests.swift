@@ -64,7 +64,7 @@ final class OnboardingTests: XCTestCase {
             XCTAssertFalse(page.systemImage.isEmpty)
         }
         // UI tests look for this row label on the Settings root.
-        XCTAssertEqual(SettingsPage.provider.title, "AI provider")
+        XCTAssertEqual(SettingsPage.provider.title, "AI models")
         XCTAssertEqual(SettingsPage.browser.title, "Browser")
     }
 

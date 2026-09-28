@@ -68,8 +68,8 @@ struct SummaryProgressTracker: Equatable {
             expectedCharacters = Self.batchCharacters
             candidate = stepStart
             statusText = level == 1
-                ? "Summarizing part \(index + 1) of \(count)…"
-                : "Condensing part \(index + 1) of \(count)…"
+                ? String(localized: "Summarizing part \(index + 1) of \(count)…", comment: "Progress of a long summary: the discussion is summarized in parts")
+                : String(localized: "Condensing part \(index + 1) of \(count)…", comment: "Progress of a long summary: the part summaries are shortened again")
         case let .batchFinished(level, index, count):
             let range = Self.range(level: level)
             let width = (range.upperBound - range.lowerBound) / Double(max(count, 1))
@@ -79,7 +79,7 @@ struct SummaryProgressTracker: Equatable {
             stepEnd = Self.ceiling
             expectedCharacters = Self.finalCharacters
             candidate = stepStart
-            statusText = combining ? "Combining…" : nil
+            statusText = combining ? String(localized: "Combining…", comment: "Progress of a long summary: the part summaries are merged into the final summary") : nil
         case let .streamed(characters):
             candidate = stepStart
                 + (stepEnd - stepStart) * Self.streamedShare(characters: characters, expected: expectedCharacters)

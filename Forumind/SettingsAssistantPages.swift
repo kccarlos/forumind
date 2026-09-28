@@ -3,15 +3,17 @@ import SwiftUI
 // Settings › Summaries & chat, Ask the forum, Watched topics, Browser
 // (bar position, ad and tracker blocking).
 
+/// "55k characters" (shared with the summary batch label, so both read and
+/// translate the same way).
 private func characters(_ value: Int) -> String {
-    value >= 1_000_000 ? "1M characters" : "\(value / 1_000)k characters"
+    SummaryBatchLimit.label(value)
 }
 
 /// Plain-language explanation shown above a control.
 private struct SettingExplanation: View {
-    let title: String
+    let title: LocalizedStringKey
     let value: String
-    let detail: String
+    let detail: LocalizedStringKey
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -66,12 +68,8 @@ struct SettingsSummariesPage: View {
             } header: {
                 Text("Summary batching")
             } footer: {
-                Text(
-                    "Longer discussions are split into batches of this size. Each batch is "
-                        + "summarized, then the batch summaries are combined. Use smaller batches "
-                        + "for models with small context windows. Hold Create summary to pick a "
-                        + "size for one run."
-                )
+                // One literal (not concatenated) so it's a localizable key.
+                Text("Longer discussions are split into batches of this size. Each batch is summarized, then the batch summaries are combined. Use smaller batches for models with small context windows. Hold Create summary to pick a size for one run.")
             }
 
             Section {
@@ -100,13 +98,16 @@ struct SettingsSummariesPage: View {
                 Text("More context gives better answers on long topics but uses more of your provider’s quota.")
             }
 
+            ForumRequestPaceSection(app: app)
+
             Section {
                 TextEditor(text: $app.settings.systemPrompt)
                     .focused($editingInstructions)
                     .frame(minHeight: 140)
                     .overlay(alignment: .topLeading) {
                         if app.settings.systemPrompt.isEmpty {
-                            Text("For example: Answer in English. Keep summaries under 200 words.")
+                            Text("For example: Answer in English. Keep summaries under 200 words.",
+                                 comment: "Placeholder for custom AI instructions. Translations may name their own language instead of English.")
                                 .foregroundStyle(.tertiary)
                                 .padding(.top, 8)
                                 .padding(.leading, 5)
@@ -124,11 +125,7 @@ struct SettingsSummariesPage: View {
             } header: {
                 Text("Custom instructions")
             } footer: {
-                Text(
-                    "Leave blank to use the built-in structured summary prompt. Custom "
-                        + "instructions apply to summaries and chat. A topic’s own instructions "
-                        + "(in the assistant’s ⋯ menu) take priority."
-                )
+                Text("Leave blank to use the built-in structured summary prompt. Custom instructions apply to summaries and chat. A topic’s own instructions (in the assistant’s ⋯ menu) take priority.")
             }
         }
         .formStyle(.grouped)
@@ -146,6 +143,54 @@ struct SettingsSummariesPage: View {
         .onChange(of: app.settings.summaryBatchLimit) { app.saveSettings() }
         .onChange(of: app.settings.forumContextLimit) { app.saveSettings() }
         .onDisappear { app.saveSettings() }
+    }
+}
+
+/// Settings › Summaries & chat › Forum requests: how quickly topics are read.
+private struct ForumRequestPaceSection: View {
+    @ObservedObject var app: AppModel
+
+    var body: some View {
+        Section {
+            Picker(selection: $app.settings.forumRequestPace) {
+                ForEach(ForumRequestPace.allCases) { pace in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(pace.title)
+                        Text(pace.detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .tag(pace)
+                    .accessibilityIdentifier("forumRequestPace-\(pace.rawValue)")
+                }
+            } label: {
+                Text("Reading pace")
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+            .accessibilityIdentifier("forumRequestPace")
+        } header: {
+            Text("Forum requests")
+        } footer: {
+            Text(footer)
+        }
+        .onChange(of: app.settings.forumRequestPace) { app.saveSettings() }
+    }
+
+    private var footer: String {
+        var sentences = [
+            String(localized: "Forums are run by people and communities who pay for their servers. Reading a topic one page at a time keeps Forumind a polite visitor and avoids being rate limited.", comment: "Settings › Summaries & chat › Forum requests footer")
+        ]
+        switch app.settings.forumRequestPace {
+        case .gentle:
+            sentences.append(String(localized: "Long topics take longer to read: a 2,000-post topic takes about 20 seconds.", comment: "Forum requests footer for the Gentle pace (20 pages of 100 posts at 1 per second)"))
+        case .standard:
+            sentences.append(String(localized: "A 2,000-post topic takes about 10 seconds.", comment: "Forum requests footer for the Standard pace"))
+        case .fast:
+            sentences.append(String(localized: "Fast reads long topics quickest but puts the most load on the forum. Use it on forums you run or where you know it’s welcome.", comment: "Forum requests footer for the Fast pace"))
+        }
+        sentences.append(String(localized: "Work that’s already running keeps its pace.", comment: "Forum requests footer"))
+        return sentences.joined(separator: " ")
     }
 }
 
@@ -203,7 +248,7 @@ struct SettingsAgentPage: View {
                 VStack(alignment: .leading, spacing: DCTheme.spacingS) {
                     SettingExplanation(
                         title: "Context per topic read",
-                        value: "\(app.settings.agentReadLimit / 1_000)k characters",
+                        value: characters(app.settings.agentReadLimit),
                         detail: "How much of each topic it reads. Larger reads catch more detail in long threads."
                     )
                     Slider(
@@ -216,7 +261,7 @@ struct SettingsAgentPage: View {
                     )
                     .tint(DCTheme.agentTint)
                     .accessibilityLabel("Context per topic read")
-                    .accessibilityValue("\(app.settings.agentReadLimit / 1_000)k characters")
+                    .accessibilityValue(characters(app.settings.agentReadLimit))
                 }
             } header: {
                 Text("Read size")
@@ -276,10 +321,7 @@ struct SettingsWatchedPage: View {
             } header: {
                 Text("Watched topics & notifications")
             } footer: {
-                Text(
-                    "Watch a topic from the assistant’s ⋯ menu. Watched topics are checked every "
-                        + "30 minutes while the app is open and, when iOS allows, in the background."
-                )
+                Text("Watch a topic from the assistant’s ⋯ menu. Watched topics are checked every 30 minutes while the app is open and, when iOS allows, in the background.")
             }
 
             Section {
@@ -297,7 +339,7 @@ struct SettingsWatchedPage: View {
                             }
                             Spacer(minLength: DCTheme.spacingS)
                             if watched.newReplies > 0 {
-                                DCPill(text: "\(watched.newReplies) new", tint: DCTheme.brandBlue)
+                                DCPill(text: String(localized: "\(watched.newReplies) new", comment: "Badge: number of new replies in a watched topic"), tint: DCTheme.brandBlue)
                             }
                         }
                         .swipeActions {
@@ -353,10 +395,7 @@ struct SettingsBrowserPage: View {
             } header: {
                 Text("Browser bar")
             } footer: {
-                Text(
-                    "The bar shrinks while you scroll down a forum page and comes back when you "
-                        + "scroll up or tap it. Bottom keeps it within reach of your thumb."
-                )
+                Text("The bar shrinks while you scroll down a forum page and comes back when you scroll up or tap it. Bottom keeps it within reach of your thumb.")
             }
 
             ContentBlockingSettingsSections(app: app, rules: app.contentRules)
@@ -395,6 +434,8 @@ private struct ContentBlockingSettingsSections: View {
             Text(footer)
                 .accessibilityIdentifier("contentBlockingFootnote")
         }
+        // The lists' date, without looking up or compiling anything.
+        .onAppear { rules.loadManifestIfNeeded() }
 
         Section {
             if app.settings.adBlockAllowedSites.isEmpty {
@@ -420,18 +461,23 @@ private struct ContentBlockingSettingsSections: View {
         }
     }
 
+    /// Whole sentences, each its own localizable string, joined by spaces.
     private var footer: String {
-        var text = "Uses EasyList and EasyPrivacy filter lists."
+        var sentences = [
+            String(localized: "Off by default, out of respect for forum owners who rely on ads. Turn either switch on to block them in the built-in browser.", comment: "Settings › Browser: why ad and tracker blocking starts off"),
+            String(localized: "Uses EasyList and EasyPrivacy filter lists.")
+        ]
         if let date = rules.manifest?.generatedDate {
-            text += " Lists from \(date.formatted(date: .abbreviated, time: .omitted))."
+            let day = date.formatted(date: .abbreviated, time: .omitted)
+            sentences.append(String(localized: "Lists from \(day).", comment: "Filter lists' date"))
         } else if let version = rules.manifest?.version {
-            text += " Lists version \(version)."
+            sentences.append(String(localized: "Lists version \(version)."))
         }
         if rules.phase == .compiling, app.settings.contentBlockingEnabled || app.settings.blockTrackers {
-            text += " Preparing the lists…"
+            sentences.append(String(localized: "Preparing the lists…"))
         }
-        text += " Forum sign-in pages are never blocked."
-        return text
+        sentences.append(String(localized: "Forum sign-in pages are never blocked."))
+        return sentences.joined(separator: " ")
     }
 }
 
@@ -472,7 +518,7 @@ private struct BrowserBarPreview: View {
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Bar at the \(position.displayName.lowercased())")
+        .accessibilityLabel(position == .top ? "Bar at the top" : "Bar at the bottom")
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

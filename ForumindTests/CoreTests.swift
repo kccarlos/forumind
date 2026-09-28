@@ -437,7 +437,7 @@ final class CoreTests: XCTestCase {
             )?.queryItems?.first(where: { $0.name == "page" })?.value
             return Self.response(request, status: 200, body: "raw-page-\(page ?? "?")")
         }
-        let service = ForumService(session: session)
+        let service = ForumService(session: session, pacer: ForumRequestPacer(clock: InstantPacingClock()))
         let result = try await service.fetchTopic(
             siteURL: "https://forum.example.com",
             topicID: "517303",
@@ -758,7 +758,7 @@ final class CoreTests: XCTestCase {
         ])
         let app = AppModel(
             store: store,
-            forumService: ForumService(session: session),
+            forumService: ForumService(session: session, pacer: ForumRequestPacer(clock: InstantPacingClock())),
             aiService: AIService(session: session),
             planner: planner
         )
@@ -777,7 +777,7 @@ final class CoreTests: XCTestCase {
 
         XCTAssertEqual(run.status, .completed)
         XCTAssertEqual(run.steps.map(\.tool), ["search_forum", "read_topic", "post_reply", "final_answer"])
-        XCTAssertEqual(run.steps[0].outcome, "1 topics")
+        XCTAssertEqual(run.steps[0].outcome, "1 topic")
         XCTAssertEqual(run.steps[1].outcome, "Read 2 posts")
         XCTAssertTrue(run.steps[2].isError)
         XCTAssertTrue(run.steps[2].outcome.contains("Unknown tool"))

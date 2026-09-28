@@ -23,7 +23,8 @@ import UserNotifications
 // Page and assistant:
 // - `pageContext`                   browser page state (.loading/.notForum/.maybe/.forumHome/.topic)
 // - `currentTopic`, `currentSession` topic of the page and its saved session
-// - `isProviderReady`               an AI provider is configured (key present when required)
+// - `isProviderReady(for:)`         a role's model can run (key present when required);
+//                                   roles and model selection: AppModel+Models.swift
 // - `agentSiteURL`                  forum the next agent run targets (nil → current forum)
 // - `startAgentRun(goal:siteURL:)`  runs are scoped to one forum (`AgentRun.siteURL`)
 // - `sessions` is keyed by topic key (`host[/basePath]/t/{id}`); per-topic calls take
@@ -36,7 +37,7 @@ import UserNotifications
 // - `drainSharedInbox()`            deliver the App Group inbox (also runs on scene .active)
 // - `openShared(url:action:)`       open a shared link; "summary" | "chat" | "agent" | "open"
 // - `presentAssistant`              set when a hand-off wants the Assistant pane (UI resets it)
-// - `needsProviderSetup`            set when a hand-off needs a provider first (UI resets it)
+// - `needsProviderSetup`            the role a hand-off needs a provider for (UI resets it)
 // - `handleDeepLink(_:)`            forumind://open?url=…&action=…
 //
 // Ad and tracker blocking: see AppModel+ContentBlocking.swift.
@@ -61,17 +62,33 @@ enum AgentError: LocalizedError {
     case unknownTool(String)
     case runNotFound
 
+    /// Shown in the step list (localized).
     var errorDescription: String? {
+        switch self {
+        case .missingArgument(let name):
+            String(localized: "Missing argument \"\(name)\".", comment: "Ask the forum step error; the placeholder is a technical argument name such as query or topic_id")
+        case .topicBudgetExhausted(let limit):
+            String(localized: "The topic-read budget (\(limit)) is used up; answer with what you have.", comment: "Ask the forum step error; the number is the maximum topic reads per run")
+        case .unknownTool(let name):
+            String(localized: "Unknown tool \"\(name)\". Available: \(Self.toolNames)", comment: "Ask the forum step error; placeholders are technical tool names")
+        case .runNotFound:
+            String(localized: "The agent run no longer exists.")
+        }
+    }
+
+    /// Handed back to the model as the tool's observation: always English,
+    /// like the rest of the prompt.
+    var modelDescription: String {
         switch self {
         case .missingArgument(let name): "Missing argument \"\(name)\"."
         case .topicBudgetExhausted(let limit):
             "The topic-read budget (\(limit)) is used up; answer with what you have."
-        case .unknownTool(let name):
-            "Unknown tool \"\(name)\". Available: "
-                + AgentPrompt.tools.map(\.name).joined(separator: ", ")
+        case .unknownTool(let name): "Unknown tool \"\(name)\". Available: \(Self.toolNames)"
         case .runNotFound: "The agent run no longer exists."
         }
     }
+
+    private static var toolNames: String { AgentPrompt.tools.map(\.name).joined(separator: ", ") }
 }
 
 /// Outcome of a provider test or model load.
@@ -95,8 +112,21 @@ final class AppModel: ObservableObject {
     /// already running keeps the values it started with (`RunSettings`). Every
     /// change is persisted, coalesced (see `saveSettings()`).
     @Published var settings: AppSettings {
-        didSet { settingsDidChange(from: oldValue) }
+        didSet {
+            guard !reconcilingSettings else { return }
+            // Older builds read `selectedProvider`; keep it on the assistant
+            // role. (Assigning here re-enters `didSet` through @Published.)
+            var reconciled = settings
+            reconciled.reconcileModelRoles(from: oldValue)
+            if reconciled != settings {
+                reconcilingSettings = true
+                settings = reconciled
+                reconcilingSettings = false
+            }
+            settingsDidChange(from: oldValue)
+        }
     }
+    private var reconcilingSettings = false
     @Published private(set) var sessions: [String: TopicSession]
     @Published private(set) var activities: [WorkRecord]
     @Published private(set) var currentTopic: ForumTopic?
@@ -109,7 +139,8 @@ final class AppModel: ObservableObject {
     @Published var chatDraft = ""
     @Published var presentedError: String?
     @Published var settingsStatus = ""
-    @Published var discoveredModels: [String] = []
+    /// Models each provider offers, from the last successful load.
+    @Published var discoveredModels: [AIProvider: [String]] = [:]
     @Published private(set) var agentRuns: [AgentRun]
     @Published private(set) var watchedTopics: [WatchedTopic]
     @Published var selectedAgentRunID: UUID?
@@ -128,8 +159,8 @@ final class AppModel: ObservableObject {
     @Published var agentSiteURL: String?
     /// A share/deep-link hand-off wants the Assistant pane shown.
     @Published var presentAssistant = false
-    /// A hand-off needed an AI provider that is not configured yet.
-    @Published var needsProviderSetup = false
+    /// A hand-off needed this role's model, which is not ready yet.
+    @Published var needsProviderSetup: ModelRole?
 
     nonisolated static var suggestedForums: [SuggestedForum] {
         #if DEBUG
@@ -160,10 +191,10 @@ final class AppModel: ObservableObject {
     private var persistedAPIKeys: [AIProvider: String] = [:]
     /// Trailing save for rapid settings edits (slider drags, typing).
     private var settingsSaveTask: Task<Void, Never>?
-    /// Bumped when the selected provider, its base URL, or its key changes,
-    /// and when a new test / model load starts: an older result is dropped.
-    private var connectionTestGeneration = 0
-    private var modelDiscoveryGeneration = 0
+    /// Per provider: bumped when its key or address changes, or a newer
+    /// test or model load starts, so an older result is dropped.
+    private var connectionTestGeneration: [AIProvider: Int] = [:]
+    private var modelDiscoveryGeneration: [AIProvider: Int] = [:]
     private var isCheckingWatches = false
     /// A forum the user removed while its page is still open: the page must
     /// not add it straight back as a recent forum.
@@ -241,7 +272,7 @@ final class AppModel: ObservableObject {
                 var interrupted = $0
                 interrupted.status = .queued
                 interrupted.phase = "queued"
-                interrupted.statusText = "Restoring interrupted work…"
+                interrupted.statusText = String(localized: "Restoring interrupted work…", comment: "Status of AI work that was interrupted when the app quit and is starting again")
                 return interrupted
             }
             .sorted { $0.createdAt > $1.createdAt }
@@ -260,7 +291,7 @@ final class AppModel: ObservableObject {
                 updated.status = .queued
             } else {
                 updated.status = .cancelled
-                updated.error = "Interrupted before the run could finish."
+                updated.error = String(localized: "Interrupted before the run could finish.", comment: "Ask the forum: a research run stopped when the app quit")
                 updated.completedAt = now
             }
             return updated
@@ -322,35 +353,15 @@ final class AppModel: ObservableObject {
         return sessions[topicKey]
     }
 
-    /// The selected provider has what it needs to run (a key, unless local).
-    var isProviderReady: Bool {
-        if settings.selectedProvider == .appleIntelligence { return appleIntelligenceStatus.isAvailable }
-        let configuration = selectedConfiguration
-        let hasModel = !configuration.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        let hasKey = !settings.selectedProvider.requiresAPIKey
-            || !configuration.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        return hasModel && hasKey
-    }
-
     /// Live availability of the Apple Intelligence provider (through
     /// `aiService`, so tests can fake it).
     var appleIntelligenceStatus: AppleIntelligenceStatus {
         aiService.appleIntelligence.currentStatus()
     }
 
+    /// The assistant role's provider settings and model.
     var selectedConfiguration: ProviderConfiguration {
-        settings.configuration(for: settings.selectedProvider)
-    }
-
-    /// "Provider · model" for headers and Settings. Apple Intelligence shows
-    /// its live backend ("Apple Intelligence · On-device") rather than the
-    /// placeholder model name.
-    var providerSummary: String {
-        let provider = settings.selectedProvider
-        let model = provider.isAppleIntelligence
-            ? (appleIntelligenceStatus.backend?.label ?? "")
-            : selectedConfiguration.model
-        return model.isEmpty ? provider.displayName : "\(provider.displayName) · \(model)"
+        settings.configuration(for: .assistant)
     }
 
     func restorePendingTasksIfNeeded() {
@@ -454,7 +465,7 @@ final class AppModel: ObservableObject {
             assistantMode = .agent
             panelRoute = .topic
             presentAssistant = true
-            if !isProviderReady { needsProviderSetup = true }
+            if !isProviderReady(for: .agent) { needsProviderSetup = .agent }
         case .summary, .chat:
             guard topicMatches else {
                 // A Discourse page that is not the shared topic: stop waiting
@@ -473,8 +484,8 @@ final class AppModel: ObservableObject {
             assistantMode = pending.action == .summary ? .summary : .chat
             panelRoute = .topic
             presentAssistant = true
-            guard isProviderReady else {
-                needsProviderSetup = true
+            guard isProviderReady(for: .assistant) else {
+                needsProviderSetup = .assistant
                 return
             }
             // A deep link that did not come from the share extension only
@@ -559,19 +570,19 @@ final class AppModel: ObservableObject {
             return false
         }
         guard activeTaskCount < 50 else {
-            presentedError = "The task queue is full. Cancel or wait for an existing task."
+            presentedError = String(localized: "The task queue is full. Cancel or wait for an existing task.")
             return false
         }
 
-        let configuration = selectedConfiguration
+        let selection = settings.assistantModel
         var record = WorkRecord(
             type: .summary,
             siteURL: topic.siteURL,
             topicID: topic.topicID,
             title: topic.title,
             url: topic.url,
-            provider: settings.selectedProvider,
-            model: configuration.model
+            provider: selection.provider,
+            model: selection.model
         )
         record.batchLimit = batchLimit.map(SummaryBatchLimit.normalized)
         activities.insert(record, at: 0)
@@ -664,7 +675,8 @@ final class AppModel: ObservableObject {
                 let cookies = await browser.cookieHeader(forHost: host)
                 guard let info = try? await forumService.fetchSiteInfo(
                     siteURL: siteURL,
-                    cookieHeader: cookies
+                    cookieHeader: cookies,
+                    pace: settings.forumRequestPace
                 ) else {
                     continue
                 }
@@ -702,7 +714,11 @@ final class AppModel: ObservableObject {
         Task { [weak self] in
             guard let self else { return }
             let cookies = await self.browser.cookieHeader(forHost: host)
-            guard let info = try? await self.forumService.fetchSiteInfo(siteURL: normalized, cookieHeader: cookies),
+            guard let info = try? await self.forumService.fetchSiteInfo(
+                siteURL: normalized,
+                cookieHeader: cookies,
+                pace: self.settings.forumRequestPace
+            ),
                   self.forum(for: normalized) != nil
             else {
                 return
@@ -812,15 +828,15 @@ final class AppModel: ObservableObject {
             return
         }
         guard activeTaskCount < 50 else {
-            presentedError = "The task queue is full. Cancel or wait for an existing task."
+            presentedError = String(localized: "The task queue is full. Cancel or wait for an existing task.")
             return
         }
-        let configuration = selectedConfiguration
+        let selection = settings.agentModel
         var run = AgentRun(
             siteURL: forumSiteURL,
             goal: goal,
-            provider: settings.selectedProvider,
-            model: configuration.model
+            provider: selection.provider,
+            model: selection.model
         )
         run.transcript = [AgentPrompt.goalMessage(goal)]
         agentRuns.insert(run, at: 0)
@@ -842,7 +858,7 @@ final class AppModel: ObservableObject {
             return
         }
         guard activeTaskCount < 50 else {
-            presentedError = "The task queue is full. Cancel or wait for an existing task."
+            presentedError = String(localized: "The task queue is full. Cancel or wait for an existing task.")
             return
         }
         agentRuns[index].followUps.append(ChatMessage(role: .user, content: question))
@@ -921,7 +937,8 @@ final class AppModel: ObservableObject {
                     siteURL: topic.siteURL,
                     topicID: topic.topicID,
                     cookieHeader: cookies,
-                    resourceLoader: self.webViewResourceLoader
+                    resourceLoader: self.webViewResourceLoader,
+                    pace: self.settings.forumRequestPace
                 ).postCount
             }
             await self.watch(
@@ -976,6 +993,10 @@ final class AppModel: ObservableObject {
     /// can overlap; the later ones return at once). Topics unwatched while the
     /// check is fetching are skipped, and the auto-refresh setting is read
     /// when the replies arrive, so toggling it mid-check takes effect.
+    ///
+    /// Each topic is one paced request (`settings.forumRequestPace`). Topics
+    /// checked longest ago go first, and a background check stops after
+    /// `backgroundWatchCheckBudget`: the rest go first next time.
     func checkWatchedTopics(reason: WatchCheckReason) async {
         guard !watchedTopics.isEmpty, !isCheckingWatches else { return }
         isCheckingWatches = true
@@ -986,9 +1007,16 @@ final class AppModel: ObservableObject {
         // The web view cannot run scripts while the app is in the background,
         // so background checks go straight to URLSession with each forum's cookies.
         let webViewLoader = reason == .background ? nil : webViewResourceLoader
+        let pace = settings.forumRequestPace
+        let clock = forumService.pacer.clock
+        let started = clock.now()
 
-        for watched in watchedTopics {
+        for watched in Self.watchCheckOrder(watchedTopics) {
             if Task.isCancelled { break }
+            if reason == .background,
+               clock.now() - started + pace.minimumInterval > Self.backgroundWatchCheckBudget {
+                break
+            }
             if cookiesBySite[watched.siteURL] == nil {
                 cookiesBySite[watched.siteURL] = .some(await browser.cookieHeader(forSite: watched.siteURL))
             }
@@ -998,9 +1026,14 @@ final class AppModel: ObservableObject {
                     siteURL: watched.siteURL,
                     topicID: watched.topicID,
                     cookieHeader: cookiesBySite[watched.siteURL] ?? nil,
-                    resourceLoader: webViewLoader
+                    resourceLoader: webViewLoader,
+                    pace: pace
                 ))
             } catch {
+                // Background time ran out: this topic stays due for next time.
+                // (A URLSession request cancelled with the task throws
+                // `URLError(.cancelled)`, not `CancellationError`.)
+                if error is CancellationError || Task.isCancelled { break }
                 result = .failure(error)
             }
             // The list may have changed during the fetch: find the topic again.
@@ -1030,7 +1063,7 @@ final class AppModel: ObservableObject {
             }
         }
         // Without a connected provider the refresh would only fail (and alert).
-        if reason != .background, settings.watchAutoRefreshSummaries, isProviderReady {
+        if reason != .background, settings.watchAutoRefreshSummaries, isProviderReady(for: .assistant) {
             for (watched, _) in arrivals
             where isWatched(topicKey: watched.topicKey) && sessions[watched.topicKey]?.hasSummary == true {
                 enqueueSummary(
@@ -1043,6 +1076,22 @@ final class AppModel: ObservableObject {
                 )
             }
         }
+    }
+
+    /// Background App Refresh gives about 30 seconds; paced checks stop well
+    /// before that.
+    static var backgroundWatchCheckBudget: TimeInterval = 20
+
+    /// Topics never checked first, then the ones checked longest ago, so a
+    /// check cut short never starves the same topics.
+    nonisolated static func watchCheckOrder(_ topics: [WatchedTopic]) -> [WatchedTopic] {
+        topics.enumerated()
+            .sorted { lhs, rhs in
+                let left = lhs.element.lastCheckedAt ?? .distantPast
+                let right = rhs.element.lastCheckedAt ?? .distantPast
+                return left == right ? lhs.offset < rhs.offset : left < right
+            }
+            .map(\.element)
     }
 
     func handleScenePhase(_ phase: ScenePhase) {
@@ -1125,19 +1174,19 @@ final class AppModel: ObservableObject {
             return
         }
         guard activeTaskCount < 50 else {
-            presentedError = "The task queue is full. Cancel or wait for an existing task."
+            presentedError = String(localized: "The task queue is full. Cancel or wait for an existing task.")
             return
         }
 
-        let configuration = selectedConfiguration
+        let selection = settings.assistantModel
         let record = WorkRecord(
             type: .pull,
             siteURL: topic.siteURL,
             topicID: topic.topicID,
             title: topic.title,
             url: topic.url,
-            provider: settings.selectedProvider,
-            model: configuration.model
+            provider: selection.provider,
+            model: selection.model
         )
         activities.insert(record, at: 0)
         save()
@@ -1150,17 +1199,17 @@ final class AppModel: ObservableObject {
               var session = sessions[topic.topicKey],
               !session.source.isEmpty
         else {
-            presentedError = "Pull the post and responses or create a summary before asking a follow-up question."
+            presentedError = String(localized: "Pull the post and responses or create a summary before asking a follow-up question.")
             return
         }
         if activities.contains(where: {
             $0.topicKey == topic.topicKey && $0.type == .chat && !$0.status.isTerminal
         }) {
-            presentedError = "Wait for the current answer or cancel it in Manage."
+            presentedError = String(localized: "Wait for the current answer or cancel it in Manage.")
             return
         }
         guard activeTaskCount < 50 else {
-            presentedError = "The task queue is full. Cancel or wait for an existing task."
+            presentedError = String(localized: "The task queue is full. Cancel or wait for an existing task.")
             return
         }
 
@@ -1172,7 +1221,7 @@ final class AppModel: ObservableObject {
         sessions[topic.topicKey] = session
         chatDraft = ""
 
-        let configuration = selectedConfiguration
+        let selection = settings.assistantModel
         let record = WorkRecord(
             type: .chat,
             siteURL: topic.siteURL,
@@ -1180,8 +1229,8 @@ final class AppModel: ObservableObject {
             title: topic.title,
             url: topic.url,
             question: question,
-            provider: settings.selectedProvider,
-            model: configuration.model
+            provider: selection.provider,
+            model: selection.model
         )
         activities.insert(record, at: 0)
         save()
@@ -1199,7 +1248,7 @@ final class AppModel: ObservableObject {
         mutateRecord(record.id) {
             $0.status = .cancelled
             $0.phase = "cancelled"
-            $0.statusText = "Cancelled"
+            $0.statusText = String(localized: "Cancelled", comment: "Status of AI work the user cancelled")
             $0.completedAt = Date()
         }
         if record.type == .agent {
@@ -1247,7 +1296,7 @@ final class AppModel: ObservableObject {
         guard !activities.contains(where: {
             $0.topicKey == topicKey && !$0.status.isTerminal
         }) else {
-            presentedError = "Cancel this topic’s active tasks before deleting it."
+            presentedError = String(localized: "Cancel this topic’s active tasks before deleting it.")
             return
         }
         sessions.removeValue(forKey: topicKey)
@@ -1279,30 +1328,6 @@ final class AppModel: ObservableObject {
         session.updatedAt = Date()
         sessions[topicKey] = session
         save()
-    }
-
-    func activateFavorite(_ favorite: FavoriteModel) {
-        settings.selectedProvider = favorite.provider
-        var configuration = settings.configuration(for: favorite.provider)
-        configuration.model = favorite.model
-        settings.setConfiguration(configuration, for: favorite.provider)
-        saveSettings()
-    }
-
-    func addCurrentFavorite() {
-        let model = selectedConfiguration.model.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !model.isEmpty else { return }
-        let favorite = FavoriteModel(provider: settings.selectedProvider, model: model)
-        if !settings.favoriteModels.contains(favorite) {
-            settings.favoriteModels.append(favorite)
-            settings.favoriteModels = Array(settings.favoriteModels.prefix(30))
-            saveSettings()
-        }
-    }
-
-    func removeFavorite(_ favorite: FavoriteModel) {
-        settings.favoriteModels.removeAll { $0 == favorite }
-        saveSettings()
     }
 
     /// Persists settings (API keys to the key store, the rest to the
@@ -1347,18 +1372,18 @@ final class AppModel: ObservableObject {
     /// Reacts to any settings edit (Settings, favorites, onboarding, reset).
     private func settingsDidChange(from old: AppSettings) {
         guard old != settings else { return }
-        let oldConfiguration = old.configuration(for: old.selectedProvider)
-        let newConfiguration = selectedConfiguration
-        let providerChanged = old.selectedProvider != settings.selectedProvider
-        let endpointChanged = providerChanged || oldConfiguration.baseURL != newConfiguration.baseURL
-        if endpointChanged || oldConfiguration.apiKey != newConfiguration.apiKey {
+        for provider in AIProvider.allCases {
+            let oldConfiguration = old.configuration(for: provider)
+            let newConfiguration = settings.configuration(for: provider)
+            let endpointChanged = oldConfiguration.baseURL != newConfiguration.baseURL
+            guard endpointChanged || oldConfiguration.apiKey != newConfiguration.apiKey else { continue }
             // Results of a test or model load for the old configuration are stale.
-            connectionTestGeneration &+= 1
-            modelDiscoveryGeneration &+= 1
+            connectionTestGeneration[provider, default: 0] &+= 1
+            modelDiscoveryGeneration[provider, default: 0] &+= 1
             settingsStatus = ""
+            if endpointChanged, discoveredModels[provider] != nil { discoveredModels[provider] = nil }
         }
-        if endpointChanged, !discoveredModels.isEmpty { discoveredModels = [] }
-        if needsProviderSetup, isProviderReady { needsProviderSetup = false }
+        if let role = needsProviderSetup, isProviderReady(for: role) { needsProviderSetup = nil }
         contentBlockingSettingsDidChange(from: old)
         saveSettings()
     }
@@ -1377,7 +1402,7 @@ final class AppModel: ObservableObject {
         fresh.hasCompletedOnboarding = settings.hasCompletedOnboarding
         fresh.syncAPIKeys = settings.syncAPIKeys
         settings = fresh
-        discoveredModels = []
+        discoveredModels = [:]
         settingsStatus = ""
         save()
     }
@@ -1389,49 +1414,57 @@ final class AppModel: ObservableObject {
         save()
     }
 
-    /// Loads the selected provider's models into `discoveredModels`. A result
-    /// that arrives after the provider, base URL, or key changed (or after a
+    /// Loads `provider`'s models into `discoveredModels[provider]`. A result
+    /// that arrives after that provider's base URL or key changed (or after a
     /// newer load started) is dropped and reported as `.stale`.
     @discardableResult
-    func discoverModels() async -> ProviderCheckResult {
-        modelDiscoveryGeneration &+= 1
-        let generation = modelDiscoveryGeneration
-        let provider = settings.selectedProvider
-        let configuration = selectedConfiguration
-        settingsStatus = "Loading models…"
+    func discoverModels(provider: AIProvider) async -> ProviderCheckResult {
+        modelDiscoveryGeneration[provider, default: 0] &+= 1
+        let generation = modelDiscoveryGeneration[provider]
+        let configuration = settings.configuration(for: provider)
+        settingsStatus = String(localized: "Loading models…")
         do {
             let models = try await aiService.discoverModels(configuration: configuration, provider: provider)
-            guard generation == modelDiscoveryGeneration else { return .stale }
-            discoveredModels = models
-            settingsStatus = "Loaded \(models.count) models"
+            guard generation == modelDiscoveryGeneration[provider] else { return .stale }
+            discoveredModels[provider] = models
+            settingsStatus = String(localized: "Loaded \(models.count) models", comment: "AI provider settings: number of models found")
             return .success
         } catch {
-            guard generation == modelDiscoveryGeneration else { return .stale }
-            settingsStatus = "Model loading failed"
+            guard generation == modelDiscoveryGeneration[provider] else { return .stale }
+            settingsStatus = String(localized: "Model loading failed")
             return .failure(error.localizedDescription)
         }
     }
 
-    /// Tests the selected provider. A result for a configuration the user has
-    /// since changed (or superseded by a newer test) is `.stale` and leaves
-    /// the status alone.
+    /// Tests `provider` with its key and address. A result for a
+    /// configuration the user has since changed (or superseded by a newer
+    /// test of it) is `.stale` and leaves the status alone.
     @discardableResult
-    func testConnection() async -> ProviderCheckResult {
-        connectionTestGeneration &+= 1
-        let generation = connectionTestGeneration
-        let provider = settings.selectedProvider
-        let configuration = selectedConfiguration
-        settingsStatus = "Testing connection…"
+    func testConnection(provider: AIProvider) async -> ProviderCheckResult {
+        connectionTestGeneration[provider, default: 0] &+= 1
+        let generation = connectionTestGeneration[provider]
+        let configuration = settings.configuration(for: provider)
+        settingsStatus = String(localized: "Testing connection…")
         do {
             try await aiService.testConnection(configuration: configuration, provider: provider)
-            guard generation == connectionTestGeneration else { return .stale }
-            settingsStatus = "Connection successful"
+            guard generation == connectionTestGeneration[provider] else { return .stale }
+            settingsStatus = String(localized: "Connection successful")
             return .success
         } catch {
-            guard generation == connectionTestGeneration else { return .stale }
-            settingsStatus = "Connection failed"
+            guard generation == connectionTestGeneration[provider] else { return .stale }
+            settingsStatus = String(localized: "Connection failed")
             return .failure(error.localizedDescription)
         }
+    }
+
+    /// Tests the provider a role uses. Stale also when the role switched to
+    /// another provider meanwhile.
+    @discardableResult
+    func testConnection(for role: ModelRole = .assistant) async -> ProviderCheckResult {
+        let provider = settings.model(for: role).provider
+        let result = await testConnection(provider: provider)
+        guard settings.model(for: role).provider == provider else { return .stale }
+        return result
     }
 
     func configurationBinding(for provider: AIProvider) -> ProviderConfiguration {
@@ -1620,21 +1653,36 @@ final class AppModel: ObservableObject {
     /// queued): the provider, model and key selected at that moment, and the
     /// limits and instructions then. Edits made while it runs apply to the
     /// next job. Agent step and topic budgets can still be lowered mid-run.
+    ///
+    /// Ask the forum runs with the agent model, everything else with the
+    /// assistant model; the agent's `summarize_topic` tool also uses the
+    /// assistant model (`summarizer`).
     private func runSettings(for record: WorkRecord) -> RunSettings {
-        RunSettings(
-            provider: settings.selectedProvider,
-            configuration: RunSettings.resolvingAppleIntelligence(
-                selectedConfiguration,
-                provider: settings.selectedProvider,
-                status: appleIntelligenceStatus
-            ),
+        let role: ModelRole = record.type == .agent ? .agent : .assistant
+        let resolved = { (role: ModelRole) -> RunSettings.Model in
+            let provider = self.settings.model(for: role).provider
+            return RunSettings.Model(
+                provider: provider,
+                configuration: RunSettings.resolvingAppleIntelligence(
+                    self.settings.configuration(for: role),
+                    provider: provider,
+                    status: self.appleIntelligenceStatus
+                )
+            )
+        }
+        let main = resolved(role)
+        return RunSettings(
+            provider: main.provider,
+            configuration: main.configuration,
+            summarizer: role == .assistant ? main : resolved(.assistant),
             batchLimit: record.batchLimit ?? settings.summaryBatchLimit,
             contextLimit: settings.forumContextLimit,
             topicInstructions: effectiveInstructions(for: record.topicKey),
             globalInstructions: settings.systemPrompt,
             agentMaxSteps: settings.agentMaxSteps,
             agentMaxTopicReads: settings.agentMaxTopicReads,
-            agentReadLimit: settings.agentReadLimit
+            agentReadLimit: settings.agentReadLimit,
+            forumRequestPace: settings.forumRequestPace
         )
     }
 
@@ -1662,7 +1710,7 @@ final class AppModel: ObservableObject {
         mutateRecord(recordID) {
             $0.status = .running
             $0.phase = "fetching"
-            $0.statusText = "Reading forum responses…"
+            $0.statusText = String(localized: "Reading forum responses…", comment: "Status while downloading a topic's replies")
             // A restored record starts over; progress then only moves forward.
             $0.progress = nil
             $0.startedAt = Date()
@@ -1686,7 +1734,7 @@ final class AppModel: ObservableObject {
             case .summary:
                 try await runSummary(recordID: recordID, record: record, context: context)
             case .pull:
-                try await runPull(recordID: recordID, record: record)
+                try await runPull(recordID: recordID, record: record, context: context)
             case .chat:
                 try await runChat(recordID: recordID, record: record, context: context)
             case .agent:
@@ -1698,7 +1746,7 @@ final class AppModel: ObservableObject {
             mutateRecord(recordID) {
                 $0.status = .completed
                 $0.phase = "completed"
-                $0.statusText = "Completed"
+                $0.statusText = String(localized: "Completed", comment: "Status of finished AI work")
                 $0.progress = 1
                 $0.completedAt = Date()
             }
@@ -1706,7 +1754,7 @@ final class AppModel: ObservableObject {
             mutateRecord(recordID) {
                 $0.status = .cancelled
                 $0.phase = "cancelled"
-                $0.statusText = "Cancelled"
+                $0.statusText = String(localized: "Cancelled", comment: "Status of AI work the user cancelled")
                 $0.completedAt = Date()
             }
             if record.type == .agent {
@@ -1721,7 +1769,7 @@ final class AppModel: ObservableObject {
                 mutateRecord(recordID) {
                     $0.status = .cancelled
                     $0.phase = "cancelled"
-                    $0.statusText = "Cancelled"
+                    $0.statusText = String(localized: "Cancelled", comment: "Status of AI work the user cancelled")
                     $0.completedAt = Date()
                 }
             }
@@ -1729,7 +1777,7 @@ final class AppModel: ObservableObject {
             mutateRecord(recordID) {
                 $0.status = .failed
                 $0.phase = "failed"
-                $0.statusText = "Failed"
+                $0.statusText = String(localized: "Failed", comment: "Status of AI work that failed")
                 $0.error = error.localizedDescription
                 $0.completedAt = Date()
             }
@@ -1759,7 +1807,7 @@ final class AppModel: ObservableObject {
         save()
     }
 
-    private func runPull(recordID: UUID, record: WorkRecord) async throws {
+    private func runPull(recordID: UUID, record: WorkRecord, context: RunSettings) async throws {
         var session = sessions[record.topicKey] ?? TopicSession(
             siteURL: record.siteURL,
             topicID: record.topicID,
@@ -1773,7 +1821,8 @@ final class AppModel: ObservableObject {
             cachedPages: session.rawPages,
             knownTotalPosts: session.totalPosts,
             cookieHeader: cookies,
-            resourceLoader: webViewResourceLoader
+            resourceLoader: webViewResourceLoader,
+            pace: context.forumRequestPace
         ) { progress in
             await self.updateFetchProgress(recordID: recordID, progress: progress)
         }
@@ -1805,7 +1854,8 @@ final class AppModel: ObservableObject {
             cachedPages: session.rawPages,
             knownTotalPosts: session.totalPosts,
             cookieHeader: cookies,
-            resourceLoader: webViewResourceLoader
+            resourceLoader: webViewResourceLoader,
+            pace: context.forumRequestPace
         ) { progress in
             await self.updateFetchProgress(recordID: recordID, progress: progress)
         }
@@ -1826,7 +1876,7 @@ final class AppModel: ObservableObject {
            session.hasSummary,
            session.summaryPostCount == fetch.totalPosts {
             mutateRecord(recordID) {
-                $0.statusText = "Saved summary already includes every reply."
+                $0.statusText = String(localized: "Saved summary already includes every reply.")
             }
             return
         }
@@ -1834,8 +1884,8 @@ final class AppModel: ObservableObject {
         mutateRecord(recordID) {
             $0.phase = "generating"
             $0.statusText = fetch.newPosts > 0 && session.hasSummary
-                ? "Updating summary with \(fetch.newPosts) new posts…"
-                : "Generating summary…"
+                ? String(localized: "Updating summary with \(fetch.newPosts) new posts…", comment: "Status while a saved summary is updated with the topic's new replies")
+                : String(localized: "Generating summary…")
             // The fetch filled its share of the bar; each summary step fills the rest.
             $0.progress = WorkProgress.advanced(from: $0.progress, to: WorkProgress.summary(ai: 0))
         }
@@ -1873,7 +1923,7 @@ final class AppModel: ObservableObject {
               !session.source.isEmpty
         else {
             throw AssistantError.missingConfiguration(
-                "Pull the post and responses or create a summary before chatting."
+                String(localized: "Pull the post and responses or create a summary before chatting.")
             )
         }
 
@@ -1884,7 +1934,8 @@ final class AppModel: ObservableObject {
             cachedPages: session.rawPages,
             knownTotalPosts: session.totalPosts,
             cookieHeader: cookies,
-            resourceLoader: webViewResourceLoader
+            resourceLoader: webViewResourceLoader,
+            pace: context.forumRequestPace
         ) { progress in
             await self.updateFetchProgress(recordID: recordID, progress: progress)
         }
@@ -1901,13 +1952,13 @@ final class AppModel: ObservableObject {
 
         mutateRecord(recordID) {
             $0.phase = "generating"
-            $0.statusText = "Answering follow-up question…"
+            $0.statusText = String(localized: "Answering follow-up question…")
             // How long an answer takes is unknowable: indeterminate until done.
             $0.progress = nil
         }
         // Cleared or edited while the topic was being read: nothing to ask.
         guard session.history.last(where: { $0.role == .user })?.content == record.question else {
-            mutateRecord(recordID) { $0.statusText = "Chat changed; answer discarded" }
+            mutateRecord(recordID) { $0.statusText = String(localized: "Chat changed; answer discarded", comment: "Chat status: the conversation was edited while an answer was being written") }
             return
         }
         chatStreams[recordID] = ""
@@ -1931,7 +1982,7 @@ final class AppModel: ObservableObject {
         // The chat was cleared, or the question edited, while it was being
         // answered: the answer no longer belongs to the conversation.
         guard session.history.last(where: { $0.role == .user })?.content == record.question else {
-            mutateRecord(recordID) { $0.statusText = "Chat changed; answer discarded" }
+            mutateRecord(recordID) { $0.statusText = String(localized: "Chat changed; answer discarded", comment: "Chat status: the conversation was edited while an answer was being written") }
             return
         }
         session.history.append(ChatMessage(role: .assistant, content: answer))
@@ -1969,7 +2020,7 @@ final class AppModel: ObservableObject {
         storeAgentRun(run)
         mutateRecord(recordID) {
             $0.phase = "planning"
-            $0.statusText = "Planning…"
+            $0.statusText = String(localized: "Planning…", comment: "Ask the forum: the AI is deciding its first step")
             $0.progress = WorkProgress.agent(completedSteps: 0, maxSteps: context.agentMaxSteps)
         }
 
@@ -2008,7 +2059,7 @@ final class AppModel: ObservableObject {
             var step = AgentStep(tool: action.tool, arguments: action.arguments, thought: action.thought)
             mutateRecord(recordID) {
                 $0.phase = "running"
-                $0.statusText = "Step \(stepsUsed): \(Self.describe(action))"
+                $0.statusText = String(localized: "Step \(stepsUsed): \(Self.describe(action))", comment: "Ask the forum progress: step number, then the tool being used (a technical name such as search_forum) and its argument")
                 $0.progress = WorkProgress.advanced(
                     from: $0.progress,
                     to: WorkProgress.agent(completedSteps: stepsUsed - 1, maxSteps: maxSteps, within: 0.1)
@@ -2019,8 +2070,8 @@ final class AppModel: ObservableObject {
                 let answer = action.arguments["answer"]?.trimmingCharacters(in: .whitespacesAndNewlines)
                     ?? action.thought
                 step.outcome = action.tool == AgentPrompt.finalAnswerTool
-                    ? "Answered"
-                    : "Stopped at the step budget"
+                    ? String(localized: "Answered", comment: "Ask the forum step outcome: the final answer was written")
+                    : String(localized: "Stopped at the step budget", comment: "Ask the forum step outcome: the run used all its allowed steps")
                 step.finishedAt = Date()
                 run.steps.append(step)
                 run.answer = answer
@@ -2066,7 +2117,7 @@ final class AppModel: ObservableObject {
                 run.transcript.append(
                     AgentPrompt.observation(
                         tool: action.tool,
-                        result: error.localizedDescription,
+                        result: (error as? AgentError)?.modelDescription ?? error.localizedDescription,
                         isError: true
                     )
                 )
@@ -2118,8 +2169,6 @@ final class AppModel: ObservableObject {
         context: RunSettings,
         stepProgress: @escaping @Sendable (_ within: Double) -> Double
     ) async throws -> (String, String) {
-        let configuration = context.configuration
-        let provider = context.provider
         let siteURL = run.siteURL
         let cookies = await browser.cookieHeader(forSite: siteURL)
         let loader = webViewResourceLoader
@@ -2135,17 +2184,19 @@ final class AppModel: ObservableObject {
                 siteURL: siteURL,
                 query: query,
                 cookieHeader: cookies,
-                resourceLoader: loader
+                resourceLoader: loader,
+                pace: context.forumRequestPace
             )
-            return ("\(listings.count) topics", AgentPrompt.format(listings: listings))
+            return (String(localized: "\(listings.count) topics", comment: "Ask the forum step outcome: number of topics found"), AgentPrompt.format(listings: listings))
 
         case "list_latest":
             let listings = try await forumService.latestTopics(
                 siteURL: siteURL,
                 cookieHeader: cookies,
-                resourceLoader: loader
+                resourceLoader: loader,
+                pace: context.forumRequestPace
             )
-            return ("\(listings.count) topics", AgentPrompt.format(listings: listings, limit: 30))
+            return (String(localized: "\(listings.count) topics", comment: "Ask the forum step outcome: number of topics found"), AgentPrompt.format(listings: listings, limit: 30))
 
         case "read_topic":
             let session = try await readTopicForAgent(
@@ -2157,25 +2208,30 @@ final class AppModel: ObservableObject {
                 limit: context.agentReadLimit
             )
             return (
-                "Read \(session.totalPosts ?? 0) posts",
+                String(localized: "Read \(session.totalPosts ?? 0) posts", comment: "Ask the forum step outcome: number of posts read in a topic"),
                 "Topic: \(session.title)\nURL: \(session.url.absoluteString)\n\n\(bounded)"
             )
 
         case "summarize_topic":
+            // Bulk summarizing runs on the assistant (low-cost) model. When
+            // that one isn't ready, the tool fails and the agent can read the
+            // topic instead.
+            let summarizer = context.summarizer
+            try RunSettings.requireReady(provider: summarizer.provider, configuration: summarizer.configuration)
             var session = try await readTopicForAgent(
                 action, run: &run, recordID: recordID, context: context,
                 progress: { stepProgress(0.1 + 0.3 * $0) }
             )
             mutateRecord(recordID) {
-                $0.statusText = "Summarizing \(session.title)…"
+                $0.statusText = String(localized: "Summarizing \(session.title)…", comment: "Status; the placeholder is a forum topic's title")
             }
             let progress = summaryProgressOutput(recordID: recordID, keepsStatusText: true)
             defer { progress.cancel() }
             let feed = SummaryProgressFeed(output: progress) { stepProgress(0.4 + 0.55 * $0) }
             let summary = try await aiService.generateSummary(
                 content: session.source,
-                configuration: configuration,
-                provider: provider,
+                configuration: summarizer.configuration,
+                provider: summarizer.provider,
                 customPrompt: PromptBuilder.effectiveInstructions(
                     topic: session.instructions,
                     global: context.globalInstructions
@@ -2188,13 +2244,13 @@ final class AppModel: ObservableObject {
             session = sessions[session.topicKey] ?? session
             session.summary = summary
             session.summaryPostCount = session.totalPosts
-            session.provider = provider
-            session.model = configuration.model
+            session.provider = summarizer.provider
+            session.model = summarizer.configuration.model
             session.summaryUpdatedAt = Date()
             session.updatedAt = Date()
             sessions[session.topicKey] = session
             return (
-                "Summarized \(session.totalPosts ?? 0) posts",
+                String(localized: "Summarized \(session.totalPosts ?? 0) posts", comment: "Ask the forum step outcome: number of posts summarized in a topic"),
                 "Summary of \(session.title) (\(session.url.absoluteString)):\n\n\(summary)"
             )
 
@@ -2205,7 +2261,7 @@ final class AppModel: ObservableObject {
                 .filter { query.isEmpty || $0.title.localizedCaseInsensitiveContains(query)
                     || $0.summary.localizedCaseInsensitiveContains(query) }
                 .sorted { $0.updatedAt > $1.updatedAt }
-            guard !saved.isEmpty else { return ("None found", "No saved summaries match.") }
+            guard !saved.isEmpty else { return (String(localized: "None found", comment: "Ask the forum step outcome: no saved summaries matched"), "No saved summaries match.") }
             let text = saved.prefix(query.isEmpty ? 40 : 6).map { session in
                 var line = "- id \(session.topicID): \(session.title) — "
                     + "\(session.summaryPostCount ?? session.totalPosts ?? 0) posts — "
@@ -2213,7 +2269,7 @@ final class AppModel: ObservableObject {
                 if !query.isEmpty { line += "\n\(session.summary.prefix(3_000))" }
                 return line
             }.joined(separator: "\n\n")
-            return ("\(saved.count) saved", text)
+            return (String(localized: "\(saved.count) saved", comment: "Ask the forum step outcome: number of saved summaries found"), text)
 
         case "watch_topic":
             let topicID = try requiredTopicID(action)
@@ -2232,7 +2288,8 @@ final class AppModel: ObservableObject {
                     siteURL: siteURL,
                     topicID: topicID,
                     cookieHeader: cookies,
-                    resourceLoader: loader
+                    resourceLoader: loader,
+                    pace: context.forumRequestPace
                 )
                 try ensureLive(recordID)
                 await watch(
@@ -2243,7 +2300,7 @@ final class AppModel: ObservableObject {
                     knownPostCount: overview.postCount
                 )
             }
-            return ("Watching", "Topic \(topicID) is now on the watch list.")
+            return (String(localized: "Watching", comment: "Ask the forum step outcome: the topic was added to the watch list"), "Topic \(topicID) is now on the watch list.")
 
         default:
             throw AgentError.unknownTool(action.tool)
@@ -2286,7 +2343,8 @@ final class AppModel: ObservableObject {
                 siteURL: siteURL,
                 topicID: topicID,
                 cookieHeader: cookies,
-                resourceLoader: webViewResourceLoader
+                resourceLoader: webViewResourceLoader,
+                pace: context.forumRequestPace
             )
             session = TopicSession(
                 siteURL: siteURL,
@@ -2296,7 +2354,7 @@ final class AppModel: ObservableObject {
             )
         }
         mutateRecord(recordID) {
-            $0.statusText = "Reading \(session.title)…"
+            $0.statusText = String(localized: "Reading \(session.title)…", comment: "Status; the placeholder is a forum topic's title")
         }
         let fetch = try await forumService.fetchTopic(
             siteURL: siteURL,
@@ -2304,7 +2362,8 @@ final class AppModel: ObservableObject {
             cachedPages: session.rawPages,
             knownTotalPosts: session.totalPosts,
             cookieHeader: cookies,
-            resourceLoader: webViewResourceLoader
+            resourceLoader: webViewResourceLoader,
+            pace: context.forumRequestPace
         ) { fetchProgress in
             await self.advanceProgress(recordID: recordID, to: progress(fetchProgress.fraction))
         }
@@ -2397,7 +2456,7 @@ final class AppModel: ObservableObject {
         do {
             try store.save(snapshot)
         } catch {
-            presentedError = "Unable to save app data: \(error.localizedDescription)"
+            presentedError = String(localized: "Unable to save app data: \(error.localizedDescription)", comment: "Error; the placeholder is the system's reason")
         }
     }
 
@@ -2468,8 +2527,18 @@ final class AppModel: ObservableObject {
 /// What a job runs with, captured when it starts (see `AppModel.runSettings`).
 /// In memory only: the key is never written into a record.
 struct RunSettings {
+    /// A provider and its settings with the model to run.
+    struct Model {
+        var provider: AIProvider
+        var configuration: ProviderConfiguration
+    }
+
+    /// The job's own model: the agent model for Ask the forum, else the
+    /// assistant model.
     var provider: AIProvider
     var configuration: ProviderConfiguration
+    /// The assistant model, for the agent's `summarize_topic` tool.
+    var summarizer: Model
     var batchLimit: Int
     var contextLimit: Int
     /// The topic's own instructions, else the global ones.
@@ -2478,17 +2547,23 @@ struct RunSettings {
     var agentMaxSteps: Int
     var agentMaxTopicReads: Int
     var agentReadLimit: Int
+    /// How quickly this job's requests go to the forum (taken at the start).
+    var forumRequestPace: ForumRequestPace = .default
 
     /// Fails with a clear message when the provider was disconnected (key
     /// deleted, settings reset) between queueing and starting.
     func requireReadyProvider() throws {
+        try Self.requireReady(provider: provider, configuration: configuration)
+    }
+
+    static func requireReady(provider: AIProvider, configuration: ProviderConfiguration) throws {
         if configuration.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            throw AssistantError.missingConfiguration("Choose a model in Settings › AI provider.")
+            throw AssistantError.missingConfiguration(String(localized: "Choose a model in Settings › AI models.", comment: "Error; Settings › AI models names the app's own Settings page"))
         }
         if provider.requiresAPIKey,
            configuration.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             throw AssistantError.missingConfiguration(
-                "\(provider.displayName) isn’t connected. Add an API key in Settings › AI provider."
+                String(localized: "\(provider.displayName) isn’t connected. Add an API key in Settings › AI models.", comment: "Error; the placeholder is the AI provider's name. Settings › AI models names the app's own Settings page.")
             )
         }
     }

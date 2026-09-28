@@ -43,15 +43,20 @@ final class ForumRedirectGuard: NSObject, URLSessionTaskDelegate, @unchecked Sen
 }
 
 /// Discourse JSON/raw endpoints of one forum per call (`siteURL` is the
-/// forum's origin + base path).
+/// forum's origin + base path). Every request is paced per host
+/// (`ForumRequestPacer`, see ForumRequestPacing.swift); each call takes the
+/// pace to use, so a running job keeps the one it started with.
 final class ForumService {
     private let session: URLSession
     private let pageSize = 100
     private let maximumRetries = 6
-    private let maximumConcurrency = 4
+    /// Shared by every request this service makes, so pacing covers all
+    /// jobs, agent tools and watch checks on the same forum together.
+    let pacer: ForumRequestPacer
 
-    init(session: URLSession = .shared) {
+    init(session: URLSession = .shared, pacer: ForumRequestPacer = ForumRequestPacer()) {
         self.session = session
+        self.pacer = pacer
     }
 
     func fetchTopic(
@@ -61,13 +66,15 @@ final class ForumService {
         knownTotalPosts: Int?,
         cookieHeader: String?,
         resourceLoader: (@MainActor (URL) async throws -> ForumResourceResponse)? = nil,
+        pace: ForumRequestPace = .default,
         progress: @escaping @Sendable (ForumFetchProgress) async -> Void
     ) async throws -> ForumFetchResult {
         let totalPosts = try await fetchPostCount(
             siteURL: siteURL,
             topicID: topicID,
             cookieHeader: cookieHeader,
-            resourceLoader: resourceLoader
+            resourceLoader: resourceLoader,
+            pace: pace
         )
         let totalPages = max(1, Int(ceil(Double(totalPosts) / Double(pageSize))))
         let plan = CachePlan.make(
@@ -85,7 +92,7 @@ final class ForumService {
                     completedPages: totalPages,
                     totalPages: totalPages,
                     totalPosts: totalPosts,
-                    message: "Saved pages already include every reply."
+                    message: String(localized: "Saved pages already include every reply.", comment: "Progress while reading a forum topic: nothing new to download")
                 )
             )
             return ForumFetchResult(
@@ -99,10 +106,25 @@ final class ForumService {
         case .fetch(let reusablePages, let pageNumbers):
             var fetchedPages: [RawForumPage] = []
             var completed = reusablePages.count
+            // Pages are requested in order, `maximumConcurrency` at a time;
+            // the pacer spaces them out. Cached pages are never requested.
+            let batchSize = max(1, pace.maximumConcurrency)
+            if let first = pageNumbers.first {
+                // Reported before the (paced) wait for the first page, so the
+                // status says what is happening while the bar waits.
+                await progress(
+                    ForumFetchProgress(
+                        completedPages: completed,
+                        totalPages: totalPages,
+                        totalPosts: totalPosts,
+                        message: String(localized: "Reading response page \(first) of \(totalPages)…", comment: "Progress while downloading a forum topic's replies, before a page arrives")
+                    )
+                )
+            }
 
-            for start in stride(from: 0, to: pageNumbers.count, by: maximumConcurrency) {
+            for start in stride(from: 0, to: pageNumbers.count, by: batchSize) {
                 try Task.checkCancellation()
-                let end = min(start + maximumConcurrency, pageNumbers.count)
+                let end = min(start + batchSize, pageNumbers.count)
                 let batch = Array(pageNumbers[start..<end])
                 let results = try await withThrowingTaskGroup(
                     of: RawForumPage.self,
@@ -115,7 +137,8 @@ final class ForumService {
                                 topicID: topicID,
                                 page: page,
                                 cookieHeader: cookieHeader,
-                                resourceLoader: resourceLoader
+                                resourceLoader: resourceLoader,
+                                pace: pace
                             )
                         }
                     }
@@ -129,7 +152,7 @@ final class ForumService {
                                 completedPages: completed,
                                 totalPages: totalPages,
                                 totalPosts: totalPosts,
-                                message: "Read response page \(page.page) of \(totalPages)"
+                                message: String(localized: "Read response page \(page.page) of \(totalPages)", comment: "Progress while downloading a forum topic's replies, page by page")
                             )
                         )
                     }
@@ -155,7 +178,8 @@ final class ForumService {
         siteURL: String,
         query: String,
         cookieHeader: String?,
-        resourceLoader: (@MainActor (URL) async throws -> ForumResourceResponse)? = nil
+        resourceLoader: (@MainActor (URL) async throws -> ForumResourceResponse)? = nil,
+        pace: ForumRequestPace = .default
     ) async throws -> [ForumTopicListing] {
         guard let url = ForumSite.searchURL(siteURL: siteURL, query: query) else {
             throw AssistantError.invalidResponse
@@ -163,7 +187,8 @@ final class ForumService {
         let data = try await requestData(
             url: url,
             cookieHeader: cookieHeader,
-            resourceLoader: resourceLoader
+            resourceLoader: resourceLoader,
+            pace: pace
         )
         return Self.parseSearchResults(data, siteURL: siteURL)
     }
@@ -172,7 +197,8 @@ final class ForumService {
     func latestTopics(
         siteURL: String,
         cookieHeader: String?,
-        resourceLoader: (@MainActor (URL) async throws -> ForumResourceResponse)? = nil
+        resourceLoader: (@MainActor (URL) async throws -> ForumResourceResponse)? = nil,
+        pace: ForumRequestPace = .default
     ) async throws -> [ForumTopicListing] {
         guard let url = ForumSite.latestURL(siteURL: siteURL, json: true) else {
             throw AssistantError.invalidResponse
@@ -180,7 +206,8 @@ final class ForumService {
         let data = try await requestData(
             url: url,
             cookieHeader: cookieHeader,
-            resourceLoader: resourceLoader
+            resourceLoader: resourceLoader,
+            pace: pace
         )
         return Self.parseTopicList(data, siteURL: siteURL)
     }
@@ -189,17 +216,19 @@ final class ForumService {
     /// `/site/basic-info.json`, falling back to `/about.json`.
     func fetchSiteInfo(
         siteURL: String,
-        cookieHeader: String? = nil
+        cookieHeader: String? = nil,
+        pace: ForumRequestPace = .default
     ) async throws -> ForumSiteInfo {
         if let url = ForumSite.basicInfoURL(siteURL: siteURL),
-           let data = try? await requestData(url: url, cookieHeader: cookieHeader, resourceLoader: nil),
+           let data = try? await requestData(url: url, cookieHeader: cookieHeader, resourceLoader: nil, pace: pace),
            let info = Self.parseBasicInfo(data, siteURL: siteURL) {
             return info
         }
         guard let url = ForumSite.aboutURL(siteURL: siteURL) else {
             throw AssistantError.invalidResponse
         }
-        let data = try await requestData(url: url, cookieHeader: cookieHeader, resourceLoader: nil)
+        try Task.checkCancellation()
+        let data = try await requestData(url: url, cookieHeader: cookieHeader, resourceLoader: nil, pace: pace)
         guard let info = Self.parseAbout(data, siteURL: siteURL) else {
             throw AssistantError.invalidResponse
         }
@@ -255,13 +284,15 @@ final class ForumService {
         siteURL: String,
         topicID: String,
         cookieHeader: String?,
-        resourceLoader: (@MainActor (URL) async throws -> ForumResourceResponse)? = nil
+        resourceLoader: (@MainActor (URL) async throws -> ForumResourceResponse)? = nil,
+        pace: ForumRequestPace = .default
     ) async throws -> ForumTopicOverview {
         let json = try await fetchTopicJSON(
             siteURL: siteURL,
             topicID: topicID,
             cookieHeader: cookieHeader,
-            resourceLoader: resourceLoader
+            resourceLoader: resourceLoader,
+            pace: pace
         )
         return ForumTopicOverview(
             siteURL: siteURL,
@@ -332,7 +363,8 @@ final class ForumService {
         siteURL: String,
         topicID: String,
         cookieHeader: String?,
-        resourceLoader: (@MainActor (URL) async throws -> ForumResourceResponse)?
+        resourceLoader: (@MainActor (URL) async throws -> ForumResourceResponse)?,
+        pace: ForumRequestPace
     ) async throws -> [String: Any] {
         guard let url = ForumSite.topicJSONURL(siteURL: siteURL, topicID: topicID) else {
             throw AssistantError.invalidResponse
@@ -340,7 +372,8 @@ final class ForumService {
         let data = try await requestData(
             url: url,
             cookieHeader: cookieHeader,
-            resourceLoader: resourceLoader
+            resourceLoader: resourceLoader,
+            pace: pace
         )
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         else {
@@ -366,14 +399,16 @@ final class ForumService {
         siteURL: String,
         topicID: String,
         cookieHeader: String?,
-        resourceLoader: (@MainActor (URL) async throws -> ForumResourceResponse)?
+        resourceLoader: (@MainActor (URL) async throws -> ForumResourceResponse)?,
+        pace: ForumRequestPace
     ) async throws -> Int {
         try Self.postCount(
             from: try await fetchTopicJSON(
                 siteURL: siteURL,
                 topicID: topicID,
                 cookieHeader: cookieHeader,
-                resourceLoader: resourceLoader
+                resourceLoader: resourceLoader,
+                pace: pace
             )
         )
     }
@@ -383,7 +418,8 @@ final class ForumService {
         topicID: String,
         page: Int,
         cookieHeader: String?,
-        resourceLoader: (@MainActor (URL) async throws -> ForumResourceResponse)?
+        resourceLoader: (@MainActor (URL) async throws -> ForumResourceResponse)?,
+        pace: ForumRequestPace
     ) async throws -> RawForumPage {
         guard let url = ForumSite.rawPageURL(siteURL: siteURL, topicID: topicID, page: page) else {
             throw AssistantError.invalidResponse
@@ -391,7 +427,8 @@ final class ForumService {
         let data = try await requestData(
             url: url,
             cookieHeader: cookieHeader,
-            resourceLoader: resourceLoader
+            resourceLoader: resourceLoader,
+            pace: pace
         )
         guard let content = String(data: data, encoding: .utf8) else {
             throw AssistantError.invalidResponse
@@ -399,67 +436,100 @@ final class ForumService {
         return RawForumPage(page: page, content: content)
     }
 
+    /// One forum request, paced per host. A `429` gives the slot back, pushes
+    /// the host's next start back by `Retry-After` (or an exponential
+    /// backoff) and tries again, up to `maximumRetries` times.
     private func requestData(
         url: URL,
         cookieHeader: String?,
-        resourceLoader: (@MainActor (URL) async throws -> ForumResourceResponse)?
+        resourceLoader: (@MainActor (URL) async throws -> ForumResourceResponse)?,
+        pace: ForumRequestPace
     ) async throws -> Data {
         for attempt in 0...maximumRetries {
             try Task.checkCancellation()
+            let host = try await pacer.acquire(for: url, pace: pace)
+            let outcome: Outcome
+            do {
+                outcome = try await attemptRequest(
+                    url: url,
+                    cookieHeader: cookieHeader,
+                    resourceLoader: resourceLoader
+                )
+            } catch {
+                await pacer.release(host)
+                throw error
+            }
 
-            if let resourceLoader {
-                let response = try await resourceLoader(url)
-                if (200..<300).contains(response.statusCode) {
-                    return response.data
-                }
-                if response.statusCode == 429 && attempt < maximumRetries {
-                    let retryAfter = Double(response.retryAfter ?? "")
-                        ?? pow(2, Double(attempt + 1))
-                    try await Task.sleep(for: .seconds(min(60, max(1, retryAfter))))
+            switch outcome {
+            case .success(let data):
+                await pacer.release(host)
+                return data
+            case .failure(let status, let detail, let retryAfter):
+                if status == 429 && attempt < maximumRetries {
+                    // The back-off is in place before the slot passes on:
+                    // a request waiting for it must not start inside it.
+                    let wait = Double(retryAfter ?? "") ?? pow(2, Double(attempt + 1))
+                    await pacer.release(host, backOff: min(60, max(1, wait)))
                     continue
                 }
-                let detail = String(data: response.data, encoding: .utf8)
-                    ?? response.statusText
-                throw AssistantError.http(
-                    response.statusCode,
-                    String(detail.prefix(300))
-                )
+                await pacer.release(host)
+                throw AssistantError.http(status, String(detail.prefix(300)))
             }
-
-            var request = URLRequest(url: url)
-            request.cachePolicy = .reloadIgnoringLocalCacheData
-            request.timeoutInterval = 60
-            request.setValue(
-                "text/html,application/json;q=0.9,*/*;q=0.8",
-                forHTTPHeaderField: "Accept"
-            )
-            request.setValue("en-US,en;q=0.5", forHTTPHeaderField: "Accept-Language")
-            // Only the forum cookies passed in; nothing from the shared jar.
-            request.httpShouldHandleCookies = false
-            if let cookieHeader, !cookieHeader.isEmpty {
-                request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
-            }
-
-            let (data, response) = try await session.data(
-                for: request,
-                delegate: ForumRedirectGuard.shared
-            )
-            guard let http = response as? HTTPURLResponse else {
-                throw AssistantError.invalidResponse
-            }
-            if (200..<300).contains(http.statusCode) {
-                return data
-            }
-            if http.statusCode == 429 && attempt < maximumRetries {
-                let retryAfter = Double(http.value(forHTTPHeaderField: "Retry-After") ?? "")
-                    ?? pow(2, Double(attempt + 1))
-                try await Task.sleep(for: .seconds(min(60, max(1, retryAfter))))
-                continue
-            }
-            let detail = String(data: data, encoding: .utf8) ?? HTTPURLResponse
-                .localizedString(forStatusCode: http.statusCode)
-            throw AssistantError.http(http.statusCode, String(detail.prefix(300)))
         }
         throw AssistantError.invalidResponse
+    }
+
+    private enum Outcome {
+        case success(Data)
+        case failure(status: Int, detail: String, retryAfter: String?)
+    }
+
+    private func attemptRequest(
+        url: URL,
+        cookieHeader: String?,
+        resourceLoader: (@MainActor (URL) async throws -> ForumResourceResponse)?
+    ) async throws -> Outcome {
+        if let resourceLoader {
+            let response = try await resourceLoader(url)
+            if (200..<300).contains(response.statusCode) {
+                return .success(response.data)
+            }
+            return .failure(
+                status: response.statusCode,
+                detail: String(data: response.data, encoding: .utf8) ?? response.statusText,
+                retryAfter: response.retryAfter
+            )
+        }
+
+        var request = URLRequest(url: url)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.timeoutInterval = 60
+        request.setValue(
+            "text/html,application/json;q=0.9,*/*;q=0.8",
+            forHTTPHeaderField: "Accept"
+        )
+        request.setValue("en-US,en;q=0.5", forHTTPHeaderField: "Accept-Language")
+        // Only the forum cookies passed in; nothing from the shared jar.
+        request.httpShouldHandleCookies = false
+        if let cookieHeader, !cookieHeader.isEmpty {
+            request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
+        }
+
+        let (data, response) = try await session.data(
+            for: request,
+            delegate: ForumRedirectGuard.shared
+        )
+        guard let http = response as? HTTPURLResponse else {
+            throw AssistantError.invalidResponse
+        }
+        if (200..<300).contains(http.statusCode) {
+            return .success(data)
+        }
+        return .failure(
+            status: http.statusCode,
+            detail: String(data: data, encoding: .utf8)
+                ?? HTTPURLResponse.localizedString(forStatusCode: http.statusCode),
+            retryAfter: http.value(forHTTPHeaderField: "Retry-After")
+        )
     }
 }

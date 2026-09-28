@@ -173,17 +173,19 @@ final class ContentBlockerRulesTests: XCTestCase {
     }
 
     func testSettingsDecodeDefaultsAndRoundTrip() throws {
+        // Off by default (respecting forum owners who rely on ads), also for
+        // snapshots saved before the setting existed.
         let old = try JSONDecoder().decode(AppSettings.self, from: Data(#"{"browserBarPosition":"bottom"}"#.utf8))
-        XCTAssertTrue(old.contentBlockingEnabled)
-        XCTAssertTrue(old.blockTrackers)
+        XCTAssertFalse(old.contentBlockingEnabled)
+        XCTAssertFalse(old.blockTrackers)
         XCTAssertEqual(old.adBlockAllowedSites, [])
         XCTAssertEqual(old.browserBarPosition, .bottom)
 
         var settings = AppSettings()
-        XCTAssertTrue(settings.contentBlockingEnabled)
-        XCTAssertTrue(settings.blockTrackers)
-        settings.contentBlockingEnabled = false
-        settings.blockTrackers = false
+        XCTAssertFalse(settings.contentBlockingEnabled)
+        XCTAssertFalse(settings.blockTrackers)
+        settings.contentBlockingEnabled = true
+        settings.blockTrackers = true
         settings.adBlockAllowedSites = ["example.com"]
         let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(settings))
         XCTAssertEqual(decoded, settings)
@@ -320,6 +322,41 @@ final class ContentRuleLibraryTests: XCTestCase {
         XCTAssertTrue(blocker.installed.isEmpty)
     }
 
+    /// Blocking is off by default: nothing is looked up, compiled or
+    /// attached, and page loads never wait. Turning it on starts the lists
+    /// and attaches them as they're ready.
+    func testNothingIsCompiledWhileOffAndTurningOnAttachesLists() async throws {
+        let fixture = try RuleFixture()
+        defer { fixture.remove() }
+        let library = fixture.library()
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let store = PersistentStore(fileURL: directory.appendingPathComponent("state.json"), keys: InMemoryProviderKeyStore())
+        let browser = ForumBrowserModel(contentRules: library)
+        let app = AppModel(store: store, browser: browser)
+
+        XCTAssertEqual(library.phase, .idle, "no lookup or compile at launch while off")
+        XCTAssertTrue(library.lists.isEmpty)
+        XCTAssertTrue(library.lookupsFinished, "loads don't wait for lists that were never started")
+        browser.load(URL(string: "https://www.news.site/story")!)
+        XCTAssertTrue(browser.contentBlocker.installed.isEmpty)
+
+        // Settings shows the lists' date without compiling them.
+        library.loadManifestIfNeeded()
+        XCTAssertNotNil(library.manifest)
+        XCTAssertEqual(library.phase, .idle)
+
+        app.turnOnContentBlocking()
+        XCTAssertNotEqual(library.phase, .idle)
+        await library.waitUntilReady()
+        XCTAssertEqual(library.compiledIdentifiers.count, 2)
+        XCTAssertEqual(Set(browser.contentBlocker.installed.keys), Set(library.lists.map(\.identifier)))
+
+        // Turning it off again detaches them.
+        app.settings.contentBlockingEnabled = false
+        app.settings.blockTrackers = false
+        XCTAssertTrue(browser.contentBlocker.installed.isEmpty)
+    }
+
     func testAppModelAllowAndBlockSiteAndReloadDecision() throws {
         let fixture = try RuleFixture()
         defer { fixture.remove() }
@@ -327,7 +364,11 @@ final class ContentRuleLibraryTests: XCTestCase {
         let store = PersistentStore(fileURL: directory.appendingPathComponent("state.json"), keys: InMemoryProviderKeyStore())
         let browser = ForumBrowserModel(contentRules: fixture.library())
         let app = AppModel(store: store, browser: browser)
+        XCTAssertFalse(app.settings.contentBlockingEnabled)
+        XCTAssertEqual(app.contentBlockingStatus(for: URL(string: "https://www.news.site/story")), .off)
+        app.turnOnContentBlocking()
         XCTAssertTrue(app.settings.contentBlockingEnabled)
+        XCTAssertTrue(app.settings.blockTrackers)
 
         let page = URL(string: "https://www.news.site/story")!
         XCTAssertEqual(app.contentBlockingStatus(for: page), .blocking(ads: true, trackers: true))

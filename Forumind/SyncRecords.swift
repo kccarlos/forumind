@@ -309,6 +309,78 @@ enum SyncSchema {
         return units
     }
 
+    /// The assistant model is stored three times: `assistantModel`, and for
+    /// builds without model roles `selectedProvider` plus that provider's
+    /// configured model (in the `configurations.<provider>` unit, with its
+    /// address). Each is its own unit, so a merge can pair one device's
+    /// `assistantModel` with another's provider or configuration: a
+    /// same-second tie, an edit to the same provider's address on a device
+    /// that hadn't seen the new model yet, or an older build's change. This
+    /// settles them in the merged record itself, from the record alone, so
+    /// every device computes the same bytes and applying the record leaves
+    /// `reconcileModelRoles` nothing to do. (Settling it against each
+    /// device's previous state instead makes two devices settle it opposite
+    /// ways and flip the model back and forth.)
+    ///
+    /// The newer side leads; a tie goes to `assistantModel`. The provider is
+    /// settled against `selectedProvider`, the model against that provider's
+    /// configuration. Units that follow take the leader's stamp.
+    static func reconcilingModelRoles(_ record: SyncRecord) -> SyncRecord {
+        guard var fields = record.fields, var stamps = record.stamps,
+              let assistantValue = fields["assistantModel"],
+              let assistant = try? SyncCoding.decode(ModelSelection.self, from: assistantValue),
+              let providerName = fields["selectedProvider"]?.stringValue,
+              let selectedProvider = AIProvider(rawValue: providerName)
+        else {
+            // No roles in the record (an older build's): decoding takes the
+            // assistant model from `selectedProvider` and its configuration.
+            return record
+        }
+        func configurationKey(_ provider: AIProvider) -> String {
+            SyncSettings.configurationPrefix + provider.rawValue
+        }
+        func configuredModel(_ provider: AIProvider) -> String? {
+            fields[configurationKey(provider)]?.objectValue?["model"]?.stringValue
+        }
+        let assistantStamp = stamps["assistantModel"] ?? .distantPast
+        var winner = assistant
+        var leaderStamp = assistantStamp
+        if assistant.provider != selectedProvider {
+            let providerStamp = stamps["selectedProvider"] ?? .distantPast
+            if providerStamp > assistantStamp {
+                winner = ModelSelection(provider: selectedProvider, model: configuredModel(selectedProvider) ?? "")
+                leaderStamp = providerStamp
+            }
+        } else if let configured = configuredModel(selectedProvider), configured != assistant.model {
+            let configurationStamp = stamps[configurationKey(selectedProvider)] ?? .distantPast
+            if configurationStamp > assistantStamp {
+                winner.model = configured
+                leaderStamp = configurationStamp
+            }
+        } else {
+            return record
+        }
+
+        if winner != assistant, let value = try? SyncCoding.json(winner) {
+            fields["assistantModel"] = value
+            stamps["assistantModel"] = leaderStamp
+        }
+        if winner.provider != selectedProvider {
+            fields["selectedProvider"] = .string(winner.provider.rawValue)
+            stamps["selectedProvider"] = max(stamps["selectedProvider"] ?? .distantPast, leaderStamp)
+        }
+        let key = configurationKey(winner.provider)
+        if var configuration = fields[key]?.objectValue, configuration["model"]?.stringValue != winner.model {
+            configuration["model"] = .string(winner.model)
+            fields[key] = .object(configuration)
+            stamps[key] = max(stamps[key] ?? .distantPast, leaderStamp)
+        }
+        var result = record
+        result.fields = fields
+        result.stamps = stamps
+        return result
+    }
+
     /// `local` with synced units applied. API keys and device-local settings
     /// stay as they are on this device.
     static func applying(settingsUnits units: [String: JSONValue], to local: AppSettings) throws -> AppSettings {
@@ -407,10 +479,15 @@ enum SyncPayload {
 enum SyncMerge {
     /// Merges copies of one record (local, remote, conflict versions).
     /// Commutative and associative: the result does not depend on order.
+    /// Settings then get their model roles settled
+    /// (`SyncSchema.reconcilingModelRoles`), from the merged record alone.
     static func merge(_ records: [SyncRecord]) -> SyncRecord? {
         guard var result = records.first else { return nil }
         for record in records.dropFirst() {
             result = merge(result, record)
+        }
+        if result.kind == .settings, !result.isTombstone {
+            result = SyncSchema.reconcilingModelRoles(result)
         }
         return result
     }

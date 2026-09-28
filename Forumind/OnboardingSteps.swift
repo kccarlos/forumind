@@ -118,17 +118,17 @@ struct OnboardingWelcomePage: View {
                 .scaleEffect(appeared || reduceMotion ? 1 : 0.86)
                 .opacity(appeared ? 1 : 0)
             OnboardingHeader(
-                eyebrow: "Welcome to Forumind",
-                title: "Catch up on any Discourse forum in seconds",
-                subtitle: "Browse your forums, get clear summaries of long topics, and ask questions with answers that cite their sources.",
+                eyebrow: String(localized: "Welcome to Forumind"),
+                title: String(localized: "Catch up on any Discourse forum in seconds"),
+                subtitle: String(localized: "Browse your forums, get clear summaries of long topics, and ask questions with answers that cite their sources."),
                 alignment: .center
             )
             .opacity(appeared ? 1 : 0)
             .offset(y: appeared || reduceMotion ? 0 : 12)
             HStack(spacing: DCTheme.spacingS) {
-                DCPill(text: "Summaries", systemImage: "sparkles", tint: DCTheme.summaryTint)
-                DCPill(text: "Chat", systemImage: "bubble.left.and.bubble.right.fill", tint: DCTheme.chatTint)
-                DCPill(text: "Ask the forum", systemImage: "text.magnifyingglass", tint: DCTheme.agentTint)
+                DCPill(text: String(localized: "Summaries"), systemImage: "sparkles", tint: DCTheme.summaryTint)
+                DCPill(text: String(localized: "Chat"), systemImage: "bubble.left.and.bubble.right.fill", tint: DCTheme.chatTint)
+                DCPill(text: String(localized: "Ask the forum"), systemImage: "text.magnifyingglass", tint: DCTheme.agentTint)
             }
             .opacity(appeared ? 1 : 0)
         }
@@ -153,31 +153,31 @@ struct OnboardingFeaturesPage: View {
     var body: some View {
         OnboardingPage {
             OnboardingHeader(
-                eyebrow: "What it does",
-                title: "Three ways to get to the point",
-                subtitle: "Open any topic and the assistant is one tap away."
+                eyebrow: String(localized: "What it does"),
+                title: String(localized: "Three ways to get to the point"),
+                subtitle: String(localized: "Open any topic and the assistant is one tap away.")
             )
             VStack(spacing: DCTheme.spacingM) {
                 featureCard(
                     symbol: "sparkles",
                     tint: DCTheme.summaryTint,
-                    title: "Summaries",
-                    detail: "The original post, how people responded, and the key takeaways, even on topics with thousands of replies.",
-                    example: "“Most replies agree the new version fixes it…”"
+                    title: String(localized: "Summaries"),
+                    detail: String(localized: "The original post, how people responded, and the key takeaways, even on topics with thousands of replies."),
+                    example: String(localized: "“Most replies agree the new version fixes it…”")
                 )
                 featureCard(
                     symbol: "bubble.left.and.bubble.right.fill",
                     tint: DCTheme.chatTint,
-                    title: "Chat about a topic",
-                    detail: "Ask follow-up questions about the page you’re reading. Answers stay grounded in the discussion.",
-                    example: "“What workaround did people suggest?”"
+                    title: String(localized: "Chat about a topic"),
+                    detail: String(localized: "Ask follow-up questions about the page you’re reading. Answers stay grounded in the discussion."),
+                    example: String(localized: "“What workaround did people suggest?”")
                 )
                 featureCard(
                     symbol: "text.magnifyingglass",
                     tint: DCTheme.agentTint,
-                    title: "Ask the forum",
-                    detail: "Ask a question and it searches the forum, reads the best topics, and answers with cited sources like [S1].",
-                    example: "“What’s the best way to self-host this?”"
+                    title: String(localized: "Ask the forum"),
+                    detail: String(localized: "Ask a question and it searches the forum, reads the best topics, and answers with cited sources like [S1]."),
+                    example: String(localized: "“What’s the best way to self-host this?”")
                 )
             }
         }
@@ -217,12 +217,14 @@ struct OnboardingProviderPage: View {
         OnboardingPage {
             OnboardingHeader(
                 eyebrow: OnboardingStep.provider.stepLabel,
-                title: "Connect an AI provider",
+                title: String(localized: "Connect an AI provider"),
                 subtitle: app.appleIntelligenceStatus.isAvailable
-                    ? "Apple Intelligence is built into this device: private, no account, no key. Or connect a provider you already use. You can change this any time in Settings."
-                    : "Forumind doesn’t include its own AI. Connect one you use, or sign up for one. You can change this any time in Settings."
+                    ? String(localized: "Apple Intelligence is built into this device: private, no account, no key. Or connect a provider you already use. You can change this any time in Settings.")
+                    : String(localized: "Forumind doesn’t include its own AI. Connect one you use, or sign up for one. You can change this any time in Settings.")
             )
-            ProviderSetupForm(app: app, state: $state)
+            // One model for everything to start; Settings › AI models can
+            // give Ask the forum its own later.
+            ProviderSetupForm(app: app, scope: .both, state: $state)
         }
     }
 }
@@ -256,8 +258,8 @@ struct OnboardingForumsPage: View {
         OnboardingPage {
             OnboardingHeader(
                 eyebrow: OnboardingStep.forums.stepLabel,
-                title: "Choose your forums",
-                subtitle: "Pin the communities you read. Pinned forums stay at the top of your Forums screen. You can visit any other forum too."
+                title: String(localized: "Choose your forums"),
+                subtitle: String(localized: "Pin the communities you read. Pinned forums stay at the top of your Forums screen. You can visit any other forum too.")
             )
             VStack(spacing: 0) {
                 ForEach(Array(rows.enumerated()), id: \.element.siteURL) { index, row in
@@ -457,28 +459,28 @@ struct OnboardingSyncPage: View {
     var body: some View {
         OnboardingPage {
             OnboardingHeader(
-                eyebrow: "Automatic",
-                title: "Sync across your devices",
-                subtitle: "Your forums, summaries and chats sync across your iPhone and iPad through iCloud — end-to-end encrypted."
+                eyebrow: String(localized: "Automatic"),
+                title: String(localized: "Sync across your devices"),
+                subtitle: String(localized: "Your forums, summaries and chats sync across your iPhone and iPad through iCloud — end-to-end encrypted.")
             )
             VStack(alignment: .leading, spacing: DCTheme.spacingL) {
                 OnboardingFeatureRow(
                     symbol: "icloud.fill",
                     tint: SettingsPage.sync.tint,
-                    title: "Nothing to set up",
-                    detail: "Sign in to the same Apple Account on each device and your data follows you."
+                    title: String(localized: "Nothing to set up"),
+                    detail: String(localized: "Sign in to the same Apple Account on each device and your data follows you.")
                 )
                 OnboardingFeatureRow(
                     symbol: "lock.fill",
                     tint: DCTheme.brandPurple,
-                    title: "End-to-end encrypted",
-                    detail: "Stored in your own iCloud account with keys only your devices have. No server of ours in between."
+                    title: String(localized: "End-to-end encrypted"),
+                    detail: String(localized: "Stored in your own iCloud account with keys only your devices have. No server of ours in between.")
                 )
                 OnboardingFeatureRow(
                     symbol: "key.fill",
                     tint: DCTheme.chatTint,
-                    title: "API keys come along",
-                    detail: "Your keys sync with iCloud Keychain. You can turn that off in Settings › iCloud Sync."
+                    title: String(localized: "API keys come along"),
+                    detail: String(localized: "Your keys sync with iCloud Keychain. You can turn that off in Settings › iCloud Sync.")
                 )
             }
             .dcCard()
@@ -525,9 +527,9 @@ struct OnboardingSharePage: View {
     var body: some View {
         OnboardingPage {
             OnboardingHeader(
-                eyebrow: "Tip",
-                title: "Share from Safari or Chrome",
-                subtitle: "Reading a forum in another browser? Send the page to Forumind in a couple of taps."
+                eyebrow: String(localized: "Tip"),
+                title: String(localized: "Share from Safari or Chrome"),
+                subtitle: String(localized: "Reading a forum in another browser? Send the page to Forumind in a couple of taps.")
             )
             ShareHowToGuide()
         }
@@ -597,11 +599,11 @@ struct ShareSheetIllustration: View {
             }
             Divider()
             HStack(alignment: .top, spacing: 0) {
-                appIcon(symbol: "message.fill", tint: .green, label: "Messages")
-                appIcon(symbol: "envelope.fill", tint: .blue, label: "Mail")
-                appIcon(symbol: "note.text", tint: .orange, label: "Notes")
+                appIcon(symbol: "message.fill", tint: .green, label: String(localized: "Messages", comment: "Name of Apple's Messages app, as shown in the iOS share sheet"))
+                appIcon(symbol: "envelope.fill", tint: .blue, label: String(localized: "Mail", comment: "Name of Apple's Mail app, as shown in the iOS share sheet"))
+                appIcon(symbol: "note.text", tint: .orange, label: String(localized: "Notes", comment: "Name of Apple's Notes app, as shown in the iOS share sheet"))
                 appIcon
-                appIcon(symbol: "ellipsis", tint: .gray, label: "More", plain: true)
+                appIcon(symbol: "ellipsis", tint: .gray, label: String(localized: "More", comment: "The More button at the end of the app row in the iOS share sheet"), plain: true)
             }
         }
         .padding(DCTheme.spacingL)
@@ -654,10 +656,11 @@ struct ShareSheetIllustration: View {
 /// The four actions the Forumind share sheet offers.
 struct ShareActionsIllustration: View {
     private let actions: [(String, String, Color)] = [
-        ("Summarize", "sparkles", .indigo),
-        ("Chat about it", "bubble.left.and.bubble.right.fill", .blue),
-        ("Ask the forum", "text.magnifyingglass", .teal),
-        ("Just open", "safari.fill", .gray)
+        // The share extension's buttons (same wording as ForumindShare).
+        (String(localized: "Summarize"), "sparkles", .indigo),
+        (String(localized: "Chat about it"), "bubble.left.and.bubble.right.fill", .blue),
+        (String(localized: "Ask the forum"), "text.magnifyingglass", .teal),
+        (String(localized: "Just open"), "safari.fill", .gray)
     ]
 
     var body: some View {
@@ -686,9 +689,9 @@ struct OnboardingPrivacyPage: View {
     var body: some View {
         OnboardingPage {
             OnboardingHeader(
-                eyebrow: "Privacy",
-                title: "Your data stays yours",
-                subtitle: "No accounts, no analytics, no servers of ours in the middle."
+                eyebrow: String(localized: "Privacy"),
+                title: String(localized: "Your data stays yours"),
+                subtitle: String(localized: "No accounts, no analytics, no servers of ours in the middle.")
             )
             VStack(alignment: .leading, spacing: DCTheme.spacingL) {
                 PrivacyPoints()
@@ -704,32 +707,32 @@ struct PrivacyPoints: View {
         OnboardingFeatureRow(
             symbol: "key.fill",
             tint: DCTheme.brandPurple,
-            title: "Keys in your Keychain",
-            detail: "Keys are kept in your Keychain and, with Sync API keys on, in iCloud Keychain. They’re sent only to the provider they belong to."
+            title: String(localized: "Keys in your Keychain"),
+            detail: String(localized: "Keys are kept in your Keychain and, with Sync API keys on, in iCloud Keychain. They’re sent only to the provider they belong to.")
         )
         OnboardingFeatureRow(
             symbol: "iphone",
             tint: DCTheme.brandBlue,
-            title: "Saved on your devices",
-            detail: "Summaries, chats, and answers are stored on your device and, with sync, end-to-end encrypted in your own iCloud. Delete them any time in Settings."
+            title: String(localized: "Saved on your devices"),
+            detail: String(localized: "Summaries, chats, and answers are stored on your device and, with sync, end-to-end encrypted in your own iCloud. Delete them any time in Settings.")
         )
         OnboardingFeatureRow(
             symbol: "arrow.left.arrow.right",
             tint: DCTheme.chatTint,
-            title: "Only two destinations",
-            detail: "Requests go only to the forum you’re reading and the AI provider you chose. Sync uses your own iCloud."
+            title: String(localized: "Only two destinations"),
+            detail: String(localized: "Requests go only to the forum you’re reading and the AI provider you chose. Sync uses your own iCloud.")
         )
         OnboardingFeatureRow(
             symbol: "eye.slash.fill",
             tint: DCTheme.warning,
-            title: "No accounts or tracking",
-            detail: "There’s nothing to sign up for, and nothing about how you use the app is collected."
+            title: String(localized: "No accounts or tracking"),
+            detail: String(localized: "There’s nothing to sign up for, and nothing about how you use the app is collected.")
         )
         OnboardingFeatureRow(
             symbol: "shield.lefthalf.filled",
             tint: DCTheme.success,
-            title: "Ads and trackers blocked",
-            detail: "Blocks ads and trackers in the built-in browser."
+            title: String(localized: "Optional ad blocking", comment: "Onboarding privacy row title"),
+            detail: String(localized: "Optional ad and tracker blocking in the built-in browser. It’s off by default; turn it on in Settings › Browser.", comment: "Onboarding privacy row")
         )
     }
 }
@@ -758,23 +761,25 @@ struct OnboardingDonePage: View {
                 .opacity(appeared ? 1 : 0)
                 .accessibilityHidden(true)
             OnboardingHeader(
-                title: "You’re all set",
-                subtitle: "Open a topic and tap the assistant to summarize it, chat about it, or ask the forum.",
+                title: String(localized: "You’re all set"),
+                subtitle: String(localized: "Open a topic and tap the assistant to summarize it, chat about it, or ask the forum."),
                 alignment: .center
             )
             VStack(spacing: 0) {
                 checklistRow(
                     done: app.isProviderReady,
-                    title: app.isProviderReady ? "AI provider: \(app.settings.selectedProvider.displayName)" : "AI provider not connected",
+                    title: app.isProviderReady
+                        ? String(localized: "AI provider: \(app.settings.selectedProvider.displayName)", comment: "Walkthrough checklist. The placeholder is the provider's name, e.g. OpenRouter.")
+                        : String(localized: "AI provider not connected"),
                     detail: app.isProviderReady
                         ? (app.settings.selectedProvider.isAppleIntelligence ? app.appleIntelligenceStatus.title : app.selectedConfiguration.model)
-                        : "Add one any time in Settings › AI provider."
+                        : String(localized: "Add one any time in Settings › AI models.", comment: "Walkthrough checklist; Settings › AI models names the app's own Settings page")
                 )
                 Divider().padding(.leading, 48)
                 checklistRow(
                     done: !app.pinnedForums.isEmpty,
-                    title: app.pinnedForums.isEmpty ? "No pinned forums yet" : pinnedTitle,
-                    detail: app.pinnedForums.isEmpty ? "Pick from suggestions or add any forum by address." : app.pinnedForums.map(\.displayName).joined(separator: ", ")
+                    title: app.pinnedForums.isEmpty ? String(localized: "No pinned forums yet") : pinnedTitle,
+                    detail: app.pinnedForums.isEmpty ? String(localized: "Pick from suggestions or add any forum by address.") : app.pinnedForums.map(\.displayName).joined(separator: ", ")
                 )
                 Divider().padding(.leading, 48)
                 OnboardingDoneSyncRow(app: app)
@@ -790,7 +795,7 @@ struct OnboardingDonePage: View {
 
     private var pinnedTitle: String {
         let count = app.pinnedForums.count
-        return "\(count) pinned \(count == 1 ? "forum" : "forums")"
+        return String(localized: "\(count) pinned forums", comment: "Walkthrough checklist: number of pinned forums")
     }
 
     private func checklistRow(done: Bool, title: String, detail: String) -> some View {
@@ -831,7 +836,7 @@ private struct OnboardingDoneSyncRow: View {
                 .foregroundStyle(on ? DCTheme.success : Color.secondary)
                 .frame(width: 32)
             VStack(alignment: .leading, spacing: 2) {
-                Text(on ? "Syncing across your devices" : (enabled ? SyncStatusPresentation(status).title : "Sync is off"))
+                Text(on ? String(localized: "Syncing across your devices") : (enabled ? SyncStatusPresentation(status).title : String(localized: "Sync is off")))
                     .font(.subheadline.weight(.semibold))
                 Text(on ? "Through your iCloud account" : "Check it any time in Settings › iCloud Sync.")
                     .font(.caption)

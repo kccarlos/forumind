@@ -7,7 +7,7 @@
 		<string>$(DC_IDENTIFIER_PREFIX).watchRefresh</string>
 	</array>
 	<key>CFBundleDevelopmentRegion</key>
-	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<string>en</string>
 	<key>CFBundleDisplayName</key>
 	<string>Forumind</string>
 	<key>CFBundleExecutable</key>

@@ -35,7 +35,7 @@ struct AgentView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
                         if showsProviderCard {
-                            ProviderSetupCard(onSetUp: onSetUpProvider)
+                            ProviderSetupCard(app: app, role: .agent, onSetUp: onSetUpProvider)
                         }
 
                         goalComposer
@@ -163,7 +163,7 @@ struct AgentView: View {
 
     private func goalField(lines: ClosedRange<Int>) -> some View {
         TextField(
-            run == nil ? "Ask \(forum?.displayName ?? "the forum") anything…" : "Ask another question…",
+            goalPlaceholder,
             text: $app.agentGoalDraft,
             axis: .vertical
         )
@@ -179,10 +179,18 @@ struct AgentView: View {
         .accessibilityIdentifier("agentGoalInput")
     }
 
+    private var goalPlaceholder: String {
+        guard run == nil else { return String(localized: "Ask another question…") }
+        if let name = forum?.displayName {
+            return String(localized: "Ask \(name) anything…", comment: "Ask the forum placeholder; the placeholder is a forum name")
+        }
+        return String(localized: "Ask the forum anything…")
+    }
+
     private var budgetText: some View {
         Text(
-            "Reads the forum on its own — up to \(app.settings.agentMaxSteps) steps, "
-                + "\(app.settings.agentMaxTopicReads) topics. It never posts."
+            "Reads the forum on its own — up to \(app.settings.agentMaxSteps) steps, \(app.settings.agentMaxTopicReads) topics. It never posts.",
+            comment: "Ask the forum budget: maximum tool calls (steps) and topic reads per run"
         )
         .font(.caption)
         .foregroundStyle(.secondary)
@@ -237,14 +245,24 @@ struct AgentView: View {
             }
         } label: {
             HStack(spacing: 4) {
-                AssistantForumPill(forum: forum, prefix: "Searching")
+                AssistantForumPill(
+                    forum: forum,
+                    prefix: String(localized: "Searching", comment: "Prefix before the forum name in Ask the forum: “Searching <forum>”")
+                )
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(.secondary)
             }
         }
-        .accessibilityLabel("Searching \(forum?.displayName ?? "no forum"). Change forum")
+        .accessibilityLabel(forumMenuAccessibilityLabel)
         .accessibilityIdentifier("agentForumMenu")
+    }
+
+    private var forumMenuAccessibilityLabel: String {
+        if let name = forum?.displayName {
+            return String(localized: "Searching \(name). Change forum", comment: "Accessibility label; the placeholder is a forum name")
+        }
+        return String(localized: "Searching no forum. Change forum")
     }
 
     private var historyMenu: some View {
@@ -273,9 +291,14 @@ struct AgentView: View {
             Label("How it works", systemImage: "sparkle.magnifyingglass")
                 .font(.headline)
                 .foregroundStyle(DCTheme.agentTint)
-            howItWorks("magnifyingglass", "Searches \(forum?.displayName ?? "the forum") for your question.")
-            howItWorks("text.bubble", "Reads or summarizes the most relevant topics.")
-            howItWorks("checkmark.seal", "Answers with numbered sources you can open.")
+            howItWorks(
+                "magnifyingglass",
+                forum.map {
+                    String(localized: "Searches \($0.displayName) for your question.", comment: "How Ask the forum works; the placeholder is a forum name")
+                } ?? String(localized: "Searches the forum for your question.")
+            )
+            howItWorks("text.bubble", String(localized: "Reads or summarizes the most relevant topics."))
+            howItWorks("checkmark.seal", String(localized: "Answers with numbered sources you can open."))
             Text("Summaries it creates are saved like your own. It can watch topics for new replies.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -344,16 +367,27 @@ struct AgentView: View {
     }
 
     private func runStatusText(_ run: AgentRun) -> String {
-        let steps = "\(run.steps.count) steps · \(run.readTopicCount) topics read"
+        // Two keys so each count gets its own plural form.
+        let steps = [
+            String(localized: "\(run.steps.count) steps", comment: "Ask the forum run progress: tool calls made"),
+            String(localized: "\(run.readTopicCount) topics read", comment: "Ask the forum run progress: topics read")
+        ].joined(separator: " · ")
         switch run.status {
-        case .queued: return "Waiting for a worker · \(steps)"
+        case .queued:
+            return String(localized: "Waiting for a worker · \(steps)", comment: "Run status; the placeholder is “3 steps · 1 topics read”")
         case .running:
-            let latest = activeRecord?.statusText ?? "Working…"
+            let latest = activeRecord?.statusText ?? String(localized: "Working…")
             return "\(latest) · \(steps)"
         case .completed:
-            return "Done · \(steps) · " + (run.completedAt ?? run.updatedAt).formatted(.relative(presentation: .named))
-        case .failed: return "Failed · \(steps)"
-        case .cancelled: return "Cancelled · \(steps)"
+            let when = (run.completedAt ?? run.updatedAt).formatted(.relative(presentation: .named))
+            return String(
+                localized: "Done · \(steps) · \(when)",
+                comment: "Run status; placeholders: “3 steps · 1 topics read” and a relative time such as “2 minutes ago”"
+            )
+        case .failed:
+            return String(localized: "Failed · \(steps)", comment: "Run status; the placeholder is “3 steps · 1 topics read”")
+        case .cancelled:
+            return String(localized: "Cancelled · \(steps)", comment: "Run status; the placeholder is “3 steps · 1 topics read”")
         }
     }
 
@@ -585,7 +619,11 @@ struct AgentView: View {
                                 .foregroundStyle(.primary)
                                 .multilineTextAlignment(.leading)
                                 .lineLimit(2)
-                            Text(source.cited ? (source.url.host ?? "") : "Read, not cited · \(source.url.host ?? "")")
+                            Text(
+                                source.cited
+                                    ? (source.url.host ?? "")
+                                    : String(localized: "Read, not cited · \(source.url.host ?? "")", comment: "Source the agent read but didn't cite; the placeholder is the forum host")
+                            )
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
@@ -701,19 +739,25 @@ struct AgentView: View {
     private func toolTitle(_ step: AgentStep) -> String {
         func topicName() -> String {
             if let topicKey = step.topicKey, let title = app.sessions[topicKey]?.title { return title }
-            return "topic \(step.arguments["topic_id"] ?? "")"
+            let id = step.arguments["topic_id"] ?? ""
+            return String(localized: "topic \(id)", comment: "A topic without a known title; the placeholder is its number")
         }
+        let query = step.arguments["query"] ?? ""
         switch step.tool {
-        case "search_forum": return "Searched “\(step.arguments["query"] ?? "")”"
-        case "list_latest": return "Listed latest topics"
-        case "read_topic": return "Read \(topicName())"
-        case "summarize_topic": return "Summarized \(topicName())"
+        case "search_forum":
+            return String(localized: "Searched “\(query)”", comment: "Agent step; the placeholder is the search query")
+        case "list_latest": return String(localized: "Listed latest topics", comment: "Agent step")
+        case "read_topic":
+            return String(localized: "Read \(topicName())", comment: "Agent step (past tense); the placeholder is a topic title")
+        case "summarize_topic":
+            return String(localized: "Summarized \(topicName())", comment: "Agent step; the placeholder is a topic title")
         case "saved_summaries":
-            return (step.arguments["query"] ?? "").isEmpty
-                ? "Checked saved summaries"
-                : "Saved summaries: \(step.arguments["query"] ?? "")"
-        case "watch_topic": return "Watching \(topicName())"
-        case AgentPrompt.finalAnswerTool: return "Wrote the answer"
+            return query.isEmpty
+                ? String(localized: "Checked saved summaries", comment: "Agent step")
+                : String(localized: "Saved summaries: \(query)", comment: "Agent step; the placeholder is a search query")
+        case "watch_topic":
+            return String(localized: "Watching \(topicName())", comment: "Agent step; the placeholder is a topic title")
+        case AgentPrompt.finalAnswerTool: return String(localized: "Wrote the answer", comment: "Agent step")
         default: return step.tool
         }
     }

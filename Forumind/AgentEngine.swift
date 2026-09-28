@@ -29,8 +29,10 @@ enum AgentActionParseError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .noObject: "The model did not reply with a JSON action."
-        case .missingTool: "The model's action did not name a tool."
+        case .noObject:
+            String(localized: "The model did not reply with a JSON action.", comment: "Ask the forum error: the AI model's reply couldn't be understood")
+        case .missingTool:
+            String(localized: "The model's action did not name a tool.", comment: "Ask the forum error: the AI model's reply didn't say which step to take")
         }
     }
 }
@@ -268,7 +270,10 @@ enum AgentPrompt {
             return "- \(tool.name) — \(tool.description) Arguments: \(parameters)."
         }.joined(separator: "\n")
         let extra = customInstructions.trimmingCharacters(in: .whitespacesAndNewlines)
-        let dateText = today.formatted(date: .long, time: .omitted)
+        // English like the rest of the prompt, whatever the app's language.
+        let dateText = today.formatted(
+            Date.FormatStyle(date: .long, time: .omitted).locale(Locale(identifier: "en_US_POSIX"))
+        )
         return """
         You are a research agent for \(forumName) (\(siteURL)), a Discourse forum.
         Today is \(dateText). Work toward the user's goal by calling tools one at a time,

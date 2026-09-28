@@ -9,8 +9,14 @@
 #     description <= 4000, release notes <= 4000
 #   - keywords: comma-separated, no empty entries, no duplicates
 #   - URLs are https
-#   - screenshots (if any): PNG/JPEG at a size App Store Connect accepts for
-#     the device class their file name starts with (iphone*, ipad*)
+#   - every locale folder in metadata/ (en-US, zh-Hans, zh-Hant, …) gets the
+#     same checks
+#   - screenshots (if any, one folder per locale, at most 10 per device class
+#     each): PNG/JPEG at a size App Store Connect accepts for
+#     the device class their file name starts with (iphone*, ipad*), and PNGs
+#     without an alpha channel (App Store Connect rejects transparency).
+#     Only appstore/screenshots/ is checked; the raw captures the renderer
+#     reads live in appstore/screenshots-raw/ and are never uploaded.
 #
 # Usage: scripts/ci/check-appstore-metadata.sh [appstore-dir]
 # Needs: python3 (stdlib only). Runs on macOS and Linux.
@@ -103,6 +109,14 @@ SIZES = {
 }
 
 
+def png_has_alpha(path):
+    # IHDR color type: 4 = gray + alpha, 6 = RGB + alpha. (A tRNS chunk can
+    # also add transparency; the renderer never writes one.)
+    with open(path, "rb") as fh:
+        head = fh.read(26)
+    return head[:8] == b"\x89PNG\r\n\x1a\n" and head[25] in (4, 6)
+
+
 def image_size(path):
     with open(path, "rb") as fh:
         head = fh.read(26)
@@ -142,11 +156,23 @@ if os.path.isdir(shots):
             w, h = size
             if (w, h) not in SIZES[kind] and (h, w) not in SIZES[kind]:
                 fail(path, f"{w}x{h} is not an accepted {kind} screenshot size")
+            if png_has_alpha(path):
+                fail(path, "PNG has an alpha channel; screenshots must be opaque")
             count += 1
-    for kind in SIZES:
-        n = sum(1 for _, _, fs in os.walk(shots) for f in fs if f.lower().startswith(kind))
-        if n > 10:
-            fail(shots, f"{n} {kind} screenshots per locale; the limit is 10")
+    # One folder per locale (en-US, zh-Hans, …); the limit is per locale and
+    # device class.
+    for locale in sorted(os.listdir(shots)):
+        folder = os.path.join(shots, locale)
+        if not os.path.isdir(folder):
+            continue
+        if locale not in locales:
+            fail(folder, f"screenshot locale {locale!r} has no metadata/{locale}/ folder")
+        for kind in SIZES:
+            n = sum(1 for _, _, fs in os.walk(folder) for f in fs if f.lower().startswith(kind))
+            if n > 10:
+                fail(folder, f"{n} {kind} screenshots; the limit is 10 per locale")
+        print(f"screenshots/{locale}: " + ", ".join(
+            f"{sum(1 for f in os.listdir(folder) if f.lower().startswith(k))} {k}" for k in SIZES))
 print(f"screenshots checked: {count}")
 
 if errors:

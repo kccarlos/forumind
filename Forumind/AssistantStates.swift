@@ -5,20 +5,31 @@ import SwiftUI
 // switcher, provider setup card, progress bar, typing indicator.
 
 extension AssistantMode {
-    /// Visible title; the accessibility tree keeps `rawValue` ("Agent").
+    /// Visible title; the accessibility tree uses `accessibilityTitle`.
     var title: String {
         switch self {
-        case .summary: "Summary"
-        case .chat: "Chat"
-        case .agent: "Ask the forum"
+        case .summary: String(localized: "Summary", comment: "Assistant mode: the topic's AI summary")
+        case .chat: String(localized: "Chat", comment: "Assistant mode: chat about the open topic")
+        case .agent: String(localized: "Ask the forum", comment: "Assistant mode: the research agent that searches the whole forum")
         }
     }
 
+    /// The name in the accessibility tree ("Summary", "Chat", "Agent" in
+    /// English, as the UI tests expect), translated for VoiceOver.
+    var accessibilityTitle: String {
+        switch self {
+        case .summary: String(localized: "Summary", comment: "Assistant mode: the topic's AI summary")
+        case .chat: String(localized: "Chat", comment: "Assistant mode: chat about the open topic")
+        case .agent: String(localized: "Agent", comment: "VoiceOver name of the “Ask the forum” assistant mode (the research agent)")
+        }
+    }
+
+    /// Used when the full titles don't fit the mode switcher.
     var shortTitle: String {
         switch self {
-        case .summary: "Summary"
-        case .chat: "Chat"
-        case .agent: "Ask"
+        case .summary: String(localized: "Summary", comment: "Assistant mode: the topic's AI summary")
+        case .chat: String(localized: "Chat", comment: "Assistant mode: chat about the open topic")
+        case .agent: String(localized: "Ask", comment: "Short form of the “Ask the forum” assistant mode, for narrow switchers")
         }
     }
 
@@ -113,9 +124,13 @@ struct AssistantForumPill: View {
     }
 
     private var label: String {
-        let name = forum?.displayName ?? "No forum"
+        let name = forum?.displayName ?? String(localized: "No forum")
         guard let prefix else { return name }
-        return "\(prefix) \(name)"
+        return String(
+            localized: "forumPill.prefixAndName",
+            defaultValue: "\(prefix) \(name)",
+            comment: "Pill with a forum's icon: an action (e.g. “Searching”), then the forum name"
+        )
     }
 }
 
@@ -148,7 +163,7 @@ struct AssistantModeSwitcher: View {
         .accessibilityRepresentation {
             Picker("Assistant mode", selection: $mode) {
                 ForEach(AssistantMode.allCases) { item in
-                    Text(item.rawValue).tag(item)
+                    Text(item.accessibilityTitle).tag(item)
                 }
             }
             .pickerStyle(.segmented)
@@ -212,9 +227,33 @@ struct AssistantModeSwitcher: View {
 
 // MARK: - Provider setup
 
-/// Shown above the assistant while no AI provider is configured.
+/// Shown above the assistant while the mode's model can't run. When only
+/// that role is missing (the other one works), it says so.
 struct ProviderSetupCard: View {
+    @ObservedObject var app: AppModel
+    let role: ModelRole
     let onSetUp: () -> Void
+
+    /// The other role works: only this one needs a model.
+    private var onlyThisRole: Bool { app.isProviderReady(for: role.other) }
+
+    private var title: String {
+        guard onlyThisRole else { return String(localized: "Connect an AI provider") }
+        switch role {
+        case .assistant: return String(localized: "Choose a model for summaries & chat", comment: "Assistant card when only the summaries & chat model isn't ready")
+        case .agent: return String(localized: "Choose a model for Ask the forum", comment: "Assistant card when only the Ask the forum model isn't ready")
+        }
+    }
+
+    private var detail: String {
+        guard onlyThisRole else {
+            return String(localized: "Summaries, chat and Ask the forum use your own key. It stays in the Keychain.")
+        }
+        return String(
+            localized: "\(app.providerSummary(for: role)) isn’t ready. Pick a model or add its key in Settings › AI models.",
+            comment: "Assistant card when one model role isn't ready. The placeholder is a provider and model, e.g. DeepSeek · deepseek-chat."
+        )
+    }
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
@@ -225,9 +264,9 @@ struct ProviderSetupCard: View {
                 .background(DCTheme.brandGradient, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Connect an AI provider")
+                Text(title)
                     .font(.subheadline.weight(.semibold))
-                Text("Summaries, chat and Ask the forum use your own key. It stays in the Keychain.")
+                Text(detail)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -380,14 +419,15 @@ struct TypingIndicator: View {
 
 /// Eyebrow + title + text header shared by the state cards.
 private struct StateCardHeader: View {
-    let eyebrow: String
-    let title: String
-    var text: String?
+    let eyebrow: LocalizedStringKey
+    let title: LocalizedStringKey
+    var text: LocalizedStringKey?
     var tint: Color = DCTheme.brandBlue
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(eyebrow.uppercased())
+            Text(eyebrow)
+                .textCase(.uppercase)
                 .font(.caption.weight(.bold))
                 .kerning(0.8)
                 .foregroundStyle(tint)
@@ -509,8 +549,7 @@ struct NotForumState: View {
             StateCardHeader(
                 eyebrow: "Current page",
                 title: "This page isn’t a Discourse forum",
-                text: "Forumind works on forums built with Discourse. Open one to summarize "
-                    + "topics, chat about them, or ask the whole forum a question.",
+                text: "Forumind works on forums built with Discourse. Open one to summarize topics, chat about them, or ask the whole forum a question.",
                 tint: .secondary
             )
             if let host = app.pageContext.url?.host {
@@ -523,7 +562,7 @@ struct NotForumState: View {
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(.secondary)
                     ForEach(forums) { forum in
-                        AssistantForumRow(forum: forum, detail: forum.isPinned ? "Pinned · \(forum.host)" : forum.host) {
+                        AssistantForumRow(forum: forum, detail: forum.isPinned ? String(localized: "Pinned · \(forum.host)") : forum.host) {
                             app.openForum(forum)
                         }
                     }
@@ -566,15 +605,14 @@ struct MaybeForumState: View {
     @State private var adding = false
     @State private var errorText: String?
 
-    private var host: String { app.pageContext.url?.host ?? "this site" }
+    private var host: String { app.pageContext.url?.host ?? String(localized: "this site") }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             StateCardHeader(
                 eyebrow: "Looks like a Discourse topic",
                 title: "Is this a Discourse forum?",
-                text: "Forumind couldn’t confirm \(host) yet. If it’s a Discourse forum, "
-                    + "add it so the assistant can read topics with your current login.",
+                text: "Forumind couldn’t confirm \(host) yet. If it’s a Discourse forum, add it so the assistant can read topics with your current login.",
                 tint: DCTheme.warning
             )
             VStack(alignment: .leading, spacing: 8) {
@@ -615,7 +653,7 @@ struct MaybeForumState: View {
         .accessibilityIdentifier("maybeForumState")
     }
 
-    private func step(_ number: Int, _ text: String) -> some View {
+    private func step(_ number: Int, _ text: LocalizedStringKey) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text("\(number)")
                 .font(.caption.weight(.bold))
@@ -651,10 +689,12 @@ struct ForumHomeState: View {
     let forum: Forum
     @FocusState private var focused: Bool
 
+    /// Example goals; sent to the model as the user's question, so they are
+    /// in the app's language (the answer follows the question's language).
     private let examples = [
-        "What are people discussing this week?",
-        "Most helpful answers about getting started",
-        "Common problems people report lately"
+        String(localized: "What are people discussing this week?", comment: "Example question for the forum research agent"),
+        String(localized: "Most helpful answers about getting started", comment: "Example question for the forum research agent"),
+        String(localized: "Common problems people report lately", comment: "Example question for the forum research agent")
     ]
 
     private var canAsk: Bool {
@@ -731,7 +771,7 @@ struct ForumHomeState: View {
         let sessions = app.recentSessions(siteURL: forum.siteURL)
         let runs = Array(app.agentRuns.filter { $0.siteURL == forum.siteURL }.prefix(3))
         VStack(alignment: .leading, spacing: 10) {
-            DCSectionHeader(title: "Recent on \(forum.displayName)")
+            DCSectionHeader(title: String(localized: "Recent on \(forum.displayName)", comment: "Section header; the placeholder is the forum name"))
             if sessions.isEmpty, runs.isEmpty {
                 Text("Topics you summarize or chat about here, and your questions to the forum, show up here.")
                     .font(.subheadline)
@@ -752,7 +792,7 @@ struct ForumHomeState: View {
                     icon: "sparkle.magnifyingglass",
                     tint: DCTheme.agentTint,
                     title: run.goal,
-                    detail: "Asked \(run.createdAt.formatted(.relative(presentation: .named)))"
+                    detail: String(localized: "Asked \(run.createdAt.formatted(.relative(presentation: .named)))", comment: "When a question to the forum was asked; the placeholder is a relative time such as “2 hours ago”")
                 ) {
                     app.openAgentRun(id: run.id)
                 }
@@ -763,8 +803,8 @@ struct ForumHomeState: View {
 
     private func sessionDetail(_ session: TopicSession) -> String {
         var parts: [String] = []
-        if session.hasSummary { parts.append("Summary") }
-        if !session.history.isEmpty { parts.append("\(session.history.count) messages") }
+        if session.hasSummary { parts.append(String(localized: "Summary", comment: "Assistant mode: the topic's AI summary")) }
+        if !session.history.isEmpty { parts.append(String(localized: "\(session.history.count) messages", comment: "Number of chat messages")) }
         parts.append(session.lastAccessedAt.formatted(.relative(presentation: .named)))
         return parts.joined(separator: " · ")
     }

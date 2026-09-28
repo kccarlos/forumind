@@ -70,7 +70,7 @@ final class CloudSyncController: ObservableObject, CloudSyncTransportDelegate {
 
     static let enabledKey = "cloudSync.enabled"
     static let lastSyncedKey = "cloudSync.lastSyncedAt"
-    nonisolated static let unsignedBuildReason = "Sync needs a signed build"
+    nonisolated static let unsignedBuildReason = String(localized: "Sync needs a signed build", comment: "iCloud sync status: this build of the app is unsigned, so iCloud can't be used (developer builds)")
 
     let engine: CloudSyncEngine
     let transport: CloudSyncTransport?
@@ -153,7 +153,7 @@ final class CloudSyncController: ObservableObject, CloudSyncTransportDelegate {
         let arguments = ProcessInfo.processInfo.arguments
         if AssistantDebug.isActive || arguments.contains(where: { $0.hasPrefix("-ui-test-") }) {
             return CloudSyncController(
-                transport: nil, unavailableReason: "Sync is off for sample data",
+                transport: nil, unavailableReason: String(localized: "Sync is off for sample data"),
                 files: nil, defaults: nil, schedulesAutomatically: false
             )
         }
@@ -312,8 +312,8 @@ final class CloudSyncController: ObservableObject, CloudSyncTransportDelegate {
         switch accountStatus {
         case .noAccount: return .noAccount
         case .restricted: return .restricted
-        case .temporarilyUnavailable: return .unavailable("iCloud is temporarily unavailable.")
-        case .couldNotDetermine: return .unavailable("Couldn’t check your iCloud account.")
+        case .temporarilyUnavailable: return .unavailable(String(localized: "iCloud is temporarily unavailable."))
+        case .couldNotDetermine: return .unavailable(String(localized: "Couldn’t check your iCloud account."))
         case nil, .available: break
         }
         if let message = lastError ?? unreadableMessage { return .error(message) }
@@ -703,8 +703,7 @@ final class CloudSyncController: ObservableObject, CloudSyncTransportDelegate {
         let count = await engine.unreadable.count
         unreadableMessage = switch count {
         case 0: nil
-        case 1: "1 synced item couldn’t be read and was skipped."
-        default: "\(count) synced items couldn’t be read and were skipped."
+        default: String(localized: "\(count) synced items couldn’t be read and were skipped.", comment: "iCloud sync status. Plural: 1 synced item couldn’t be read and was skipped.")
         }
         refreshStatus()
     }

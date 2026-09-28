@@ -35,7 +35,7 @@ unit this device didn't touch can't beat a remote edit.
 
 | Data | Record kind | Merge rule |
 |---|---|---|
-| Settings, except device-local ones | `settings` (one record) | per setting, newest wins; each provider configuration is one unit, without its API key |
+| Settings, except device-local ones | `settings` (one record) | per setting, newest wins; each provider configuration is one unit, without its API key; the Summaries & chat model (`assistantModel`) and the Ask the forum model (`agentModel`) are separate units, so two devices changing different ones both keep their change |
 | Forums | `forum`, one per forum | newest wins; `addedAt` takes the minimum, `lastVisitedAt` the maximum |
 | Topic sessions: summary, chat, instructions, kept flag, counts | `session`, one per topic | newest wins per unit; the chat history is one unit (never merged message by message, so a cleared or edited chat can't come back), and the summary travels with its post count, time, provider, and model; `createdAt` min, `updatedAt` / `lastAccessedAt` max |
 | Ask the forum runs, including the transcript | `run`, one per run | the run as a whole, newest wins |
@@ -43,6 +43,22 @@ unit this device didn't touch can't beat a remote edit.
 
 An unkept chat that expired (24 hours idle) counts as cleared on every
 device.
+
+**Model roles and older builds.** Builds from before model roles read
+`selectedProvider` and that provider's configured model. Newer builds keep
+both equal to the Summaries & chat model, so an older build on another device
+runs the same model. When an older build changes the provider (or that
+provider's model), the change moves the Summaries & chat model only; the Ask
+the forum model stays. Because the Summaries & chat model is stored in
+three units (`assistantModel`, `selectedProvider`, and that provider's
+configuration), a merge can pair one device's model with another device's
+provider or configuration (a same-second tie, or an edit to that provider's
+address on a device that hadn't seen the new model yet). The merge settles
+this in the record itself: the newest of those units leads (a tie goes to
+`assistantModel`) and the others follow, so every device computes the same
+record and nothing flips back and forth. A synced model whose provider has
+no key on a device shows that role as not ready there ("Set up" in Settings › AI models, and the
+setup card in that mode); the other role keeps working.
 
 **Stays on each device:** API keys (they sync only through iCloud Keychain),
 **Sync API keys**, whether sync is on, the work queue and activity log,

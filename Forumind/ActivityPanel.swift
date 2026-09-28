@@ -20,6 +20,18 @@ struct ActivityPanel: View {
 
         var id: String { rawValue }
 
+        /// The filter chip's title (the raw value stays the English
+        /// identifier used by `manageKind-…` and `-dc-manage-kind`).
+        var title: String {
+            switch self {
+            case .all: String(localized: "All", comment: "Manage filter chip: show everything")
+            case .summaries: String(localized: "Summaries & chats", comment: "Manage filter chip")
+            case .agent: String(localized: "Agent runs", comment: "Manage filter chip: Ask the forum runs")
+            case .watched: String(localized: "Watched", comment: "Manage filter chip: watched topics")
+            case .activity: String(localized: "Activity", comment: "Manage filter chip: running and recent tasks")
+            }
+        }
+
         var systemImage: String {
             switch self {
             case .all: "square.stack"
@@ -192,7 +204,7 @@ struct ActivityPanel: View {
             withAnimation(DCMotion.respecting(reduceMotion, DCMotion.quick)) { kind = item }
         } label: {
             HStack(spacing: 5) {
-                Text(item.rawValue)
+                Text(item.title)
                 if item != .all, count(item) > 0 {
                     Text("\(count(item))")
                         .font(.caption2.weight(.bold).monospacedDigit())
@@ -255,7 +267,9 @@ struct ActivityPanel: View {
             .contentShape(Rectangle())
         }
         .accessibilityLabel(
-            forumFilter.map { "Forum: \(app.forumInfo(siteURL: $0).displayName)" } ?? "Forum: all forums"
+            forumFilter.map {
+                String(localized: "Forum: \(app.forumInfo(siteURL: $0).displayName)", comment: "Accessibility label of Manage's forum filter; the placeholder is a forum name")
+            } ?? String(localized: "Forum: all forums")
         )
         .accessibilityIdentifier("manageForumFilter")
     }
@@ -340,7 +354,7 @@ struct ActivityPanel: View {
         }
     }
 
-    private func sectionHeader(_ title: String, count: Int) -> some View {
+    private func sectionHeader(_ title: LocalizedStringKey, count: Int) -> some View {
         HStack(spacing: 6) {
             Text(title)
             if count > 0 {
@@ -354,7 +368,7 @@ struct ActivityPanel: View {
         }
     }
 
-    private func emptyRow(_ text: String, systemImage: String) -> some View {
+    private func emptyRow(_ text: LocalizedStringKey, systemImage: String) -> some View {
         Label(text, systemImage: systemImage)
             .font(.subheadline)
             .foregroundStyle(.secondary)
@@ -413,7 +427,7 @@ struct ActivityPanel: View {
     private func perForumSections<Item: Identifiable, Row: View>(
         _ items: [Item],
         siteURL: @escaping (Item) -> String,
-        empty: String,
+        empty: LocalizedStringKey,
         @ViewBuilder row: @escaping (Item) -> Row
     ) -> some View {
         if items.isEmpty {
@@ -649,8 +663,8 @@ struct ActivityPanel: View {
 
     private func savedDetail(_ session: TopicSession) -> String {
         var parts: [String] = []
-        parts.append("\(session.summaryPostCount ?? session.totalPosts ?? 0) posts")
-        parts.append("\(session.history.count) chat messages")
+        parts.append(String(localized: "\(session.summaryPostCount ?? session.totalPosts ?? 0) posts"))
+        parts.append(String(localized: "\(session.history.count) chat messages"))
         parts.append(session.updatedAt.formatted(.relative(presentation: .named)))
         return parts.joined(separator: " · ")
     }
@@ -703,11 +717,12 @@ struct ActivityPanel: View {
 
     private func watchedDetail(_ watched: WatchedTopic) -> String {
         var parts: [String] = []
-        parts.append("\(watched.knownPostCount) posts")
+        parts.append(String(localized: "\(watched.knownPostCount) posts"))
         if let checked = watched.lastCheckedAt {
-            parts.append("checked \(checked.formatted(.relative(presentation: .named)))")
+            let relative = checked.formatted(.relative(presentation: .named))
+            parts.append(String(localized: "checked \(relative)", comment: "Watched topic detail; the placeholder is a relative time such as “5 minutes ago”"))
         } else {
-            parts.append("not checked yet")
+            parts.append(String(localized: "not checked yet", comment: "Watched topic detail"))
         }
         return parts.joined(separator: " · ")
     }
@@ -758,11 +773,21 @@ struct ActivityPanel: View {
 
     private func runDetail(_ run: AgentRun) -> String {
         var parts: [String] = []
-        parts.append(run.status.rawValue.capitalized)
-        parts.append(run.steps.count == 1 ? "1 step" : "\(run.steps.count) steps")
-        parts.append(run.readTopicCount == 1 ? "1 topic" : "\(run.readTopicCount) topics")
+        parts.append(statusTitle(run.status))
+        parts.append(String(localized: "\(run.steps.count) steps", comment: "Agent run detail: tool calls made"))
+        parts.append(String(localized: "\(run.readTopicCount) topics", comment: "Agent run detail: topics read"))
         parts.append(run.createdAt.formatted(.relative(presentation: .named)))
         return parts.joined(separator: " · ")
+    }
+
+    private func statusTitle(_ status: WorkStatus) -> String {
+        switch status {
+        case .queued: String(localized: "Queued", comment: "Work status")
+        case .running: String(localized: "Running", comment: "Work status")
+        case .completed: String(localized: "Completed", comment: "Work status")
+        case .failed: String(localized: "Failed", comment: "Work status")
+        case .cancelled: String(localized: "Cancelled", comment: "Work status")
+        }
     }
 
     @ViewBuilder

@@ -43,7 +43,7 @@ extension AppModel {
         assistantMode = .agent
         panelRoute = .topic
         presentAssistant = true
-        if !isProviderReady { needsProviderSetup = true }
+        if !isProviderReady(for: .agent) { needsProviderSetup = .agent }
     }
 
     /// The forum of the current page (or, off-forum, the current forum).
@@ -77,14 +77,14 @@ extension AppModel {
         if arguments.contains("-dc-seed-forums"), forums.isEmpty {
             // Discourse Meta plus fictional communities on reserved example
             // domains (screenshots show no real companies).
-            let pinned = [
-                Forum(siteURL: "https://meta.discourse.org", name: "Discourse Meta"),
-                Forum(siteURL: "https://community.example.org", name: "Maker Space Community"),
-                Forum(siteURL: "https://talk.example.com", name: "Trail Runners Club")
-            ]
+            // Names in the app's language (SampleContent.swift).
+            let text = SampleContent.current
+            let pinned = [text.meta, text.makers, text.trailRunners].map {
+                Forum(siteURL: $0.siteURL, name: $0.name)
+            }
             pinned.forEach(pin)
-            recordVisit(siteURL: "https://forum.example.net", name: "Home Lab Forum", iconURL: nil)
-            recordVisit(siteURL: "https://bakers.example.org", name: "Sourdough Bakers", iconURL: nil)
+            recordVisit(siteURL: text.homeLab.siteURL, name: text.homeLab.name, iconURL: nil)
+            recordVisit(siteURL: text.bakers.siteURL, name: text.bakers.name, iconURL: nil)
             if ForumIconPolicy.loadsRemoteIcons {
                 for forum in forums { refreshForumInfo(siteURL: forum.siteURL) }
             }

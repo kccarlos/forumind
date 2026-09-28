@@ -42,24 +42,24 @@ enum OnboardingStep: Int, CaseIterable, Identifiable, Hashable {
     /// Short title used for accessibility ("Step 3 of 8: Connect an AI provider").
     var title: String {
         switch self {
-        case .welcome: "Welcome"
-        case .features: "What it does"
-        case .provider: "Connect an AI provider"
-        case .forums: "Choose your forums"
-        case .sync: "Sync across your devices"
-        case .share: "Share from Safari or Chrome"
-        case .privacy: "Your privacy"
-        case .done: "You’re all set"
+        case .welcome: String(localized: "Welcome")
+        case .features: String(localized: "What it does")
+        case .provider: String(localized: "Connect an AI provider")
+        case .forums: String(localized: "Choose your forums")
+        case .sync: String(localized: "Sync across your devices")
+        case .share: String(localized: "Share from Safari or Chrome")
+        case .privacy: String(localized: "Your privacy")
+        case .done: String(localized: "You’re all set")
         }
     }
 
     /// "Step 3 of 8": matches the progress dots (which include Welcome and Done).
     var stepLabel: String {
-        "Step \(rawValue + 1) of \(Self.allCases.count)"
+        String(localized: "Step \(rawValue + 1) of \(Self.allCases.count)", comment: "Walkthrough progress, e.g. Step 3 of 8")
     }
 
     var accessibilityLabel: String {
-        "Step \(rawValue + 1) of \(Self.allCases.count): \(title)"
+        String(localized: "Step \(rawValue + 1) of \(Self.allCases.count): \(title)", comment: "Walkthrough progress for VoiceOver: step number, total, step title")
     }
 
     /// Steps the user may skip past (optional setup).
@@ -73,9 +73,9 @@ enum OnboardingStep: Int, CaseIterable, Identifiable, Hashable {
     /// Label of the primary button on this step.
     var continueTitle: String {
         switch self {
-        case .welcome: "Get started"
-        case .done: "Finish"
-        default: "Continue"
+        case .welcome: String(localized: "Get started")
+        case .done: String(localized: "Finish")
+        default: String(localized: "Continue")
         }
     }
 
@@ -105,82 +105,81 @@ struct ProviderGuide: Equatable {
     var linkTitle: String
     /// Extra advice shown under the fields.
     var note: String?
-
-    var isLocal: Bool { linkTitle.hasPrefix("Download") }
+    /// A local server (Ollama, LM Studio): the link downloads the app.
+    var isLocal = false
 
     static func guide(for provider: AIProvider) -> ProviderGuide {
         switch provider {
         case .appleIntelligence:
             ProviderGuide(
-                blurb: "Built in and private. Runs on this device or on Apple’s Private Cloud Compute; nothing goes anywhere else. No key, no bill.",
+                blurb: String(localized: "Built in and private. Runs on this device or on Apple’s Private Cloud Compute; nothing goes anywhere else. No key, no bill."),
                 link: URL(string: "https://www.apple.com/apple-intelligence/")!,
-                linkTitle: "About Apple Intelligence",
-                note: "Needs iOS 26 or later on a device that supports Apple Intelligence, with Apple Intelligence turned on in Settings."
+                linkTitle: String(localized: "About Apple Intelligence"),
+                note: String(localized: "Needs iOS 26 or later on a device that supports Apple Intelligence, with Apple Intelligence turned on in Settings.")
             )
         case .openRouter:
             ProviderGuide(
-                blurb: "One key, hundreds of models. An easy place to start.",
+                blurb: String(localized: "One key, hundreds of models. An easy place to start."),
                 link: URL(string: "https://openrouter.ai/keys")!,
-                linkTitle: "Get a key at openrouter.ai"
+                linkTitle: String(localized: "Get a key at openrouter.ai")
             )
         case .openAI:
             ProviderGuide(
-                blurb: "GPT models from OpenAI.",
+                blurb: String(localized: "GPT models from OpenAI."),
                 link: URL(string: "https://platform.openai.com/api-keys")!,
-                linkTitle: "Get a key at platform.openai.com"
+                linkTitle: String(localized: "Get a key at platform.openai.com")
             )
         case .anthropic:
             ProviderGuide(
-                blurb: "Claude models from Anthropic.",
+                blurb: String(localized: "Claude models from Anthropic."),
                 link: URL(string: "https://console.anthropic.com/settings/keys")!,
-                linkTitle: "Get a key at console.anthropic.com"
+                linkTitle: String(localized: "Get a key at console.anthropic.com")
             )
         case .groq:
             ProviderGuide(
-                blurb: "Very fast open models, with a free tier.",
+                blurb: String(localized: "Very fast open models, with a free tier."),
                 link: URL(string: "https://console.groq.com/keys")!,
-                linkTitle: "Get a key at console.groq.com"
+                linkTitle: String(localized: "Get a key at console.groq.com")
             )
         case .gemini:
             ProviderGuide(
-                blurb: "Gemini models from Google, with a free tier.",
+                blurb: String(localized: "Gemini models from Google, with a free tier."),
                 link: URL(string: "https://aistudio.google.com/app/apikey")!,
-                linkTitle: "Get a key in Google AI Studio"
+                linkTitle: String(localized: "Get a key in Google AI Studio")
             )
         case .ollama:
             ProviderGuide(
-                blurb: "Runs on your own computer. No key and no usage bill.",
+                blurb: String(localized: "Runs on your own computer. No key and no usage bill."),
                 link: URL(string: "https://ollama.com/download")!,
-                linkTitle: "Download Ollama",
-                note: "Use your computer’s network address (for example "
-                    + "http://192.168.1.20:11434), not localhost, and start Ollama "
-                    + "with OLLAMA_HOST=0.0.0.0 so your iPhone or iPad can reach it."
+                linkTitle: String(localized: "Download Ollama"),
+                note: String(localized: "Use your computer’s network address (for example http://192.168.1.20:11434), not localhost, and start Ollama with OLLAMA_HOST=0.0.0.0 so your iPhone or iPad can reach it."),
+                isLocal: true
             )
         case .xAI:
             ProviderGuide(
-                blurb: "Grok models from xAI.",
+                blurb: String(localized: "Grok models from xAI."),
                 link: URL(string: "https://console.x.ai")!,
-                linkTitle: "Get a key at console.x.ai"
+                linkTitle: String(localized: "Get a key at console.x.ai")
             )
         case .deepSeek:
             ProviderGuide(
-                blurb: "DeepSeek’s low-cost chat and reasoning models.",
+                blurb: String(localized: "DeepSeek’s low-cost chat and reasoning models."),
                 link: URL(string: "https://platform.deepseek.com/api_keys")!,
-                linkTitle: "Get a key at platform.deepseek.com"
+                linkTitle: String(localized: "Get a key at platform.deepseek.com")
             )
         case .lmStudio:
             ProviderGuide(
-                blurb: "Runs on your own computer. No key and no usage bill.",
+                blurb: String(localized: "Runs on your own computer. No key and no usage bill."),
                 link: URL(string: "https://lmstudio.ai")!,
-                linkTitle: "Download LM Studio",
-                note: "Turn on “Serve on Local Network” in LM Studio and use your "
-                    + "computer’s network address (for example http://192.168.1.20:1234/v1)."
+                linkTitle: String(localized: "Download LM Studio"),
+                note: String(localized: "Turn on “Serve on Local Network” in LM Studio and use your computer’s network address (for example http://192.168.1.20:1234/v1).", comment: "“Serve on Local Network” is the name of a setting in LM Studio (English UI)."),
+                isLocal: true
             )
         case .nvidia:
             ProviderGuide(
-                blurb: "Open models hosted by NVIDIA, with free credits to start.",
+                blurb: String(localized: "Open models hosted by NVIDIA, with free credits to start."),
                 link: URL(string: "https://build.nvidia.com/settings/api-keys")!,
-                linkTitle: "Get a key at build.nvidia.com"
+                linkTitle: String(localized: "Get a key at build.nvidia.com")
             )
         }
     }
@@ -205,18 +204,18 @@ enum SettingsPage: String, CaseIterable, Identifiable, Hashable {
 
     var title: String {
         switch self {
-        case .provider: "AI provider"
-        case .sync: "iCloud Sync"
-        case .forums: "Forums"
-        case .summaries: "Summaries & chat"
-        case .agent: "Ask the forum"
-        case .watched: "Watched topics"
-        case .browser: "Browser"
-        case .data: "Data & privacy"
-        case .help: "Help"
-        case .sharing: "Share from Safari or Chrome"
-        case .about: "About"
-        case .acknowledgements: "Acknowledgements"
+        case .provider: String(localized: "AI models", comment: "Settings page: the AI models for summaries & chat and for Ask the forum, and the providers' keys")
+        case .sync: String(localized: "iCloud Sync")
+        case .forums: String(localized: "Forums")
+        case .summaries: String(localized: "Summaries & chat")
+        case .agent: String(localized: "Ask the forum")
+        case .watched: String(localized: "Watched topics")
+        case .browser: String(localized: "Browser")
+        case .data: String(localized: "Data & privacy")
+        case .help: String(localized: "Help")
+        case .sharing: String(localized: "Share from Safari or Chrome")
+        case .about: String(localized: "About")
+        case .acknowledgements: String(localized: "Acknowledgements")
         }
     }
 
@@ -272,20 +271,20 @@ enum AppVersion {
 }
 
 extension AppModel {
-    /// Runs the connection test for the selected provider and reports the
+    /// Runs the connection test for a role's provider and reports the
     /// result inline instead of through the app-wide alert (which cannot show
     /// over the onboarding cover). Returns nil on success.
     /// A stale result (settings changed meanwhile) returns nil; use
-    /// `testConnection()` to tell it apart from success.
-    func testProviderInline() async -> String? {
-        if case .failure(let message) = await testConnection() { return message }
+    /// `testConnection(for:)` to tell it apart from success.
+    func testProviderInline(for role: ModelRole = .assistant) async -> String? {
+        if case .failure(let message) = await testConnection(for: role) { return message }
         return nil
     }
 
-    /// Loads the provider's model list into `discoveredModels`. Returns an
-    /// error message, or nil on success (or when the provider changed meanwhile).
-    func loadModelsInline() async -> String? {
-        if case .failure(let message) = await discoverModels() { return message }
+    /// Loads a provider's model list into `discoveredModels`. Returns an
+    /// error message, or nil on success (or when its settings changed meanwhile).
+    func loadModelsInline(provider: AIProvider) async -> String? {
+        if case .failure(let message) = await discoverModels(provider: provider) { return message }
         return nil
     }
 

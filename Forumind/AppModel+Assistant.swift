@@ -177,6 +177,9 @@ struct AssistantDebugSeed {
 /// - `-dc-assistant-mode <mode>`       summary | chat | agent
 /// - `-dc-open-manage`                 opens Manage
 /// - `-dc-no-provider`                 leaves the AI provider unconfigured
+/// - `-dc-agent-model <provider>:<model>` a different Ask the forum model (e.g.
+///                                     `deepseek:deepseek-v4-flash`), with a placeholder key
+/// - `-dc-no-agent-key`                with `-dc-agent-model`: that provider has no key
 /// - `-dc-summary-running`             a summary in progress (streaming text)
 /// - `-dc-chat-streaming`              a chat answer in progress
 /// - `-dc-agent-running`               the agent run is still working
@@ -205,20 +208,28 @@ extension AppModel {
         let sampleBackend = AppleIntelligenceClient.debugStatus?.backend
         let sampleProvider: AIProvider = sampleBackend == nil ? .anthropic : .appleIntelligence
         let sampleModel = sampleBackend?.label ?? "claude-sonnet-4-5"
+        // `-dc-agent-model provider:model`: Ask the forum uses another model.
+        let sampleAgent = AssistantDebug.value("-dc-agent-model").flatMap { value -> ModelSelection? in
+            let parts = value.split(separator: ":", maxSplits: 1).map(String.init)
+            guard parts.count == 2, let provider = AIProvider(rawValue: parts[0].lowercased()) else { return nil }
+            return ModelSelection(provider: provider, model: parts[1])
+        } ?? ModelSelection(provider: sampleProvider, model: sampleModel)
         func ago(_ minutes: Double) -> Date { now.addingTimeInterval(-minutes * 60) }
+        // The sample's words in the app's language (SampleContent.swift).
+        let text = SampleContent.current
 
         let meta = Forum(
-            siteURL: "https://meta.discourse.org", name: "Discourse Meta",
+            siteURL: text.meta.siteURL, name: text.meta.name,
             isPinned: true, pinOrder: 0, lastVisitedAt: ago(2)
         )
         // Fictional communities on reserved example domains (screenshots
         // show no real companies or people).
         let makers = Forum(
-            siteURL: "https://community.example.org", name: "Maker Space Community",
+            siteURL: text.makers.siteURL, name: text.makers.name,
             isPinned: true, pinOrder: 1, lastVisitedAt: ago(30)
         )
         let homeLab = Forum(
-            siteURL: "https://forum.example.net", name: "Home Lab Forum",
+            siteURL: text.homeLab.siteURL, name: text.homeLab.name,
             lastVisitedAt: ago(60 * 26)
         )
 
@@ -254,81 +265,38 @@ extension AppModel {
         }
 
         let unifiedNew = topic(meta, "404728", "introducing-the-unified-new-view-for-the-topic-list",
-                               "Introducing the unified new view for the topic list")
+                               text.unifiedNewTitle)
         let markdownEndpoints = topic(meta, "413006", "discourse-core-now-includes-markdown-endpoints-for-topic-lists-and-views",
-                                      "Discourse core now includes Markdown endpoints for topic lists and views")
-        let sidebar = topic(meta, "413150", "experimental-user-sidebar-navigation", "Experimental user sidebar navigation")
+                                      text.markdownEndpointsTitle)
+        let sidebar = topic(meta, "413150", "experimental-user-sidebar-navigation", text.sidebarTitle)
         let layerShifts = topic(makers, "18342",
                                 "layer-shifts-on-long-prints-after-the-2-4-firmware-update",
-                                "Layer shifts on long prints after the 2.4 firmware update")
+                                text.layerShiftsTitle)
         let stepperHeat = topic(makers, "18391", "stepper-drivers-overheating-in-enclosed-printers",
-                                "Stepper drivers overheating in enclosed printers")
+                                text.stepperHeatTitle)
         let slicerPresets = topic(makers, "18377", "sharing-slicer-presets-between-machines",
-                                  "Sharing slicer presets between machines")
+                                  text.slicerPresetsTitle)
         let fanAfterPrint = topic(makers, "18402", "cooling-fan-keeps-running-after-a-print-finishes",
-                                  "Cooling fan keeps running after a print finishes")
-        let lowPowerNAS = topic(homeLab, "7713", "low-power-nas-build-for-2026", "Low-power NAS build for 2026")
-
-        let metaSummary = """
-        ## Original post
-        The Discourse team merged the separate **New** and **Unread** lists into one *unified new view*, \
-        with tabs to narrow it to new topics or new replies. It is on by default for new sites and \
-        opt-in for existing ones.
-
-        ## What people are saying
-        - **Most like it**: one place to catch up, and the counts in the sidebar finally match.
-        - **Keyboard users** asked for a shortcut to switch tabs; `g n` still opens the view.
-        - **Admins** want a per-group default so staff can keep the old lists for a while.
-
-        ## Tips from the thread
-        1. Enable it under *Admin → Settings → experimental new new view groups* first.
-        2. Tell members that “Dismiss” now clears both topics and replies.
-
-        > “It took a day to get used to, now I can’t go back.” — a site admin
-
-        Settings keys mentioned:
-
-        ```text
-        experimental_new_new_view_groups
-        ```
-
-        See the [announcement](https://meta.discourse.org/t/introducing-the-unified-new-view-for-the-topic-list/404728) for screenshots.
-        """
-        let metaChat: [(ChatRole, String)] = [
-            (.user, "Can I roll it out to staff first?"),
-            (.assistant, "Yes. Add your **staff** group to `experimental_new_new_view_groups`; everyone else keeps the separate New and Unread lists until you add more groups.")
-        ]
-        let streamSummary = """
-        ## Problem
-        Since the **2.4 firmware update**, prints longer than about six hours show *layer shifts* \
-        partway up, while short prints come out fine.
-
-        ## Workarounds reported
-        - Lower the **travel speed** by 20–30%.
-        - Re-tension the belts, then re-run the calibration.
-        - Rolling back to 2.3 helps some, but not everyone.
-
-        ## Status
-        The firmware maintainers confirmed the report; no fix date yet.
-        """
-        let streamChat: [(ChatRole, String)] = [
-            (.user, "Which workaround works most often?"),
-            (.assistant, "Lowering the travel speed is the one most people confirm. Re-tensioning the belts helped in **about a third** of replies."),
-            (.user, "Did anyone hear back from the firmware maintainers?"),
-            (.assistant, "Yes — a maintainer asked for print logs and said a fix is being tested. There is no release date in the thread yet.")
-        ]
+                                  text.fanAfterPrintTitle)
+        let lowPowerNAS = topic(homeLab, "7713", "low-power-nas-build-for-2026", text.lowPowerNASTitle)
 
         var sessions = [
-            session(unifiedNew, posts: 68, summary: metaSummary, chat: metaChat, kept: true, updated: 6),
-            session(markdownEndpoints, posts: 12, summary: "## Summary\nAppending `.md` to topic list and topic URLs now returns Markdown — handy for tools and AI assistants.", updated: 12),
-            session(sidebar, posts: 7, summary: "## Summary\nAn experimental sidebar lets each user choose sections and links.", updated: 60 * 5),
-            session(layerShifts, posts: 35, summarized: AssistantDebug.has("-dc-stale-summary") ? 29 : nil, summary: streamSummary, chat: streamChat, kept: true, updated: 45),
-            session(stepperHeat, posts: 2, summary: "## Summary\nDrivers in enclosed printers hit thermal shutdown on long prints; a small fan on the board fixes it.", updated: 60 * 2),
-            session(slicerPresets, posts: 5, summary: "## Summary\nMembers keep their slicer presets in a shared folder so every machine prints the same way.", updated: 60 * 3),
-            session(lowPowerNAS, posts: 78, summary: "## Summary\nMembers compare low-power storage builds; most idle under 15 W with the disks spun down.", updated: 60 * 26)
+            session(unifiedNew, posts: 68, summary: text.metaSummary, chat: text.metaChat, kept: true, updated: 6),
+            session(markdownEndpoints, posts: 12, summary: text.markdownEndpointsSummary, updated: 12),
+            session(sidebar, posts: 7, summary: text.sidebarSummary, updated: 60 * 5),
+            session(layerShifts, posts: 35, summarized: AssistantDebug.has("-dc-stale-summary") ? 29 : nil, summary: text.streamSummary, chat: text.streamChat, kept: true, updated: 45),
+            session(stepperHeat, posts: 2, summary: text.stepperHeatSummary, updated: 60 * 2),
+            session(slicerPresets, posts: 5, summary: text.slicerPresetsSummary, updated: 60 * 3),
+            session(lowPowerNAS, posts: 78, summary: text.lowPowerNASSummary, updated: 60 * 26)
         ]
 
-        let openTopic = AssistantDebug.value("-dc-topic") == "makers" ? layerShifts : unifiedNew
+        // Ask the forum shows the featured run, which is on the makers forum,
+        // so agent mode opens that forum's topic unless `-dc-topic` says
+        // otherwise (then the run on the open forum is shown instead): the
+        // forum in the header is always the forum the answer comes from.
+        let isAgentMode = AssistantDebug.value("-dc-assistant-mode")?.lowercased() == AssistantMode.agent.rawValue.lowercased()
+        let topicChoice = AssistantDebug.value("-dc-topic") ?? (isAgentMode ? "makers" : "meta")
+        let openTopic = topicChoice == "makers" ? layerShifts : unifiedNew
         if AssistantDebug.has("-dc-no-summary"),
            let index = sessions.firstIndex(where: { $0.topicKey == openTopic.topicKey }) {
             sessions[index].summary = ""
@@ -339,9 +307,9 @@ extension AppModel {
         // Agent runs: a finished run with a sourced answer, and an older one.
         var run = AgentRun(
             siteURL: makers.siteURL,
-            goal: "What are people saying about layer shifts after the 2.4 firmware update?",
-            provider: sampleProvider,
-            model: sampleModel
+            goal: text.agentGoal,
+            provider: sampleAgent.provider,
+            model: sampleAgent.model
         )
         run.createdAt = ago(20)
         run.updatedAt = ago(18)
@@ -349,64 +317,54 @@ extension AppModel {
         run.status = .completed
         run.topicIDs = [layerShifts.topicID, stepperHeat.topicID, fanAfterPrint.topicID]
         run.steps = [
-            AgentStep(tool: "search_forum", arguments: ["query": "layer shift firmware 2.4"],
-                      thought: "Search for reports of the layer shifts.", outcome: "8 topics found",
+            AgentStep(tool: "search_forum", arguments: ["query": text.agentSearchQuery],
+                      thought: text.agentThoughts[0], outcome: String(localized: "\(8) topics"),
                       startedAt: ago(20), finishedAt: ago(20)),
             AgentStep(tool: "read_topic", arguments: ["topic_id": layerShifts.topicID],
-                      thought: "The main report thread.", outcome: "Read 35 posts",
+                      thought: text.agentThoughts[1], outcome: String(localized: "Read \(35) posts"),
                       topicID: layerShifts.topicID, topicKey: layerShifts.topicKey,
                       startedAt: ago(19.5), finishedAt: ago(19.4)),
             AgentStep(tool: "read_topic", arguments: ["topic_id": stepperHeat.topicID],
-                      thought: "Overheating drivers can also skip steps.", outcome: "Read 2 posts",
+                      thought: text.agentThoughts[2], outcome: String(localized: "Read \(2) posts"),
                       topicID: stepperHeat.topicID, topicKey: stepperHeat.topicKey,
                       startedAt: ago(19.2), finishedAt: ago(19.1)),
-            AgentStep(tool: "search_forum", arguments: ["query": "layer shift travel speed workaround"],
-                      thought: "Look for confirmed workarounds.", outcome: "5 topics found",
+            AgentStep(tool: "search_forum", arguments: ["query": text.agentSecondSearchQuery],
+                      thought: text.agentThoughts[3], outcome: String(localized: "\(5) topics"),
                       startedAt: ago(19), finishedAt: ago(19)),
             AgentStep(tool: "read_topic", arguments: ["topic_id": fanAfterPrint.topicID],
-                      thought: "Check whether the other 2.4 change is related.", outcome: "Read 1 post",
+                      thought: text.agentThoughts[4], outcome: String(localized: "Read \(1) posts"),
                       topicID: fanAfterPrint.topicID, topicKey: fanAfterPrint.topicKey,
                       startedAt: ago(18.8), finishedAt: ago(18.7)),
-            AgentStep(tool: AgentPrompt.finalAnswerTool, thought: "Enough to answer.", outcome: "Answered",
+            AgentStep(tool: AgentPrompt.finalAnswerTool, thought: text.agentThoughts[5], outcome: String(localized: "Answered"),
                       startedAt: ago(18.2), finishedAt: ago(18))
         ]
-        run.answer = """
-        People report the shifts mostly on **prints longer than six hours**, while short prints \
-        come out fine ([Layer shifts after 2.4](\(layerShifts.url.absoluteString))). \
-        The most confirmed workaround is to **lower the travel speed**; re-tensioning the belts \
-        helps some members.
-
-        A few replies link it to drivers overheating in enclosures \
-        ([Stepper drivers overheating](\(stepperHeat.url.absoluteString))), but the fan that keeps \
-        running after a print looks like a separate bug ([Cooling fan](\(fanAfterPrint.url.absoluteString))).
-
-        - The maintainers asked for print logs; no fix date yet.
-        - Rolling back to 2.3 does **not** reliably help.
-        """
+        run.answer = text.agentAnswer(
+            layerShifts.url.absoluteString, stepperHeat.url.absoluteString, fanAfterPrint.url.absoluteString
+        )
         run.initialAnswer = run.answer
         run.followUps = [
-            ChatMessage(role: .user, content: "Is it only on the larger printers?", createdAt: ago(17)),
-            ChatMessage(role: .assistant, content: "No — reports cover both the small and the large beds. Nobody reports it on resin printers.", createdAt: ago(16))
+            ChatMessage(role: .user, content: text.agentFollowUpQuestion, createdAt: ago(17)),
+            ChatMessage(role: .assistant, content: text.agentFollowUpAnswer, createdAt: ago(16))
         ]
         var olderRun = AgentRun(
             siteURL: meta.siteURL,
-            goal: "How do I roll out the unified new view gradually?",
-            provider: sampleProvider,
-            model: sampleModel
+            goal: text.olderGoal,
+            provider: sampleAgent.provider,
+            model: sampleAgent.model
         )
         olderRun.status = .completed
         olderRun.createdAt = ago(60 * 4)
         olderRun.completedAt = ago(60 * 4)
-        olderRun.answer = "Add groups to `experimental_new_new_view_groups` one at a time, starting with staff."
+        olderRun.answer = text.olderAnswer
         olderRun.initialAnswer = olderRun.answer
         olderRun.steps = [
-            AgentStep(tool: "search_forum", arguments: ["query": "unified new view groups"], outcome: "3 topics found"),
-            AgentStep(tool: AgentPrompt.finalAnswerTool, outcome: "Answered")
+            AgentStep(tool: "search_forum", arguments: ["query": text.olderSearchQuery], outcome: String(localized: "\(3) topics")),
+            AgentStep(tool: AgentPrompt.finalAnswerTool, outcome: String(localized: "Answered"))
         ]
         olderRun.topicIDs = [unifiedNew.topicID]
 
         var activities: [WorkRecord] = []
-        func record(_ type: WorkType, _ topic: ForumTopic, _ minutes: Double, status: WorkStatus = .completed, text: String = "Completed") -> WorkRecord {
+        func record(_ type: WorkType, _ topic: ForumTopic, _ minutes: Double, status: WorkStatus = .completed, text: String = String(localized: "Completed")) -> WorkRecord {
             var value = WorkRecord(type: type, siteURL: topic.siteURL, topicID: topic.topicID,
                                    title: topic.title, url: topic.url, provider: sampleProvider, model: sampleModel)
             value.status = status
@@ -418,9 +376,9 @@ extension AppModel {
             value.completedAt = status.isTerminal ? ago(minutes) : nil
             return value
         }
-        activities.append(record(.summary, unifiedNew, 6, text: "Summarized 68 posts"))
-        activities.append(record(.chat, layerShifts, 45, text: "Answered"))
-        activities.append(record(.summary, stepperHeat, 120, status: .failed, text: "Failed"))
+        activities.append(record(.summary, unifiedNew, 6, text: String(localized: "Summarized \(68) posts")))
+        activities.append(record(.chat, layerShifts, 45, text: String(localized: "Answered")))
+        activities.append(record(.summary, stepperHeat, 120, status: .failed, text: String(localized: "Failed")))
 
         // Running samples advance like real jobs (every half second).
         var sampleTickers: [@MainActor (Int) -> Void] = []
@@ -436,10 +394,10 @@ extension AppModel {
             currentRun.steps[3].outcome = ""
             var agentRecord = WorkRecord(
                 type: .agent, siteURL: makers.siteURL, topicID: "agent:" + run.id.uuidString,
-                title: run.goal, url: makers.latestURL!, provider: sampleProvider, model: sampleModel
+                title: run.goal, url: makers.latestURL!, provider: sampleAgent.provider, model: sampleAgent.model
             )
             agentRecord.status = .running
-            agentRecord.statusText = "Searching “layer shift travel speed workaround”…"
+            agentRecord.statusText = text.agentRunningStatus
             agentRecord.progress = WorkProgress.agent(completedSteps: 3, maxSteps: 8, within: 0.1)
             activities.insert(agentRecord, at: 0)
             sampleTickers.append { [weak self] tick in
@@ -452,7 +410,7 @@ extension AppModel {
             }
         }
         if AssistantDebug.has("-dc-summary-running") {
-            var summaryRecord = record(.summary, openTopic, 0, status: .running, text: "Summarizing posts 41–60 of 68…")
+            var summaryRecord = record(.summary, openTopic, 0, status: .running, text: text.summaryRunningStatus)
             summaryRecord.phase = "summarizing"
             summaryRecord.progress = 0.62
             activities.insert(summaryRecord, at: 0)
@@ -473,22 +431,16 @@ extension AppModel {
                     statusText: tracker.statusText
                 )
             }
-            summaryStreams[summaryRecord.id] = """
-            ## Original post
-            The Discourse team merged the separate **New** and **Unread** lists into one *unified new view*.
-
-            ## What people are saying
-            - **Most like it**: one place to catch up
-            """
+            summaryStreams[summaryRecord.id] = text.summaryStream
         }
         if AssistantDebug.has("-dc-chat-streaming") {
-            var chatRecord = record(.chat, openTopic, 0, status: .running, text: "Answering…")
-            chatRecord.question = "Does it change the keyboard shortcuts?"
+            var chatRecord = record(.chat, openTopic, 0, status: .running, text: String(localized: "Answering…"))
+            chatRecord.question = text.chatStreamingQuestion
             activities.insert(chatRecord, at: 0)
             if let index = sessions.firstIndex(where: { $0.topicKey == openTopic.topicKey }) {
                 sessions[index].history.append(ChatMessage(role: .user, content: chatRecord.question))
             }
-            chatStreams[chatRecord.id] = AssistantDebug.has("-dc-chat-typing") ? "" : "Only one: `g n` now opens the unified view, and"
+            chatStreams[chatRecord.id] = AssistantDebug.has("-dc-chat-typing") ? "" : text.chatStreamingAnswer
         }
 
         var watchedMeta = WatchedTopic(siteURL: meta.siteURL, topicID: unifiedNew.topicID, url: unifiedNew.url,
@@ -544,19 +496,34 @@ extension AppModel {
         }
 
         settings.hasCompletedOnboarding = true
-        settings.selectedProvider = sampleProvider
+        var sampleSettings = settings
+        sampleSettings.setModel(ModelSelection(provider: sampleProvider, model: sampleModel), for: .assistant)
+        sampleSettings.setModel(sampleAgent, for: .agent)
+        // In memory only: never sent anywhere unless the user starts work.
         if sampleProvider == .anthropic {
-            var configuration = settings.configuration(for: .anthropic)
-            configuration.model = "claude-sonnet-4-5"
-            // In memory only: never sent anywhere unless the user starts work.
+            var configuration = sampleSettings.configuration(for: .anthropic)
             configuration.apiKey = AssistantDebug.has("-dc-no-provider") ? "" : "sample-key"
-            settings.setConfiguration(configuration, for: .anthropic)
+            sampleSettings.setConfiguration(configuration, for: .anthropic)
         }
+        if sampleAgent.provider != sampleProvider, sampleAgent.provider.requiresAPIKey {
+            var configuration = sampleSettings.configuration(for: sampleAgent.provider)
+            configuration.apiKey = AssistantDebug.has("-dc-no-agent-key") || AssistantDebug.has("-dc-no-provider") ? "" : "sample-key"
+            sampleSettings.setConfiguration(configuration, for: sampleAgent.provider)
+        }
+        if sampleAgent != ModelSelection(provider: sampleProvider, model: sampleModel) {
+            sampleSettings.favoriteModels = [
+                FavoriteModel(provider: sampleProvider, model: sampleModel),
+                FavoriteModel(provider: sampleAgent.provider, model: sampleAgent.model)
+            ].filter { !$0.provider.isAppleIntelligence }
+        }
+        settings = sampleSettings
 
         if let mode = AssistantDebug.value("-dc-assistant-mode")?.lowercased() {
             assistantMode = AssistantMode.allCases.first { $0.rawValue.lowercased() == mode } ?? .summary
         }
         if AssistantDebug.has("-dc-open-manage") { panelRoute = .activity }
+        // The run on the open forum: the featured one, or the older run.
+        selectedAgentRunID = (openForum.siteURL == makers.siteURL ? currentRun : olderRun).id
         if !sampleTickers.isEmpty {
             let tickers = sampleTickers
             Task { @MainActor in

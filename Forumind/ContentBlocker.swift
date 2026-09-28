@@ -372,10 +372,13 @@ final class ContentRuleLibrary: ObservableObject {
         self.directory = directory
     }
 
+    /// Nothing left to wait for before a page load: true while idle too
+    /// (blocking is off and the lists were never started; `start()` moves to
+    /// `.lookingUp` synchronously, so a load right after it still waits).
     var lookupsFinished: Bool {
         switch phase {
-        case .idle, .lookingUp: false
-        case .compiling, .ready, .unavailable: true
+        case .lookingUp: false
+        case .idle, .compiling, .ready, .unavailable: true
         }
     }
 
@@ -391,7 +394,15 @@ final class ContentRuleLibrary: ObservableObject {
         }
     }
 
-    /// Starts lookups and compilation (idempotent).
+    /// Reads the manifest only (Settings shows the lists' date) without
+    /// looking up or compiling anything.
+    func loadManifestIfNeeded() {
+        guard manifest == nil, let directory else { return }
+        manifest = ContentBlockingManifest.load(from: directory)
+    }
+
+    /// Starts lookups and compilation (idempotent). Called only once blocking
+    /// is on: with ads and trackers both off nothing is looked up or compiled.
     func start() {
         guard phase == .idle else { return }
         guard let store, let directory,

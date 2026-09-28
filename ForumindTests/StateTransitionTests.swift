@@ -29,7 +29,7 @@ final class StateTransitionTests: XCTestCase {
         let running = app.activities.filter { $0.status == .running }
         XCTAssertEqual(running.count, 2)
 
-        app.activateFavorite(FavoriteModel(provider: .lmStudio, model: "model-b"))
+        app.activateFavorite(FavoriteModel(provider: .lmStudio, model: "model-b"), for: .assistant)
         // The header reads the selection: it changes at once.
         XCTAssertEqual(app.settings.selectedProvider, .lmStudio)
         XCTAssertEqual(app.selectedConfiguration.model, "model-b")
@@ -190,21 +190,28 @@ final class StateTransitionTests: XCTestCase {
         let harness = makeHarness()
         let app = harness.app
         select(app, .openAI, model: "gpt-test", key: "key-1")
-        app.discoveredModels = ["kept-until-provider-changes"]
+        app.discoveredModels = [.openAI: ["kept-until-its-address-changes"], .groq: ["groq-old"]]
 
-        async let result = app.discoverModels()
-        try await waitUntil { harness.ai.waiting == 1 }
+        // Lists are per provider: switching a role's provider keeps them.
         app.settings.selectedProvider = .groq
-        XCTAssertTrue(app.discoveredModels.isEmpty, "a provider change clears the old list")
+        XCTAssertEqual(app.discoveredModels[.openAI], ["kept-until-its-address-changes"])
+
+        async let result = app.discoverModels(provider: .openAI)
+        try await waitUntil { harness.ai.waiting == 1 }
+        var configuration = app.settings.configuration(for: .openAI)
+        configuration.baseURL = "https://proxy.example.com/v1"
+        app.setConfiguration(configuration, for: .openAI)
+        XCTAssertNil(app.discoveredModels[.openAI], "an address change clears that provider's list")
+        XCTAssertEqual(app.discoveredModels[.groq], ["groq-old"], "other providers keep theirs")
         harness.ai.releaseAll()
         let outcome = await result
         XCTAssertEqual(outcome, .stale)
-        XCTAssertTrue(app.discoveredModels.isEmpty)
+        XCTAssertNil(app.discoveredModels[.openAI])
 
         harness.ai.gated = false
-        let fresh = await app.discoverModels()
+        let fresh = await app.discoverModels(provider: .groq)
         XCTAssertEqual(fresh, .success)
-        XCTAssertEqual(app.discoveredModels, ["groq-model"])
+        XCTAssertEqual(app.discoveredModels[.groq], ["groq-model"])
     }
 
     // MARK: 4. Limits and instructions
@@ -467,7 +474,7 @@ final class StateTransitionTests: XCTestCase {
         XCTAssertEqual(harness.keys.value(for: .openAI), "key-1")
         for id in ["1", "2", "3"] { XCTAssertTrue(app.enqueueSummary(for: topic(id))) }
         try await waitUntil { harness.ai.waiting == 2 }
-        app.discoveredModels = ["gpt-test"]
+        app.discoveredModels = [.openAI: ["gpt-test"]]
 
         app.resetSettings()
         XCTAssertEqual(app.settings.selectedProvider, AppSettings().selectedProvider)
@@ -538,7 +545,7 @@ final class StateTransitionTests: XCTestCase {
         try await waitUntil { harness.ai.waiting == 1 }
 
         // The provider step edits the selection, then the walkthrough ends.
-        app.activateFavorite(FavoriteModel(provider: .lmStudio, model: "model-b"))
+        app.activateFavorite(FavoriteModel(provider: .lmStudio, model: "model-b"), for: .assistant)
         app.saveSettings()
         app.completeOnboarding()
         XCTAssertTrue(app.settings.hasCompletedOnboarding)
@@ -557,9 +564,9 @@ final class StateTransitionTests: XCTestCase {
     func testProviderSetupRequestClearsOnceTheProviderIsReady() {
         let harness = makeHarness()
         let app = harness.app
-        app.needsProviderSetup = true
+        app.needsProviderSetup = .agent
         select(app, .ollama, model: "model-a")
-        XCTAssertFalse(app.needsProviderSetup)
+        XCTAssertNil(app.needsProviderSetup)
     }
 
     // MARK: 8. Watched topics
@@ -752,6 +759,291 @@ final class StateTransitionTests: XCTestCase {
         planner.release()
     }
 
+    // MARK: 12. Model roles
+
+    /// Summaries and chat run on the assistant model; Ask the forum plans and
+    /// answers on the agent model, and its `summarize_topic` tool runs on
+    /// the assistant model. Each record says what it ran with.
+    func testEachJobRunsOnItsRolesModel() async throws {
+        let planner = RolePlanner(actions: [
+            AgentAction(thought: "", tool: "summarize_topic", arguments: ["topic_id": "2"]),
+            AgentAction(thought: "", tool: AgentPrompt.finalAnswerTool, arguments: ["answer": "Done"])
+        ])
+        let harness = makeHarness(planner: planner)
+        let app = harness.app
+        harness.ai.gated = false
+        setRoles(app, assistant: ModelSelection(provider: .ollama, model: "cheap"),
+                 agent: ModelSelection(provider: .lmStudio, model: "reasoner"))
+
+        XCTAssertTrue(app.enqueueSummary(for: topic("1")))
+        try await waitUntil { app.activities.allSatisfy(\.status.isTerminal) }
+        XCTAssertEqual(harness.ai.calls.map(\.label), ["ollama/cheap"])
+        XCTAssertEqual(app.activities.first?.provider, .ollama)
+
+        app.startAgentRun(goal: "What changed?", siteURL: site)
+        try await waitUntil { app.agentRuns.first?.status.isTerminal == true }
+        let run = try XCTUnwrap(app.agentRuns.first)
+        XCTAssertEqual(run.status, .completed, run.error)
+        XCTAssertEqual(planner.labels, ["lmstudio/reasoner", "lmstudio/reasoner"])
+        XCTAssertEqual(run.provider, .lmStudio)
+        XCTAssertEqual(run.model, "reasoner")
+        XCTAssertEqual(app.activities.first { $0.type == .agent }?.model, "reasoner")
+        // summarize_topic: the cheap model, recorded on the saved summary.
+        XCTAssertEqual(harness.ai.calls.last?.label, "ollama/cheap")
+        XCTAssertEqual(app.sessions[topic("2").topicKey]?.provider, .ollama)
+        XCTAssertEqual(app.sessions[topic("2").topicKey]?.model, "cheap")
+    }
+
+    /// Switching the agent model mid-run: the run keeps what it started
+    /// with; the follow-up uses the new model; the assistant role is untouched.
+    func testChangingTheAgentModelMidRunKeepsTheRunAndTheFollowUpUsesTheNewOne() async throws {
+        let planner = RolePlanner(actions: [
+            AgentAction(thought: "", tool: "saved_summaries", arguments: [:]),
+            AgentAction(thought: "", tool: AgentPrompt.finalAnswerTool, arguments: ["answer": "Done"])
+        ], gated: true)
+        let harness = makeHarness(planner: planner)
+        let app = harness.app
+        setRoles(app, assistant: ModelSelection(provider: .ollama, model: "cheap"),
+                 agent: ModelSelection(provider: .lmStudio, model: "reasoner"))
+
+        app.startAgentRun(goal: "Keep looking", siteURL: site)
+        try await waitUntil { planner.calls == 1 && planner.isWaiting }
+        app.activateFavorite(FavoriteModel(provider: .ollama, model: "reasoner-2"), for: .agent)
+        XCTAssertEqual(app.settings.assistantModel, ModelSelection(provider: .ollama, model: "cheap"))
+        planner.release()
+        try await waitUntil { planner.calls == 2 && planner.isWaiting }
+        planner.release()
+        try await waitUntil { app.agentRuns.first?.status.isTerminal == true }
+        XCTAssertEqual(planner.labels, ["lmstudio/reasoner", "lmstudio/reasoner"])
+
+        let id = try XCTUnwrap(app.agentRuns.first?.id)
+        planner.restart()
+        app.continueAgentRun(id: id, question: "And then?")
+        try await waitUntil { planner.calls == 1 && planner.isWaiting }
+        planner.release()
+        try await waitUntil { planner.calls == 2 && planner.isWaiting }
+        planner.release()
+        try await waitUntil { app.agentRuns.first?.status.isTerminal == true }
+        XCTAssertEqual(planner.labels, ["ollama/reasoner-2", "ollama/reasoner-2"])
+        let run = try XCTUnwrap(app.agentRuns.first)
+        XCTAssertEqual(run.provider, .lmStudio, "the run keeps the model of its first answer")
+        let turns = app.activities.filter { $0.type == .agent }
+        XCTAssertEqual(Set(turns.map(\.model)), ["reasoner", "reasoner-2"], "each turn records its model")
+        XCTAssertEqual(app.settings.selectedProvider, .ollama)
+    }
+
+    /// The header switcher changes the current mode's role only: Summary and
+    /// Chat share the assistant model, Ask the forum has its own.
+    func testHeaderSwitcherOnlyChangesTheCurrentModesRole() {
+        let harness = makeHarness()
+        let app = harness.app
+        let cheap = ModelSelection(provider: .gemini, model: "gemini-3.1-flash-lite")
+        let agentic = ModelSelection(provider: .deepSeek, model: "deepseek-v4-flash")
+        setRoles(app, assistant: cheap, agent: agentic)
+        let favorite = FavoriteModel(provider: .openAI, model: "gpt-5-mini")
+
+        for mode in [AssistantMode.summary, .chat] {
+            setRoles(app, assistant: cheap, agent: agentic)
+            app.assistantMode = mode
+            app.activateFavorite(favorite, for: app.currentRole)
+            XCTAssertEqual(app.settings.assistantModel, ModelSelection(provider: .openAI, model: "gpt-5-mini"))
+            XCTAssertEqual(app.settings.agentModel, agentic, "\(mode) never changes Ask the forum")
+            XCTAssertEqual(app.settings.selectedProvider, .openAI)
+            XCTAssertEqual(app.providerSummary, "OpenAI · gpt-5-mini")
+        }
+
+        setRoles(app, assistant: cheap, agent: agentic)
+        app.assistantMode = .agent
+        app.activateFavorite(favorite, for: app.currentRole)
+        XCTAssertEqual(app.settings.agentModel, ModelSelection(provider: .openAI, model: "gpt-5-mini"))
+        XCTAssertEqual(app.settings.assistantModel, cheap)
+        XCTAssertEqual(app.settings.selectedProvider, .gemini)
+        XCTAssertEqual(app.settings.configuration(for: .gemini).model, "gemini-3.1-flash-lite")
+        XCTAssertEqual(app.providerSummary, "OpenAI · gpt-5-mini")
+    }
+
+    /// Deleting the key of the agent's provider: Ask the forum isn't ready
+    /// (and fails clearly), summaries keep working; the agent's
+    /// summarize_topic fails as a step (not the run) when the assistant
+    /// model isn't ready.
+    func testDeletingTheKeyOfOneRolesProviderOnlyAffectsThatRole() async throws {
+        let planner = RolePlanner(actions: [
+            AgentAction(thought: "", tool: "summarize_topic", arguments: ["topic_id": "2"]),
+            AgentAction(thought: "", tool: AgentPrompt.finalAnswerTool, arguments: ["answer": "Read it instead"])
+        ])
+        let harness = makeHarness(planner: planner)
+        let app = harness.app
+        harness.ai.gated = false
+        setKey(app, "sk-openai", for: .openAI)
+        setKey(app, "sk-deepseek", for: .deepSeek)
+        setRoles(app, assistant: ModelSelection(provider: .openAI, model: "gpt-5-mini"),
+                 agent: ModelSelection(provider: .deepSeek, model: "deepseek-v4-flash"))
+        XCTAssertTrue(app.isProviderReady)
+
+        setKey(app, "", for: .deepSeek)
+        XCTAssertTrue(app.isProviderReady(for: .assistant))
+        XCTAssertFalse(app.isProviderReady(for: .agent))
+        XCTAssertFalse(app.isProviderReady)
+        app.startAgentRun(goal: "Anything?", siteURL: site)
+        try await waitUntil { app.agentRuns.first?.status.isTerminal == true }
+        XCTAssertEqual(app.agentRuns.first?.status, .failed)
+        XCTAssertTrue(app.agentRuns.first?.error.contains("DeepSeek") ?? false)
+        XCTAssertEqual(planner.calls, 0)
+        XCTAssertTrue(app.enqueueSummary(for: topic("1")))
+        try await waitUntil { app.activities.allSatisfy(\.status.isTerminal) }
+        XCTAssertEqual(app.activities.first { $0.type == .summary }?.status, .completed)
+
+        // Now the other way round: the assistant's key is gone.
+        setKey(app, "sk-deepseek", for: .deepSeek)
+        setKey(app, "", for: .openAI)
+        app.presentedError = nil
+        app.startAgentRun(goal: "Summarize it", siteURL: site)
+        try await waitUntil { app.agentRuns.first?.status.isTerminal == true }
+        let run = try XCTUnwrap(app.agentRuns.first)
+        XCTAssertEqual(run.status, .completed, run.error)
+        XCTAssertEqual(run.steps.first?.isError, true)
+        XCTAssertTrue(run.steps.first?.outcome.contains("OpenAI") ?? false, run.steps.first?.outcome ?? "")
+        XCTAssertEqual(run.answer, "Read it instead")
+    }
+
+    func testRemovingAFavoriteInUseKeepsBothRoles() {
+        let harness = makeHarness()
+        let app = harness.app
+        let favorite = FavoriteModel(provider: .deepSeek, model: "deepseek-v4-flash")
+        app.settings.favoriteModels = [favorite, FavoriteModel(provider: .gemini, model: "gemini-3.1-flash-lite")]
+        app.activateFavorite(favorite, for: .agent)
+        app.activateFavorite(favorite, for: .assistant)
+        app.removeFavorite(favorite)
+        XCTAssertEqual(app.settings.favoriteModels.map(\.model), ["gemini-3.1-flash-lite"])
+        XCTAssertEqual(app.settings.agentModel, ModelSelection(provider: .deepSeek, model: "deepseek-v4-flash"))
+        XCTAssertEqual(app.settings.assistantModel, ModelSelection(provider: .deepSeek, model: "deepseek-v4-flash"))
+        XCTAssertFalse(app.isFavorite(app.settings.agentModel))
+    }
+
+    /// Asking the forum needs the agent model; a summary share only the
+    /// assistant model.
+    func testProviderSetupAsksForTheRoleTheHandOffNeeds() throws {
+        let harness = makeHarness()
+        let app = harness.app
+        app.settings.hasCompletedOnboarding = true
+        setRoles(app, assistant: ModelSelection(provider: .ollama, model: "cheap"),
+                 agent: ModelSelection(provider: .deepSeek, model: "deepseek-v4-flash"))
+        app.recordVisit(siteURL: site, name: "Example", iconURL: nil)
+        app.askForum(try XCTUnwrap(app.forum(for: site)))
+        XCTAssertEqual(app.needsProviderSetup, .agent)
+        // Setting up the assistant role doesn't clear an agent request.
+        app.selectModel(ModelSelection(provider: .lmStudio, model: "other"), for: .role(.assistant))
+        XCTAssertEqual(app.needsProviderSetup, .agent)
+        setKey(app, "sk-deepseek", for: .deepSeek)
+        XCTAssertNil(app.needsProviderSetup)
+    }
+
+    /// `selectedProvider` and that provider's configured model are what
+    /// builds without roles run; they follow the assistant role through
+    /// every change, and a change they make moves the assistant role only.
+    func testSelectedProviderStaysOnTheAssistantRoleForOlderBuilds() {
+        let harness = makeHarness()
+        let app = harness.app
+        func assertInvariant(_ message: String, line: UInt = #line) {
+            let assistant = app.settings.assistantModel
+            XCTAssertEqual(app.settings.selectedProvider, assistant.provider, message, line: line)
+            XCTAssertEqual(app.settings.configuration(for: assistant.provider).model, assistant.model, message, line: line)
+        }
+        let agentic = ModelSelection(provider: .deepSeek, model: "deepseek-v4-flash")
+        app.selectModel(ModelSelection(provider: .gemini, model: "gemini-3.1-flash-lite"), for: .both)
+        assertInvariant("both")
+        app.selectModel(agentic, for: .role(.agent))
+        assertInvariant("agent only")
+        XCTAssertEqual(app.settings.selectedProvider, .gemini)
+        // Same provider, different models: the slot keeps the assistant model.
+        app.selectModel(ModelSelection(provider: .gemini, model: "gemini-3.1-pro"), for: .role(.agent))
+        assertInvariant("agent on the assistant's provider")
+        app.selectProvider(.openAI, for: .role(.assistant))
+        assertInvariant("provider switch")
+        app.useSameModel(as: .agent)
+        assertInvariant("same model for both")
+        XCTAssertEqual(app.settings.assistantModel, app.settings.agentModel)
+        app.selectModel(agentic, for: .role(.agent))
+
+        // An older build (or a synced edit from one) switches the provider:
+        // the assistant role follows with that provider's model.
+        var legacy = app.settings
+        legacy.selectedProvider = .groq
+        var groq = legacy.configuration(for: .groq)
+        groq.model = "llama-legacy"
+        legacy.setConfiguration(groq, for: .groq)
+        app.settings = legacy
+        XCTAssertEqual(app.settings.assistantModel, ModelSelection(provider: .groq, model: "llama-legacy"))
+        XCTAssertEqual(app.settings.agentModel, agentic)
+        assertInvariant("legacy provider")
+        // It changes only the model.
+        var model = app.settings
+        groq.model = "llama-newer"
+        model.setConfiguration(groq, for: .groq)
+        app.settings = model
+        XCTAssertEqual(app.settings.assistantModel.model, "llama-newer")
+        XCTAssertEqual(app.settings.agentModel, agentic)
+        assertInvariant("legacy model")
+
+        // Setting up both roles with the provider one of them already uses
+        // moves the other one too.
+        app.selectModel(ModelSelection(provider: .openAI, model: "gpt-5-mini"), for: .role(.assistant))
+        app.selectProvider(.openAI, for: .both)
+        XCTAssertEqual(app.settings.agentModel, ModelSelection(provider: .openAI, model: "gpt-5-mini"))
+        assertInvariant("both roles on one provider")
+
+        app.resetSettings()
+        assertInvariant("reset")
+        XCTAssertEqual(app.settings.agentModel, AppSettings().agentModel)
+    }
+
+    /// Settings saved before model roles: both roles take the selected
+    /// provider and its model. A synced record from an older build that
+    /// picked another provider moves the assistant role.
+    func testSettingsWithoutModelRolesMigrateToBothRoles() throws {
+        let json = #"{"selectedProvider":"deepseek","configurations":{"deepseek":{"model":"deepseek-chat","baseURL":"https://api.deepseek.com/v1","apiKey":""}}}"#
+        let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
+        XCTAssertEqual(settings.assistantModel, ModelSelection(provider: .deepSeek, model: "deepseek-chat"))
+        XCTAssertEqual(settings.agentModel, ModelSelection(provider: .deepSeek, model: "deepseek-chat"))
+
+        let bare = try JSONDecoder().decode(AppSettings.self, from: Data(#"{"selectedProvider":"groq"}"#.utf8))
+        XCTAssertEqual(bare.assistantModel, ModelSelection(provider: .groq, model: AIProvider.groq.defaultModel))
+        XCTAssertEqual(bare.agentModel, bare.assistantModel)
+
+        let mixed = #"{"selectedProvider":"groq","assistantModel":{"provider":"openai","model":"gpt-5-mini"},"agentModel":{"provider":"deepseek","model":"deepseek-v4-flash"}}"#
+        let merged = try JSONDecoder().decode(AppSettings.self, from: Data(mixed.utf8))
+        XCTAssertEqual(merged.assistantModel.provider, .groq, "an older build's provider change wins")
+        XCTAssertEqual(merged.agentModel, ModelSelection(provider: .deepSeek, model: "deepseek-v4-flash"))
+
+        // Round trip keeps both roles and the legacy key.
+        var roles = AppSettings()
+        roles.setModel(ModelSelection(provider: .gemini, model: "gemini-3.1-flash-lite"), for: .assistant)
+        roles.setModel(ModelSelection(provider: .deepSeek, model: "deepseek-v4-flash"), for: .agent)
+        let data = try JSONEncoder().encode(roles)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(object["selectedProvider"] as? String, "gemini")
+        XCTAssertEqual(try JSONDecoder().decode(AppSettings.self, from: data), roles)
+
+        // A snapshot saved before roles migrates at launch.
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+            .appendingPathComponent("state.json")
+        let keys = InMemoryProviderKeyStore()
+        var legacy = AppSnapshot()
+        legacy.settings.selectedProvider = .ollama
+        try PersistentStore(fileURL: url, keys: keys).save(legacy)
+        var file = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        var saved = try XCTUnwrap(file["settings"] as? [String: Any])
+        saved.removeValue(forKey: "assistantModel")
+        saved.removeValue(forKey: "agentModel")
+        file["settings"] = saved
+        try JSONSerialization.data(withJSONObject: file).write(to: url)
+        let app = AppModel(store: PersistentStore(fileURL: url, keys: keys))
+        app.browser.onPageContextChanged = nil
+        XCTAssertEqual(app.settings.assistantModel, ModelSelection(provider: .ollama, model: AIProvider.ollama.defaultModel))
+        XCTAssertEqual(app.settings.agentModel, app.settings.assistantModel)
+    }
+
     // MARK: Helpers
 
     private struct Harness {
@@ -776,7 +1068,7 @@ final class StateTransitionTests: XCTestCase {
         let ai = StateAIStub()
         let app = AppModel(
             store: store,
-            forumService: ForumService(session: session),
+            forumService: ForumService(session: session, pacer: ForumRequestPacer(clock: InstantPacingClock())),
             aiService: ai,
             planner: planner
         )
@@ -792,10 +1084,21 @@ final class StateTransitionTests: XCTestCase {
         return Harness(app: app, store: store, keys: keys, ai: ai, deliver: { handler?($0) })
     }
 
+    /// Both roles on `provider` · `model`, with `key`.
     private func select(_ app: AppModel, _ provider: AIProvider, model: String, key: String = "") {
-        app.settings.selectedProvider = provider
         var configuration = app.settings.configuration(for: provider)
-        configuration.model = model
+        configuration.apiKey = key
+        app.setConfiguration(configuration, for: provider)
+        app.selectModel(ModelSelection(provider: provider, model: model), for: .both)
+    }
+
+    private func setRoles(_ app: AppModel, assistant: ModelSelection, agent: ModelSelection) {
+        app.selectModel(assistant, for: .role(.assistant))
+        app.selectModel(agent, for: .role(.agent))
+    }
+
+    private func setKey(_ app: AppModel, _ key: String, for provider: AIProvider) {
+        var configuration = app.settings.configuration(for: provider)
         configuration.apiKey = key
         app.setConfiguration(configuration, for: provider)
     }
@@ -968,6 +1271,55 @@ private final class SteppingPlanner: AgentPlanner, @unchecked Sendable {
             }
         }
         return AgentAction(thought: "", tool: "saved_summaries", arguments: [:])
+    }
+}
+
+/// Plays `actions` in order (the last one repeats), recording the model
+/// each step ran with. `gated`: each step waits for `release()`.
+private final class RolePlanner: AgentPlanner, @unchecked Sendable {
+    private let lock = NSLock()
+    private let actions: [AgentAction]
+    private let gated: Bool
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var recorded: [String] = []
+
+    init(actions: [AgentAction], gated: Bool = false) {
+        self.actions = actions
+        self.gated = gated
+    }
+
+    var calls: Int { lock.withLock { recorded.count } }
+    var labels: [String] { lock.withLock { recorded } }
+    var isWaiting: Bool { lock.withLock { continuation != nil } }
+
+    func release() {
+        lock.withLock {
+            continuation?.resume()
+            continuation = nil
+        }
+    }
+
+    /// Starts the script over (for a follow-up).
+    func restart() {
+        lock.withLock { recorded = [] }
+    }
+
+    func nextAction(
+        system: String,
+        transcript: [ChatMessage],
+        configuration: ProviderConfiguration,
+        provider: AIProvider
+    ) async throws -> AgentAction {
+        let index: Int = lock.withLock {
+            recorded.append("\(provider.rawValue)/\(configuration.model)")
+            return recorded.count - 1
+        }
+        if gated {
+            await withCheckedContinuation { continuation in
+                lock.withLock { self.continuation = continuation }
+            }
+        }
+        return actions[min(index, actions.count - 1)]
     }
 }
 

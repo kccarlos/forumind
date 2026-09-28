@@ -6,8 +6,8 @@ import Foundation
 ///     -dc-script <action>-after:<seconds>
 ///
 /// Actions (combine with `-dc-sample` and its flags, e.g. `-dc-summary-running`):
-/// - `switch-provider`   switches to OpenAI · gpt-5-mini (placeholder key, in memory)
-/// - `delete-key`        deletes the selected provider's key (in memory)
+/// - `switch-provider`   switches the current mode's model to OpenAI · gpt-5-mini (placeholder key, in memory)
+/// - `delete-key`        deletes the key of the current mode's provider (in memory)
 /// - `remove-forum`      removes the open topic's forum and its data
 /// - `unpin-forum`       unpins the open topic's forum
 /// - `clear-all`         clears all saved data
@@ -39,11 +39,12 @@ extension AppModel {
             var configuration = settings.configuration(for: .openAI)
             configuration.apiKey = "sample-key"
             settings.setConfiguration(configuration, for: .openAI)
-            activateFavorite(FavoriteModel(provider: .openAI, model: "gpt-5-mini"))
+            activateFavorite(FavoriteModel(provider: .openAI, model: "gpt-5-mini"), for: currentRole)
         case "delete-key":
-            var configuration = selectedConfiguration
+            let provider = selection(for: currentRole).provider
+            var configuration = settings.configuration(for: provider)
             configuration.apiKey = ""
-            setConfiguration(configuration, for: settings.selectedProvider)
+            setConfiguration(configuration, for: provider)
         case "remove-forum":
             if let forum = siteURL.flatMap(forum(for:)) { removeForum(forum, deleteData: true) }
         case "unpin-forum":

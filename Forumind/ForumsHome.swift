@@ -147,7 +147,7 @@ struct ForumsHome: View {
         .padding(.vertical, DCTheme.spacingS)
     }
 
-    private func capability(_ systemImage: String, _ title: String, _ tint: Color) -> some View {
+    private func capability(_ systemImage: String, _ title: LocalizedStringKey, _ tint: Color) -> some View {
         Label(title, systemImage: systemImage)
             .font(.caption.weight(.semibold))
             .labelStyle(CapabilityLabelStyle(tint: tint))
@@ -313,7 +313,9 @@ struct ForumsHome: View {
 
     private func visitedText(_ forum: Forum) -> String {
         guard let visited = forum.lastVisitedAt else { return forum.host }
-        if Date().timeIntervalSince(visited) < 60 { return "\(forum.host) · just now" }
+        if Date().timeIntervalSince(visited) < 60 {
+            return String(localized: "\(forum.host) · just now", comment: "Recent forum row: the forum's host, then when it was visited")
+        }
         let relative = visited.formatted(.relative(presentation: .named, unitsStyle: .abbreviated))
         return "\(forum.host) · \(relative)"
     }

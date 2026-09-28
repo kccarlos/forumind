@@ -93,7 +93,8 @@ extension AIService {
                 where attempt < 2 && batchLimit > AppleIntelligenceBudget.minimumBatchCharacters {
                 attempt += 1
                 batchLimit = max(AppleIntelligenceBudget.minimumBatchCharacters, batchLimit * 55 / 100)
-                await onDelta("\n\n_Too long for one pass; retrying in smaller sections…_\n")
+                let note = String(localized: "Too long for one pass; retrying in smaller sections…", comment: "Shown in the streaming summary while Apple Intelligence retries with smaller parts.")
+                await onDelta("\n\n_\(note)_\n")
             }
         }
     }

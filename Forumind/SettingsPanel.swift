@@ -100,6 +100,12 @@ struct SettingsRootView: View {
             }
 
             Section {
+                languageRow
+            } footer: {
+                Text("iOS manages the app language. Change it in Settings › Forumind › Language.")
+            }
+
+            Section {
                 row(.help)
             } footer: {
                 Text("Forumind \(AppVersion.text())")
@@ -120,7 +126,7 @@ struct SettingsRootView: View {
 
     private var forumsValue: String? {
         let pinned = app.pinnedForums.count
-        if pinned > 0 { return "\(pinned) pinned" }
+        if pinned > 0 { return String(localized: "\(pinned) pinned", comment: "Settings root, Forums row: number of pinned forums") }
         return app.forums.isEmpty ? nil : "\(app.forums.count)"
     }
 
@@ -128,18 +134,54 @@ struct SettingsRootView: View {
         HStack(spacing: DCTheme.spacingM) {
             SettingsIcon(page: .provider)
             VStack(alignment: .leading, spacing: 2) {
-                Text("AI provider")
+                Text("AI models")
                 Text(providerSummary)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .truncationMode(.middle)
             }
             Spacer(minLength: DCTheme.spacingS)
             SettingsStatusPill(ready: app.isProviderReady)
         }
     }
 
-    private var providerSummary: String { app.providerSummary }
+    /// One "provider · model" when both roles share it, else both models.
+    private var providerSummary: String {
+        guard !app.rolesShareModel else { return app.providerSummary(for: .assistant) }
+        return ModelRole.allCases.map { role in
+            let model = app.modelLabel(for: role)
+            return model.isEmpty ? app.selection(for: role).provider.displayName : model
+        }.joined(separator: " · ")
+    }
+
+    /// Opens Forumind's page in the Settings app, where iOS shows the
+    /// per-app Language picker (the bundle has more than one localization).
+    private var languageRow: some View {
+        Button {
+            DCHaptics.tap()
+            if let url = URL(string: UIApplication.openSettingsURLString) {
+                UIApplication.shared.open(url)
+            }
+        } label: {
+            HStack(spacing: DCTheme.spacingM) {
+                SettingsIcon(symbol: "globe", tint: Color(light: 0x1C7CD6, dark: 0x4AA3FF))
+                // Explicit colors: a Form button would tint `.primary`.
+                Text("Language")
+                    .foregroundStyle(Color.primary)
+                Spacer(minLength: DCTheme.spacingS)
+                Text(AppLanguage.displayName)
+                    .foregroundStyle(Color.secondary)
+                    .lineLimit(1)
+                Image(systemName: "arrow.up.forward")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color(uiColor: .tertiaryLabel))
+            }
+            .contentShape(Rectangle())
+        }
+        .accessibilityHint("Opens Forumind in the Settings app")
+        .accessibilityIdentifier("settingsRow-language")
+    }
 
     private func row(_ page: SettingsPage, value: String? = nil) -> some View {
         NavigationLink(value: page) {
@@ -231,7 +273,7 @@ struct SettingsStatusPill: View {
 
     var body: some View {
         DCPill(
-            text: ready ? "Ready" : "Set up",
+            text: ready ? String(localized: "Ready", comment: "AI provider status pill") : String(localized: "Set up", comment: "AI provider status pill: needs setup"),
             systemImage: ready ? "checkmark.circle.fill" : "exclamationmark.circle.fill",
             tint: ready ? DCTheme.success : DCTheme.warning
         )

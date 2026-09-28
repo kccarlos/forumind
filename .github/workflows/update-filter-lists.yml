@@ -61,7 +61,7 @@ jobs:
         # Commits as github-actions[bot], never a personal identity. Both are
         # set explicitly: the action's default *author* is github.actor (the
         # person who dispatched or last edited the schedule).
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>

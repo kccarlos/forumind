@@ -177,9 +177,9 @@ struct OnboardingFlow: View {
 
     private var primaryTitle: String {
         switch step {
-        case .provider where app.isProviderReady && providerState == .success: "Continue"
+        case .provider where app.isProviderReady && providerState == .success: String(localized: "Continue")
         case .forums where !selectedForums.isEmpty:
-            "Continue with \(selectedForums.count) \(selectedForums.count == 1 ? "forum" : "forums")"
+            String(localized: "Continue with \(selectedForums.count) forums", comment: "Walkthrough button: continue with the number of forums the user picked.")
         default: step.continueTitle
         }
     }

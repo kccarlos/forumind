@@ -4,7 +4,7 @@ import XCTest
 final class SettingsNavigationUITests: DCUITestCase {
     /// Root row identifier suffix → the pushed page's navigation title.
     private let pages: [(row: String, title: String)] = [
-        ("provider", "AI provider"),
+        ("provider", "AI models"),
         ("sync", "iCloud Sync"),
         ("forums", "Forums"),
         ("summaries", "Summaries & chat"),
@@ -123,11 +123,89 @@ final class SettingsNavigationUITests: DCUITestCase {
         XCTAssertFalse(app.buttons["syncStatusAction"].exists, "Nothing to retry without an account.")
     }
 
+    /// Settings › AI models lists both roles with their own models (here set
+    /// apart with `-dc-agent-model`) and opens a role's model picker.
+    func testAIModelsPageShowsBothRolesAndOpensARolesPicker() throws {
+        let app = launch(["-dc-sample", "-dc-show-settings", "provider", "-dc-agent-model", "deepseek:deepseek-v4-flash"])
+
+        XCTAssertTrue(app.navigationBars["AI models"].waitForExistence(timeout: 20))
+        let assistant = any(app, "modelRole-assistant")
+        let agent = any(app, "modelRole-agent")
+        XCTAssertTrue(assistant.waitForExistence(timeout: 5))
+        XCTAssertTrue(assistant.label.contains("claude-sonnet-4-5"), "Got “\(assistant.label)”.")
+        XCTAssertTrue(agent.label.contains("deepseek-v4-flash"), "Got “\(agent.label)”.")
+        XCTAssertTrue(any(app, "useSameModel").exists, "Different models offer “Use the same model for both”.")
+
+        capture("ai-models")
+
+        agent.tap()
+        XCTAssertTrue(app.navigationBars["Ask the forum"].waitForExistence(timeout: 10))
+        XCTAssertTrue(any(app, "providerPicker").waitForExistence(timeout: 5))
+        capture("ai-models-agent-picker")
+        XCTAssertTrue(reveal(app.buttons["testAndSaveProvider"], in: app, swipes: 4))
+        tapNavigationBack(in: app)
+        XCTAssertTrue(app.navigationBars["AI models"].waitForExistence(timeout: 10))
+    }
+
+    /// The Assistant's model switcher names the current mode's role: Chat
+    /// (and Summary) switch the summaries & chat model, Ask the forum its own.
+    func testAssistantModelSwitcherFollowsTheMode() throws {
+        try skipUnlessPhone("The Assistant header layout checked here is the iPhone one.")
+        for (mode, title, model) in [
+            ("chat", "Summaries & chat model", "claude-sonnet-4-5"),
+            ("agent", "Ask the forum model", "deepseek-v4-flash")
+        ] {
+            let app = launch(["-dc-sample", "-dc-forums-home", "-dc-topic", "makers", "-dc-assistant-mode", mode,
+                              "-dc-agent-model", "deepseek:deepseek-v4-flash"])
+            let more = app.buttons["assistantMoreMenu"]
+            XCTAssertTrue(more.waitForExistence(timeout: 20), "The Assistant did not open in \(mode).")
+            more.tap()
+            let switcher = app.buttons["modelSwitcher"]
+            XCTAssertTrue(switcher.waitForExistence(timeout: 5))
+            XCTAssertTrue(switcher.label.contains(title), "Got “\(switcher.label)” in \(mode).")
+            switcher.tap()
+            let current = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", model)).firstMatch
+            XCTAssertTrue(current.waitForExistence(timeout: 5), "The \(mode) switcher doesn't list \(model).")
+            capture("model-switcher-\(mode)")
+            app.terminate()
+        }
+    }
+
+    /// Only the role that can't run shows the setup card: here Ask the
+    /// forum's provider has no key while chat works.
+    func testSetupCardShowsOnlyForTheRoleThatIsNotReady() throws {
+        let args = ["-dc-sample", "-dc-forums-home", "-dc-topic", "makers",
+                    "-dc-agent-model", "deepseek:deepseek-v4-flash", "-dc-no-agent-key"]
+        var app = launch(args + ["-dc-assistant-mode", "agent"])
+        let card = any(app, "providerSetupCard")
+        XCTAssertTrue(card.waitForExistence(timeout: 20), "Ask the forum should ask for its model.")
+        XCTAssertTrue(app.staticTexts["Choose a model for Ask the forum"].exists)
+        capture("setup-card-agent")
+        app.terminate()
+
+        app = launch(args + ["-dc-assistant-mode", "chat"])
+        XCTAssertTrue(app.buttons["assistantMoreMenu"].waitForExistence(timeout: 20))
+        XCTAssertFalse(any(app, "providerSetupCard").exists, "Chat's model is ready.")
+    }
+
+    /// Screenshot attached to the result; also written to
+    /// `$DC_SCREENSHOT_DIR` (pass `TEST_RUNNER_DC_SCREENSHOT_DIR`) when set.
+    private func capture(_ name: String) {
+        let shot = XCUIScreen.main.screenshot()
+        let attachment = XCTAttachment(screenshot: shot)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        if let directory = ProcessInfo.processInfo.environment["DC_SCREENSHOT_DIR"] {
+            try? shot.pngRepresentation.write(to: URL(fileURLWithPath: directory).appendingPathComponent("\(name).png"))
+        }
+    }
+
     /// A control each page is known for (moved out of the old single form).
     private func assertPageContent(_ row: String, in app: XCUIApplication) {
         let expected: XCUIElement?
         switch row {
-        case "provider": expected = any(app, "providerPicker")
+        case "provider": expected = any(app, "modelRole-assistant")
         case "sync": expected = any(app, "syncAPIKeys")
         case "summaries": expected = any(app, "summaryBatchLimit")
         case "agent": expected = any(app, "agentMaxSteps")

@@ -28,9 +28,10 @@ final class WatchNotifier: NSObject, UNUserNotificationCenterDelegate {
         guard await isAuthorized() else { return }
         let content = UNMutableNotificationContent()
         content.title = topic.title
-        content.body = count == 1
-            ? "1 new reply in a watched topic."
-            : "\(count) new replies in a watched topic."
+        content.body = String(
+            localized: "\(count) new replies in a watched topic.",
+            comment: "Notification body; the title is the topic's title"
+        )
         content.sound = .default
         content.userInfo = [Self.urlKey: topic.url.absoluteString]
         content.threadIdentifier = topic.topicKey

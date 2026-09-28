@@ -33,8 +33,12 @@ with an AI assistant beside it. It works with any forum built on
 - **Share from Safari or Chrome.** Share any forum page to Forumind
   to open it, summarize it, chat about it, or ask the forum.
 - **Watch topics.** Get a notification when a topic has new replies.
-- **Built-in ad and tracker blocking** in the browser, using EasyList and
-  EasyPrivacy.
+- **Polite to forum servers.** Topics are read one page per second by
+  default (Settings › Summaries & chat › Forum requests), and each forum is
+  paced on its own.
+- **Optional ad and tracker blocking** in the browser, using EasyList and
+  EasyPrivacy. It's off by default, out of respect for forum owners who rely
+  on ads; turn it on in Settings › Browser.
 - **iCloud sync.** Forums, summaries, chats, and settings follow you between
   your iPhone and iPad automatically, end-to-end encrypted in your own iCloud
   account; API keys sync through iCloud Keychain.
@@ -75,6 +79,14 @@ good model:
 already pay for one of these, use that one; to try many models with one key,
 OpenRouter is an easy start. For Ollama or LM Studio, enter the computer's
 address (for example `http://192.168.1.20:11434`) as the base URL.
+
+**Two models, one for each job.** Settings › AI models has a default model
+for **Summaries & chat** and one for **Ask the forum**. Summaries and chat
+read a lot of text, so a fast, low-cost model works well there; Ask the forum
+plans searches and reasons over what it reads, so a stronger model pays off.
+Both start as the model you pick during setup; change either one, or switch
+from the Assistant's menu, and the other stays as it is. Keys belong to a
+provider, so two models from the same provider share one key.
 
 ## Get started
 

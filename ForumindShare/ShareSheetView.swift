@@ -120,7 +120,7 @@ private struct PageCard: View {
             HStack(alignment: .top, spacing: 12) {
                 AppGlyph()
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(page?.displayTitle ?? "Reading page…")
+                    Text(page?.displayTitle ?? String(localized: "Reading page…", comment: "Placeholder title while the shared page loads"))
                         .font(.headline)
                         .foregroundStyle(page == nil ? .secondary : .primary)
                         .lineLimit(3)
@@ -194,11 +194,11 @@ private struct DetectionBadge: View {
     private var text: String {
         switch detection {
         case .discourse(let forumName):
-            return "Discourse forum detected · \(forumName)"
+            return String(localized: "Discourse forum detected · \(forumName)", comment: "The argument is the forum's name")
         case .notDetected:
-            return "Couldn't confirm this is a Discourse forum"
+            return String(localized: "Couldn't confirm this is a Discourse forum")
         case .unknown:
-            return "Discourse forum? Forumind will check when it opens"
+            return String(localized: "Discourse forum? Forumind will check when it opens")
         }
     }
 
@@ -223,8 +223,8 @@ private struct DetectionBadge: View {
 
 private struct ShareAction: Identifiable {
     let kind: IncomingLinkRequest.Action
-    let title: String
-    let detail: String
+    let title: LocalizedStringKey
+    let detail: LocalizedStringKey
     let symbol: String
     let tint: Color
 
@@ -332,8 +332,8 @@ private struct ShareActionButtonStyle: ButtonStyle {
 private struct MessageRow: View {
     let symbol: String
     let tint: Color
-    let title: String
-    let detail: String
+    let title: LocalizedStringKey
+    let detail: LocalizedStringKey
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {

@@ -102,7 +102,7 @@ struct SettingsForumsPage: View {
             }
         }
         .confirmationDialog(
-            removing.map { "Remove \($0.displayName)?" } ?? "",
+            removing.map { String(localized: "Remove \($0.displayName)?", comment: "Confirmation title; the argument is a forum name") } ?? "",
             isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
             titleVisibility: .visible,
             presenting: removing
@@ -116,9 +116,12 @@ struct SettingsForumsPage: View {
             Button("Cancel", role: .cancel) {}
         } message: { forum in
             let count = app.savedItemCount(forSiteURL: forum.siteURL)
-            Text(count > 0
-                ? "Also delete saved summaries/chats for this forum? It has \(count) saved \(count == 1 ? "item" : "items")."
-                : "Also delete saved summaries/chats for this forum?")
+            if count > 0 {
+                Text("Also delete saved summaries/chats for this forum? It has \(count) saved items.",
+                     comment: "Remove forum confirmation; the count is the forum's saved summaries and chats")
+            } else {
+                Text("Also delete saved summaries/chats for this forum?")
+            }
         }
     }
 

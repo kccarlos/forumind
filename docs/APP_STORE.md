@@ -145,12 +145,13 @@ combined "Discourse" (a trademark of Civilized Discourse Construction Kit,
 Inc.) with a Microsoft product name, so it was renamed to the independent
 brand **Forumind**, which uses neither.
 
-- The name (`appstore/metadata/en-US/name.txt`), the home-screen name
+- The name (`appstore/metadata/<locale>/name.txt`), the home-screen name
   (`CFBundleDisplayName`), and the bundle ID (`io.github.kccarlos.forumind`)
   are all Forumind.
 - "Discourse" appears only descriptively, to say what the app works with:
-  the subtitle is `AI for Discourse forums`, and the description says it works
-  with any Discourse forum. It is not part of the name and not a keyword.
+  the subtitle is `AI for Discourse forums` (Chinese: `Discourse 论坛 AI 助手`
+  / `Discourse 論壇 AI 助理`), and the description says it works with any
+  Discourse forum. It is not part of the name and not a keyword.
 - The description, the README, and Settings › About carry the disclaimer:
   "Forumind is an independent app and is not affiliated with or endorsed by
   Civilized Discourse Construction Kit, Inc. Discourse is a trademark of its
@@ -165,19 +166,22 @@ brand **Forumind**, which uses neither.
 
 ## 7. Store listing
 
-Text lives in `appstore/metadata/` in fastlane `deliver` layout, and
-`scripts/ci/check-appstore-metadata.sh` checks the limits in CI:
+Text lives in `appstore/metadata/` in fastlane `deliver` layout, one folder
+per App Store language: `en-US` (the primary language), `zh-Hans`
+(Simplified Chinese) and `zh-Hant` (Traditional Chinese).
+`scripts/ci/check-appstore-metadata.sh` checks the limits for every locale
+folder in CI:
 
-| File | Limit |
+| File (in each locale folder) | Limit |
 | --- | --- |
-| `en-US/name.txt` | 30 |
-| `en-US/subtitle.txt` | 30 |
-| `en-US/promotional_text.txt` | 170 |
-| `en-US/keywords.txt` | 100, comma-separated |
-| `en-US/description.txt` | 4000 |
-| `en-US/release_notes.txt` | 4000 ("What's New"; not used for the first version) |
-| `en-US/privacy_url.txt`, `support_url.txt`, `marketing_url.txt` | URLs |
-| `copyright.txt`, `primary_category.txt`, `secondary_category.txt` | |
+| `name.txt` | 30 |
+| `subtitle.txt` | 30 |
+| `promotional_text.txt` | 170 |
+| `keywords.txt` | 100, comma-separated |
+| `description.txt` | 4000 |
+| `release_notes.txt` | 4000 ("What's New"; not used for the first version) |
+| `privacy_url.txt`, `support_url.txt`, `marketing_url.txt` | URLs |
+| `copyright.txt`, `primary_category.txt`, `secondary_category.txt` (top level, all languages) | |
 
 - Category: **Productivity** (primary), **Reference** (secondary).
 - Privacy Policy URL:
@@ -185,14 +189,103 @@ Text lives in `appstore/metadata/` in fastlane `deliver` layout, and
   It must be reachable without logging in, so the repository must be public
   first. A GitHub Pages URL (for example
   `https://kccarlos.github.io/forumind/privacy`) looks nicer if
-  you enable Pages later; update `privacy_url.txt` if you do.
+  you enable Pages later; update `privacy_url.txt` in every locale if you do.
 - Support URL: `https://github.com/kccarlos/forumind/issues`.
-- Screenshots: `appstore/screenshots/en-US/`, five for 6.9" iPhone
-  (1320 × 2868) and five for 13" iPad (2064 × 2752). App Store Connect scales
-  them for smaller devices.
+- Screenshots: `appstore/screenshots/<locale>/`, five for 6.9" iPhone
+  (1320 × 2868) and five for 13" iPad (2064 × 2752) in each language. App
+  Store Connect scales them for smaller devices. They are generated; see
+  [Screenshots](#screenshots) below.
 - App icon: comes from the build (`Assets.xcassets/AppIcon`).
 - Upload with `release.yml` (`submit_metadata`, `upload_screenshots`) or
   `bundle exec fastlane metadata screenshots:true`.
+
+### Chinese listings
+
+The Simplified and Traditional Chinese listings mirror the English one: the
+same name (Forumind, never translated), a translated subtitle, description
+(including the non-affiliation disclaimer and the optional, off-by-default
+ad blocking), promotional text, release notes, and Chinese keywords
+(no "Discourse", no other companies' names, and no words already in the
+name or subtitle, which App Store search indexes anyway). The URLs are the
+same GitHub pages.
+
+- [ ] **(owner)** A language appears on the App Store only once the version
+      has that localization. Either add **Chinese (Simplified)** and
+      **Chinese (Traditional)** on the version page in App Store Connect
+      (the language menu at the top right of the app's page), or let CI's
+      fastlane `deliver` (`release.yml` with `submit_metadata` and
+      `upload_screenshots`) create them from the `zh-Hans` and `zh-Hant`
+      folders. Then check each listing's text and screenshots in App Store
+      Connect.
+
+### Screenshots
+
+The uploaded screenshots are marketing images rendered by
+`scripts/brand/render_store_screenshots.sh` from raw simulator captures,
+for each store language:
+
+- Raw captures: `appstore/screenshots-raw/<locale>/` with `<locale>` one of
+  `en-US`, `zh-Hans`, `zh-Hant` (iPhone 17 Pro Max and iPad Pro 13-inch,
+  status bar at 9:41, sample data only; the Chinese sets are taken with the
+  app in that language, which switches the sample data to Chinese,
+  fictional forums). They sit outside `appstore/screenshots/` because
+  fastlane treats every folder there as a language and would upload them.
+  How to retake them: [DEVELOPMENT.md](DEVELOPMENT.md#app-store-screenshots).
+- Output: `appstore/screenshots/<locale>/`, opaque sRGB PNGs at the exact
+  App Store sizes. File names are numbered in App Store order. The renderer
+  removes old `iphone*`/`ipad*` files there first.
+- Design: a big headline and a short subline at the top, and the capture in
+  a thin dark device frame, cropped at the bottom. English captions use SF
+  Pro Rounded (black weight); Chinese captions use PingFang SC / PingFang TC
+  (Semibold, the heaviest PingFang face), since SF Pro has no Chinese
+  glyphs. Slides 1–3 are consecutive slices of one blue-to-purple band, so
+  the three screenshots in search results read as one set. Slide 4 reverses
+  the gradient, and slide 5 uses the dark icon background.
+- `scripts/ci/check-appstore-metadata.sh` checks the sizes, at most ten per
+  device class in each locale, that every screenshot locale has a metadata
+  folder, and that no PNG has an alpha channel.
+
+Captions are defined per locale in `Captions` in
+`scripts/brand/render_store_screenshots.swift`. Captures (same in every
+language): iPhone 1 summary, 2 Ask the forum, 3 chat, 4 Forums home,
+5 the walkthrough's privacy page; iPad 1 Forums home + summary, 2 Ask the
+forum, 3 chat, 4 Manage, 5 Settings › iCloud Sync.
+
+**English (en-US)**
+
+| # | Headline | iPhone subline | iPad subline |
+| --- | --- | --- | --- |
+| 1 | Catch up in seconds | AI summaries of long forum threads | same |
+| 2 | Ask the whole forum | Answers with links to the posts | same |
+| 3 | Chat with any topic | Ask follow-ups about any thread | same |
+| 4 | Every forum in one app | Pin favorites, share from your browser | Summaries, chats, and watched topics |
+| 5 | Private by design (iPhone) / Private & in sync (iPad) | No accounts, no tracking. Optional ad blocking. | No accounts. End-to-end encrypted sync. |
+
+**Simplified Chinese (zh-Hans)**
+
+| # | Headline | iPhone subline | iPad subline |
+| --- | --- | --- | --- |
+| 1 | 长篇讨论 / 秒懂重点 | AI 总结冗长的论坛讨论 | same |
+| 2 | 问遍 / 整个论坛 | 回答附带原帖链接 | same |
+| 3 | 任何话题 / 随时追问 | 针对任何讨论串追问细节 | same |
+| 4 | 所有论坛 / 一个 App | 置顶常用论坛，从浏览器一键分享 | 摘要、聊天、关注的话题，集中管理 |
+| 5 | 隐私 / 从设计开始 (iPhone), 隐私安全 / 跨设备同步 (iPad) | 无需账户，不做跟踪，广告拦截可选 | 无需账户，端到端加密同步 |
+
+**Traditional Chinese (zh-Hant)**
+
+| # | Headline | iPhone subline | iPad subline |
+| --- | --- | --- | --- |
+| 1 | 長篇討論 / 秒懂重點 | AI 摘要冗長的論壇討論 | same |
+| 2 | 問遍 / 整個論壇 | 回答附上原文連結 | same |
+| 3 | 任何話題 / 隨時追問 | 針對任何討論串追問細節 | same |
+| 4 | 所有論壇 / 一個 App | 釘選常用論壇，從瀏覽器一鍵分享 | 摘要、聊天、追蹤的話題，集中管理 |
+| 5 | 隱私 / 從設計開始 (iPhone), 隱私安全 / 跨裝置同步 (iPad) | 無需帳號，不做追蹤，廣告阻擋可選 | 無需帳號，端對端加密同步 |
+
+Keep the headlines to two short lines (they must read at about 300 px wide
+in search results; in Chinese, at most five characters per line on iPhone),
+make every claim true of the screen shown, and don't put trademarks in the
+headlines. Ad and tracker blocking is optional and off by default, so no
+caption may promise an ad-free browser.
 
 ## 8. App Review information
 
@@ -219,7 +312,8 @@ How to test:
 
 Notes:
 - The built-in browser can open any website (hence the web access age
-  rating) and blocks ads/trackers with bundled EasyList/EasyPrivacy lists.
+  rating) and can block ads/trackers with bundled EasyList/EasyPrivacy lists
+  (off by default; Settings › Browser, or the shield in the address bar).
 - iCloud sync is automatic when the device is signed in to iCloud: CloudKit
   private database, end-to-end encrypted fields. There is no server of ours.
   To see it, use two devices on one Apple Account; Settings › iCloud Sync

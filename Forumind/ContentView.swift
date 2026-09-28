@@ -10,6 +10,14 @@ enum AppPane: String, CaseIterable {
         case .assistant: "sparkles"
         }
     }
+
+    /// Visible label; `rawValue` stays English for state and tests.
+    var title: String {
+        switch self {
+        case .browser: String(localized: "Browse", comment: "Workspace switch: the web browser pane")
+        case .assistant: String(localized: "Assistant", comment: "Workspace switch: the AI assistant pane")
+        }
+    }
 }
 
 struct ContentView: View {
@@ -500,7 +508,7 @@ private struct BrowserChrome: View {
                 .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? 150 : 190, alignment: .leading)
             Picker("Workspace", selection: workspace.animation(DCMotion.quick)) {
                 ForEach(AppPane.allCases, id: \.self) { pane in
-                    Label(pane.rawValue, systemImage: pane.icon)
+                    Label(pane.title, systemImage: pane.icon)
                         .tag(pane)
                 }
             }
@@ -547,9 +555,9 @@ private struct BrowserChrome: View {
                     .fixedSize(horizontal: true, vertical: false)
                     .padding(.trailing, DCTheme.spacingXS)
             }
-            browserButton("chevron.left", label: "Back", action: goBack)
+            browserButton("chevron.left", label: String(localized: "Back"), action: goBack)
                 .disabled(!canGoBack)
-            browserButton("chevron.right", label: "Forward", action: browser.goForward)
+            browserButton("chevron.right", label: String(localized: "Forward"), action: browser.goForward)
                 .disabled(!browser.canGoForward || showsHome)
 
             if horizontalSizeClass == .compact {
@@ -582,7 +590,7 @@ private struct BrowserChrome: View {
         }
         .buttonStyle(.plain)
         .hoverEffect(.highlight)
-        .accessibilityLabel(forum.map { "Forum: \($0.displayName)" } ?? "Forums")
+        .accessibilityLabel(forum.map { String(localized: "Forum: \($0.displayName)") } ?? String(localized: "Forums"))
         .accessibilityHint("Switch to another forum")
         .accessibilityIdentifier("forumSwitcher")
         .popover(isPresented: $showingSwitcher, arrowEdge: position == .top ? .top : .bottom) {
@@ -625,7 +633,8 @@ private struct BrowserChrome: View {
     }
 
     private var homeLabel: String {
-        forum.map { "\($0.displayName) home" } ?? "Forums"
+        forum.map { String(localized: "\($0.displayName) home", comment: "Button label: the forum's home page (forum name)") }
+            ?? String(localized: "Forums")
     }
 
     private func goHome() {
@@ -640,18 +649,22 @@ private struct BrowserChrome: View {
     private var reloadButton: some View {
         browserButton(
             browser.isLoading ? "xmark" : "arrow.clockwise",
-            label: browser.isLoading ? "Stop loading" : "Reload",
+            label: browser.isLoading ? String(localized: "Stop loading") : String(localized: "Reload"),
             action: browser.isLoading ? browser.stopLoading : browser.reload
         )
         .disabled(browser.currentURL == nil || showsHome)
     }
 
     private var accountLabel: String {
-        browser.isAuthenticated ? "Forum account" : "Forum sign in"
+        browser.isAuthenticated
+            ? String(localized: "Forum account")
+            : String(localized: "Forum sign in", comment: "Button: open the forum's sign-in page")
     }
 
     private var accountHint: String {
-        browser.isAuthenticated ? "Open the forum home" : "Open the forum sign in page"
+        browser.isAuthenticated
+            ? String(localized: "Open the forum home")
+            : String(localized: "Open the forum sign in page")
     }
 
     private func openAccount() {
@@ -674,7 +687,7 @@ private struct BrowserChrome: View {
         .accessibilityHint(accountHint)
     }
 
-    private let signInHelpLabel = "Sign-in help"
+    private var signInHelpLabel: String { String(localized: "Sign-in help") }
 
     /// Narrow windows (iPhone, or a compact Stage Manager window) keep the
     /// remaining browser controls one tap away in a menu.
@@ -763,7 +776,7 @@ private struct BrowserChrome: View {
                     .accessibilityHint("Tap to enter a forum address")
             }
             Spacer(minLength: 0)
-            if !isEditingAddress, !showsHome, browser.currentURL != nil, blockingStatus != .off {
+            if !isEditingAddress, !showsHome, browser.currentURL != nil {
                 shieldMenu
             }
         }
@@ -808,10 +821,11 @@ private struct BrowserChrome: View {
 
     private var blockingStatusTitle: String {
         switch blockingStatus {
-        case .off: "Ad blocking is off"
-        case .blocking(let ads, _): ads ? "Ads blocked on this site" : "Trackers blocked on this site"
-        case .allowedSite: "Ads allowed on this site"
-        case .signInPage: "Nothing blocked on sign-in pages"
+        case .off: String(localized: "Ad blocking is off")
+        case .blocking(let ads, _):
+            ads ? String(localized: "Ads blocked on this site") : String(localized: "Trackers blocked on this site")
+        case .allowedSite: String(localized: "Ads allowed on this site")
+        case .signInPage: String(localized: "Nothing blocked on sign-in pages")
         }
     }
 
@@ -821,12 +835,12 @@ private struct BrowserChrome: View {
         guard let host = url?.host.flatMap(ContentBlockingRules.normalizedHost) else { return nil }
         switch blockingStatus {
         case .blocking:
-            return ("Allow ads on \(host)", "shield.slash", {
+            return (String(localized: "Allow ads on \(host)", comment: "Menu item; the placeholder is a website host"), "shield.slash", {
                 DCHaptics.tap()
                 app.setAdsAllowed(true, on: url)
             })
         case .allowedSite:
-            return ("Block ads on \(host)", "shield.lefthalf.filled", {
+            return (String(localized: "Block ads on \(host)", comment: "Menu item; the placeholder is a website host"), "shield.lefthalf.filled", {
                 DCHaptics.tap()
                 app.setAdsAllowed(false, on: url)
             })
@@ -836,10 +850,21 @@ private struct BrowserChrome: View {
     }
 
     /// Shield at the end of the address: shows whether ads are blocked here
-    /// and toggles the site. (WebKit reports no per-page block count.)
+    /// and toggles the site. Blocking is off by default (out of respect for
+    /// forum owners who rely on ads); then the shield is neutral and offers to
+    /// turn it on. (WebKit reports no per-page block count.)
     private var shieldMenu: some View {
         Menu {
             Section(blockingStatusTitle) {
+                if blockingStatus == .off {
+                    Button {
+                        DCHaptics.tap()
+                        app.turnOnContentBlocking()
+                    } label: {
+                        Label("Turn on ad blocking", systemImage: "shield.lefthalf.filled")
+                    }
+                    .accessibilityIdentifier("shieldTurnOnBlocking")
+                }
                 if let toggle = adsToggle {
                     Button(action: toggle.action) {
                         Label(toggle.title, systemImage: toggle.systemImage)
@@ -861,7 +886,8 @@ private struct BrowserChrome: View {
     private var shieldSymbol: String {
         switch blockingStatus {
         case .blocking: "shield.lefthalf.filled"
-        case .allowedSite, .signInPage, .off: "shield.slash"
+        case .off: "shield"
+        case .allowedSite, .signInPage: "shield.slash"
         }
     }
 
@@ -945,7 +971,7 @@ private struct BrowserChrome: View {
                         // On a phone the chip is icon-only so the host stays
                         // readable; the label still says "Not a Discourse forum".
                         DCStatusChip(
-                            text: horizontalSizeClass == .compact ? nil : "Not a Discourse forum",
+                            text: horizontalSizeClass == .compact ? nil : String(localized: "Not a Discourse forum"),
                             systemImage: "exclamationmark.circle",
                             tint: DCTheme.warning
                         )
@@ -1014,16 +1040,17 @@ private struct AddressError: Identifiable {
 
     var title: String {
         address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? "Enter an address"
-            : "Can’t open this address"
+            ? String(localized: "Enter an address")
+            : String(localized: "Can’t open this address")
     }
 
     var message: String {
         if isPath, !hasForum {
-            return "Open a forum first, then enter a path such as /t/topic-name/123."
+            return String(localized: "Open a forum first, then enter a path such as /t/topic-name/123.")
         }
-        return "Enter a web address such as meta.discourse.org or a full https:// link. "
-            + (hasForum ? "Paths such as /t/topic-name/123 open on the current forum." : "")
+        return hasForum
+            ? String(localized: "Enter a web address such as meta.discourse.org or a full https:// link. Paths such as /t/topic-name/123 open on the current forum.")
+            : String(localized: "Enter a web address such as meta.discourse.org or a full https:// link.")
     }
 }
 
@@ -1058,7 +1085,7 @@ private struct LoginReadinessView: View {
     }
 
     private var forumHost: String {
-        browser.homeSiteURL.map { ForumSite.host(of: $0) } ?? "the forum"
+        browser.homeSiteURL.map { ForumSite.host(of: $0) } ?? String(localized: "the forum")
     }
 
     var body: some View {
@@ -1083,12 +1110,7 @@ private struct LoginReadinessView: View {
                 }
 
                 Section("Signing in") {
-                    Text(
-                        "Sign in on the forum’s page with your username and password, "
-                            + "email link, or the forum’s single sign-on. Your session stays "
-                            + "in this app’s browser, so summaries and Ask the forum can "
-                            + "read topics you can see."
-                    )
+                    Text("Sign in on the forum’s page with your username and password, email link, or the forum’s single sign-on. Your session stays in this app’s browser, so summaries and Ask the forum can read topics you can see.")
                     .foregroundStyle(.secondary)
                 }
 
@@ -1122,7 +1144,7 @@ private struct LoginReadinessView: View {
     }
 
     private func statusRow<Value: View>(
-        _ title: String,
+        _ title: LocalizedStringKey,
         @ViewBuilder value: () -> Value
     ) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {

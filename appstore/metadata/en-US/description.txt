@@ -19,10 +19,10 @@ WATCH TOPICS
 Get a notification when a topic you care about has new replies.
 
 YOUR CHOICE OF AI
-Use Apple Intelligence where it's available: no account and no key needed. Or bring your own provider: OpenAI, Anthropic, Google Gemini, OpenRouter, Groq, xAI, DeepSeek, NVIDIA NIM, or a model running on your own computer with Ollama or LM Studio.
+Use Apple Intelligence where it's available: no account and no key needed. Or bring your own AI provider with an API key, including many popular cloud services, or run a model on your own computer.
 
-A CLEANER BROWSER
-The built-in browser blocks ads and trackers using the EasyList and EasyPrivacy filter lists. Allow ads on any site with one tap.
+KIND TO FORUMS
+Forumind reads a topic one page per second by default, so it never hammers a forum's servers; you can change the pace in Settings. Ad and tracker blocking (EasyList and EasyPrivacy) is optional and off by default, out of respect for forum owners who rely on ads. Turn it on with one switch in Settings.
 
 ON ALL YOUR DEVICES
 Built for iPhone and iPad, with the forum and the assistant side by side on iPad. Your forums, summaries, chats, and settings sync automatically through your own iCloud account, end-to-end encrypted.

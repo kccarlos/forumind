@@ -144,6 +144,13 @@ off no-cost PCC. PCC needs **iOS 27**. The on-device fallback works on
 | iOS 27+ | `PCC_ENABLED` + entitlement | PCC `.unavailable(.deviceNotEligible / .systemNotReady)`, on-device ready | **On-device** fallback |
 | iOS 27+ | `PCC_ENABLED` + entitlement | both unavailable | The on-device reason (e.g. "Turn on Apple Intelligence in Settings") |
 
+`supportsLocale()` checks `Locale.current`, which follows the app's language
+(Settings › Forumind › Language), so the app in Simplified or Traditional
+Chinese asks the model about Chinese. The status texts and errors, including
+the unsupported language or region ones, are localized; Apple's name for the
+feature is "Apple 智能" in Simplified Chinese and "Apple Intelligence" in
+Traditional Chinese.
+
 The backend is chosen before each request. A PCC failure partway through a
 request (network, quota) is reported to the user. It does not silently rerun
 the request on-device.
@@ -151,12 +158,14 @@ the request on-device.
 ## Default provider
 
 `AppleIntelligenceDefaults.shouldSelectAppleIntelligence` selects Apple
-Intelligence when provider setup appears (onboarding step 3, or the "Connect
-an AI provider" sheet), but only when all of these hold:
+Intelligence for **both** model roles (Summaries & chat, and Ask the forum)
+when provider setup appears (onboarding step 3, or the "Connect an AI
+provider" sheet), but only when all of these hold:
 
 - it's available now,
-- the user never configured a provider: stock OpenRouter selection, every
-  provider configuration at its defaults, no API keys, no favorites, and
+- the user never configured a provider: stock OpenRouter selection for both
+  roles, every provider configuration at its defaults, no API keys, no
+  favorites, and
 - it hasn't been applied before (`UserDefaults` flag
   `appleIntelligence.defaultApplied`, so switching back to OpenRouter sticks).
 
@@ -206,7 +215,15 @@ Jobs record the provider as `appleIntelligence` and the model as the backend
 they ran on: **"Private Cloud Compute"** or **"On-device"** (from
 `RunSettings.resolvingAppleIntelligence`). The UI shows "Apple Intelligence ·
 On-device". The stored configuration model is the constant "Automatic", so it
-never differs between devices that sync settings.
+never differs between devices that sync settings. Either model role can use
+Apple Intelligence; its stored model is "Automatic" in both.
+
+The context budgets above follow the model a request runs on. With Apple
+Intelligence as the Summaries & chat model, summaries (including the agent's
+`summarize_topic` tool) use its small batches while an Ask the forum model on
+a hosted provider keeps its own limits, and the other way round. When Apple
+Intelligence becomes unavailable, only the role that uses it shows as not
+ready.
 
 ## Tests
 

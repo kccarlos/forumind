@@ -1,0 +1,1 @@
+Forumind 首个版本。适用于任何 Discourse 论坛的摘要、聊天和问论坛，可使用 Apple 智能或你选择的 AI 提供方，支持可选的广告和跟踪器拦截，以及 iPhone 与 iPad 之间的 iCloud 同步。

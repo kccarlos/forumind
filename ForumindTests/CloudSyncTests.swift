@@ -283,7 +283,8 @@ final class CloudSyncTests: XCTestCase {
         a.app.settings.browserBarPosition = .top
         a.app.flushPendingSaves()
         b.app.settings.forumContextLimit = 45_000
-        b.app.settings.blockTrackers = false
+        b.app.settings.blockTrackers = true
+        b.app.settings.forumRequestPace = .fast
         b.app.flushPendingSaves()
         a.sync.clock = { Date().addingTimeInterval(2) }
         b.sync.clock = { Date().addingTimeInterval(3) }
@@ -292,7 +293,8 @@ final class CloudSyncTests: XCTestCase {
         for device in [a, b] {
             XCTAssertEqual(device.app.settings.systemPrompt, "From A")
             XCTAssertEqual(device.app.settings.forumContextLimit, 45_000)
-            XCTAssertFalse(device.app.settings.blockTrackers)
+            XCTAssertTrue(device.app.settings.blockTrackers)
+            XCTAssertEqual(device.app.settings.forumRequestPace, .fast)
         }
         XCTAssertEqual(b.app.settings.browserBarPosition, .bottom)
         XCTAssertFalse(b.app.settings.syncAPIKeys)
@@ -314,6 +316,279 @@ final class CloudSyncTests: XCTestCase {
         XCTAssertEqual(b.app.settings.systemPrompt, "Customized")
         XCTAssertEqual(b.app.settings.agentMaxSteps, 25)
         XCTAssertEqual(a.app.settings.systemPrompt, "Customized")
+    }
+
+    // MARK: Model roles
+
+    /// The two model roles are separate settings units: one device changes
+    /// the summaries & chat model, the other the Ask the forum model, and
+    /// both changes survive on both devices.
+    func testTwoDevicesEditingDifferentModelRolesKeepBoth() async throws {
+        let a = try makeDevice()
+        let b = try makeDevice()
+        await sync(a, b, a)
+
+        let cheap = ModelSelection(provider: .gemini, model: "gemini-3.1-flash-lite")
+        let agentic = ModelSelection(provider: .deepSeek, model: "deepseek-v4-flash")
+        a.app.selectModel(cheap, for: .role(.assistant))
+        a.app.flushPendingSaves()
+        b.app.selectModel(agentic, for: .role(.agent))
+        b.app.flushPendingSaves()
+        a.sync.clock = { Date().addingTimeInterval(2) }
+        b.sync.clock = { Date().addingTimeInterval(3) }
+        await sync(a, b, a, b)
+
+        for device in [a, b] {
+            XCTAssertEqual(device.app.settings.assistantModel, cheap)
+            XCTAssertEqual(device.app.settings.agentModel, agentic)
+            // What builds without roles read follows the assistant role.
+            XCTAssertEqual(device.app.settings.selectedProvider, .gemini)
+            XCTAssertEqual(device.app.settings.configuration(for: .gemini).model, "gemini-3.1-flash-lite")
+        }
+        let units = try SyncSchema.settingsUnits(a.app.settings)
+        XCTAssertNotNil(units["assistantModel"])
+        XCTAssertNotNil(units["agentModel"])
+        XCTAssertNotNil(units["selectedProvider"])
+        let writes = await writes { await sync(a, b) }
+        XCTAssertEqual(writes, 0, "the devices agree and stop sending")
+    }
+
+    /// A role that arrives pointing at a provider this device has no key
+    /// for: that role isn't ready here, the other one is unaffected.
+    func testSyncedRoleForAProviderWithoutAKeyHereOnlyAffectsThatRole() async throws {
+        let a = try makeDevice(apiKeys: [.deepSeek: "sk-a"])
+        let b = try makeDevice()
+        a.app.selectModel(ModelSelection(provider: .ollama, model: "llama3.2"), for: .both)
+        a.app.flushPendingSaves()
+        await sync(a, b)
+        XCTAssertTrue(b.app.isProviderReady)
+
+        a.app.selectModel(ModelSelection(provider: .deepSeek, model: "deepseek-v4-flash"), for: .role(.agent))
+        a.app.flushPendingSaves()
+        await sync(a, b)
+        XCTAssertEqual(b.app.settings.agentModel.provider, .deepSeek)
+        XCTAssertFalse(b.app.isProviderReady(for: .agent))
+        XCTAssertTrue(b.app.isProviderReady(for: .assistant))
+        XCTAssertTrue(a.app.isProviderReady(for: .agent))
+        XCTAssertEqual(b.app.settings.configuration(for: .deepSeek).apiKey, "")
+    }
+
+    /// A settings record from a build without roles: it carries no role
+    /// units, and its provider change moves the assistant role only.
+    func testSettingsFromABuildWithoutRolesMoveOnlyTheAssistantRole() async throws {
+        let a = try makeDevice()
+        let agentic = ModelSelection(provider: .deepSeek, model: "deepseek-v4-flash")
+        a.app.selectModel(ModelSelection(provider: .gemini, model: "gemini-3.1-flash-lite"), for: .role(.assistant))
+        a.app.selectModel(agentic, for: .role(.agent))
+
+        var legacyUnits = try SyncSchema.settingsUnits(a.app.settings)
+        legacyUnits.removeValue(forKey: "assistantModel")
+        legacyUnits.removeValue(forKey: "agentModel")
+        legacyUnits["selectedProvider"] = .string("groq")
+        legacyUnits["configurations.groq"] = .object([
+            "model": .string("llama-legacy"),
+            "baseURL": .string(AIProvider.groq.defaultBaseURL)
+        ])
+        a.app.settings = try SyncSchema.applying(settingsUnits: legacyUnits, to: a.app.settings)
+        XCTAssertEqual(a.app.settings.assistantModel, ModelSelection(provider: .groq, model: "llama-legacy"))
+        XCTAssertEqual(a.app.settings.agentModel, agentic)
+        XCTAssertEqual(a.app.settings.selectedProvider, .groq)
+    }
+
+    /// One pass the way CKSyncEngine runs in the app: a fetch triggers a pass
+    /// (`didFetch`) and the engine sends what it queued right away
+    /// (`automaticallySync`), before any later pass.
+    private func fetchAndSend(_ device: Device, at time: Date) async {
+        device.sync.clock = { time }
+        try? await device.transport.fetchChanges()
+        try? await device.transport.sendChanges()
+    }
+
+    /// The server's settings units, as plain JSON values.
+    private func serverSettingsUnits() throws -> [String: JSONValue] {
+        let record = try XCTUnwrap(server.records()["settings"])
+        let decoded = try SyncPayload.decode(record.payload).record
+        return try XCTUnwrap(decoded.fields)
+    }
+
+    /// Both devices run the same summaries & chat model, stored consistently
+    /// for older builds too, and match the server.
+    private func assertModelRolesConverged(
+        _ a: Device, _ b: Device, file: StaticString = #filePath, line: UInt = #line
+    ) throws {
+        for device in [a, b] {
+            let settings = device.app.settings
+            XCTAssertEqual(settings.selectedProvider, settings.assistantModel.provider, file: file, line: line)
+            XCTAssertEqual(
+                settings.configuration(for: settings.assistantModel.provider).model, settings.assistantModel.model,
+                file: file, line: line
+            )
+            XCTAssertEqual(try SyncSchema.settingsUnits(settings), try serverSettingsUnits(), file: file, line: line)
+        }
+        XCTAssertEqual(a.app.settings.assistantModel, b.app.settings.assistantModel, file: file, line: line)
+    }
+
+    /// One device changes the summaries & chat model; the other, not synced
+    /// yet, edits the same provider's address, so its configuration unit
+    /// (newer) carries the old model. Each device used to settle the mixed
+    /// record against its own previous state, in opposite directions, and
+    /// with CKSyncEngine sending after every fetch-triggered pass the model
+    /// flipped between the devices forever. Now the merge settles it once.
+    func testMixedModelUnitsFromTwoDevicesSettleOnceAndStopSending() async throws {
+        let a = try makeDevice()
+        let b = try makeDevice()
+        var now = SyncCoding.stamp(Date())
+        func next() -> Date {
+            now = now.addingTimeInterval(5)
+            return now
+        }
+        a.sync.clock = { now }
+        b.sync.clock = { now }
+        a.app.selectModel(ModelSelection(provider: .gemini, model: "gemini-old"), for: .both)
+        a.app.flushPendingSaves()
+        await sync(a, b, a)
+        XCTAssertEqual(b.app.settings.assistantModel.model, "gemini-old")
+
+        a.app.selectModel(ModelSelection(provider: .gemini, model: "gemini-new"), for: .role(.assistant))
+        a.app.flushPendingSaves()
+        await fetchAndSend(a, at: next())
+
+        var configuration = b.app.settings.configuration(for: .gemini)
+        configuration.baseURL = "https://proxy.example.com/v1beta"
+        b.app.settings.setConfiguration(configuration, for: .gemini)
+        b.app.flushPendingSaves()
+        await fetchAndSend(b, at: next())
+        await fetchAndSend(a, at: next())
+
+        try assertModelRolesConverged(a, b)
+        for device in [a, b] {
+            XCTAssertEqual(device.app.settings.configuration(for: .gemini).baseURL, "https://proxy.example.com/v1beta")
+            XCTAssertEqual(device.app.settings.agentModel, ModelSelection(provider: .gemini, model: "gemini-old"))
+        }
+        let sent = await writes {
+            for device in [b, a, b, a] { await fetchAndSend(device, at: next()) }
+            await sync(a, b)
+        }
+        XCTAssertEqual(sent, 0, "settled devices stop sending")
+        try assertModelRolesConverged(a, b)
+    }
+
+    /// Two devices pick different summaries & chat models on the same
+    /// provider in the same second: the tie is broken per unit, so the merged
+    /// record can pair one device's `assistantModel` with the other's
+    /// configuration. The merge settles it the same way on both devices.
+    func testSameSecondAssistantModelTieOnOneProviderSettlesOnce() async throws {
+        let a = try makeDevice()
+        let b = try makeDevice()
+        let base = SyncCoding.stamp(Date())
+        a.sync.clock = { base }
+        b.sync.clock = { base }
+        await sync(a, b, a)
+
+        let tie = base.addingTimeInterval(10)
+        a.app.selectModel(ModelSelection(provider: .gemini, model: "gemini-a"), for: .role(.assistant))
+        a.app.flushPendingSaves()
+        b.app.selectModel(ModelSelection(provider: .gemini, model: "gemini-z"), for: .role(.assistant))
+        b.app.flushPendingSaves()
+        await fetchAndSend(a, at: tie)
+        await fetchAndSend(b, at: tie)
+        await fetchAndSend(a, at: base.addingTimeInterval(20))
+
+        try assertModelRolesConverged(a, b)
+        XCTAssertEqual(a.app.settings.assistantModel.provider, .gemini)
+        var later = base.addingTimeInterval(20)
+        let sent = await writes {
+            for device in [b, a, b, a] {
+                later = later.addingTimeInterval(5)
+                await fetchAndSend(device, at: later)
+            }
+        }
+        XCTAssertEqual(sent, 0, "settled devices stop sending")
+    }
+
+    /// The merge's settling of model roles, on records alone.
+    func testMergeSettlesTheAssistantModelFromTheNewestUnit() throws {
+        func record(
+            assistant: ModelSelection, _ assistantStamp: TimeInterval,
+            provider: AIProvider, _ providerStamp: TimeInterval,
+            models: [AIProvider: (String, TimeInterval)]
+        ) throws -> SyncRecord {
+            var fields: [String: JSONValue] = [
+                "assistantModel": try SyncCoding.json(assistant),
+                "selectedProvider": .string(provider.rawValue)
+            ]
+            var stamps: [String: Date] = [
+                "assistantModel": Date(timeIntervalSince1970: assistantStamp),
+                "selectedProvider": Date(timeIntervalSince1970: providerStamp)
+            ]
+            for (provider, (model, stamp)) in models {
+                fields["configurations.\(provider.rawValue)"] = .object(["model": .string(model), "baseURL": .string("u")])
+                stamps["configurations.\(provider.rawValue)"] = Date(timeIntervalSince1970: stamp)
+            }
+            return SyncRecord(kind: .settings, id: "settings", fields: fields, stamps: stamps, deletedAt: nil)
+        }
+        func settled(_ record: SyncRecord) throws -> (ModelSelection, String?, String?) {
+            let merged = try XCTUnwrap(SyncMerge.merge([record]))
+            XCTAssertEqual(SyncMerge.merge([merged]), merged, "settling twice changes nothing")
+            let fields = try XCTUnwrap(merged.fields)
+            let assistant = try SyncCoding.decode(ModelSelection.self, from: try XCTUnwrap(fields["assistantModel"]))
+            return (
+                assistant,
+                fields["selectedProvider"]?.stringValue,
+                fields["configurations.\(assistant.provider.rawValue)"]?.objectValue?["model"]?.stringValue
+            )
+        }
+
+        // An older build switched the provider after the role was chosen.
+        var result = try settled(record(
+            assistant: ModelSelection(provider: .gemini, model: "g"), 10, provider: .groq, 20,
+            models: [.gemini: ("g", 10), .groq: ("llama", 5)]
+        ))
+        XCTAssertEqual(result.0, ModelSelection(provider: .groq, model: "llama"))
+        XCTAssertEqual(result.1, "groq")
+        // The role is newer than the provider: the provider follows it.
+        result = try settled(record(
+            assistant: ModelSelection(provider: .gemini, model: "g"), 20, provider: .groq, 10,
+            models: [.gemini: ("old", 5), .groq: ("llama", 10)]
+        ))
+        XCTAssertEqual(result.0, ModelSelection(provider: .gemini, model: "g"))
+        XCTAssertEqual(result.1, "gemini")
+        XCTAssertEqual(result.2, "g")
+        // Same provider, the configuration is newer (an older build's model
+        // change, or an address edit elsewhere): the role takes its model.
+        result = try settled(record(
+            assistant: ModelSelection(provider: .gemini, model: "g"), 10, provider: .gemini, 10,
+            models: [.gemini: ("g2", 20)]
+        ))
+        XCTAssertEqual(result.0, ModelSelection(provider: .gemini, model: "g2"))
+        // A tie goes to the role.
+        result = try settled(record(
+            assistant: ModelSelection(provider: .gemini, model: "g"), 20, provider: .gemini, 20,
+            models: [.gemini: ("g2", 20)]
+        ))
+        XCTAssertEqual(result.0, ModelSelection(provider: .gemini, model: "g"))
+        XCTAssertEqual(result.2, "g")
+    }
+
+    /// The roles live inside the encrypted payload: the CloudKit record keeps
+    /// its plain fields (kind, format, tombstone time) and nothing else.
+    func testModelRolesAddNoPlainRecordFields() async throws {
+        let a = try makeDevice()
+        a.app.selectModel(ModelSelection(provider: .gemini, model: "gemini-3.1-flash-lite"), for: .role(.assistant))
+        a.app.selectModel(ModelSelection(provider: .deepSeek, model: "deepseek-v4-flash"), for: .role(.agent))
+        a.app.flushPendingSaves()
+        await sync(a)
+
+        let record = try XCTUnwrap(server.records()["settings"])
+        XCTAssertEqual(record.kind, "settings")
+        XCTAssertEqual(record.formatVersion, CloudRecord.formatVersion)
+        XCTAssertEqual(CloudRecord.formatVersion, 1)
+        let plain = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(record)) as? [String: Any])
+        XCTAssertTrue(Set(plain.keys).isSubset(of: ["recordName", "kind", "formatVersion", "deletedAt", "payload", "systemFields"]), "\(plain.keys)")
+        let payload = try XCTUnwrap(serverPlaintexts()["settings"])
+        XCTAssertTrue(payload.contains("\"assistantModel\""))
+        XCTAssertTrue(payload.contains("deepseek-v4-flash"))
+        XCTAssertFalse(payload.contains("apiKey"))
     }
 
     // MARK: API keys

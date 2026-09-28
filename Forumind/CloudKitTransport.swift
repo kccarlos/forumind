@@ -227,7 +227,7 @@ final class CloudKitTransport: CloudSyncTransport, @unchecked Sendable {
              .zoneBusy, .operationCancelled, .serverResponseLost:
             return .retryLater
         case .permissionFailure, .managedAccountRestricted:
-            return .other("iCloud is restricted for this app.")
+            return .other(String(localized: "iCloud is restricted for this app."))
         default:
             return .other(error.localizedDescription)
         }

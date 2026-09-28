@@ -401,7 +401,7 @@ private struct MarkdownBlockView: View, Equatable {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(Array(items.enumerated()), id: \.offset) { index, item in
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(ordered ? "\(index + 1)." : "•")
+                    Text(verbatim: ordered ? "\(index + 1)." : "•")
                         .font(ordered ? .body.weight(.semibold).monospacedDigit() : .body.weight(.heavy))
                         .foregroundStyle(DCTheme.brandBlue)
                         .frame(minWidth: ordered ? 20 : 12, alignment: ordered ? .trailing : .center)

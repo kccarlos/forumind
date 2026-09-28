@@ -229,20 +229,22 @@ They never overwrite real saved data, and Release builds ignore them.
 
 | Argument | Effect |
 | --- | --- |
-| `-dc-sample` | Loads offline sample data from three forums: Discourse Meta and two fictional ones on reserved example domains (required by the rest of this table). The Assistant opens by itself on iPhone. |
+| `-dc-sample` | Loads offline sample data from three forums: Discourse Meta and two fictional ones on reserved example domains (required by the rest of this table). The Assistant opens by itself on iPhone. In Simplified or Traditional Chinese (`-AppleLanguages "(zh-Hans)"`), the forums, topics, summaries, chats and answers are Chinese and all three forums are fictional (use `-dc-forums-home`); see `Forumind/SampleContent.swift`. |
 | `-dc-page-state <state>` | `loading`, `notForum`, `maybe`, `forumHome`, or `topic` (default). |
-| `-dc-topic meta\|makers` | Which sample topic is open: Discourse Meta, or the fictional Maker Space Community. |
+| `-dc-topic meta\|makers` | Which sample topic is open: Discourse Meta, or the fictional Maker Space Community. Default: `meta`, but `makers` with `-dc-assistant-mode agent`, so Ask the forum shows the run from the open forum. With `-dc-topic meta` in agent mode, the run on Discourse Meta is shown. |
 | `-dc-assistant-mode <mode>` | `summary`, `chat`, or `agent`. |
 | `-dc-open-manage` | Opens Manage. |
 | `-dc-manage-kind <kind>` | Manage filter: `all`, `summaries`, `agent`, `watched`, `activity`. |
 | `-dc-no-provider` | Leaves the AI provider unconfigured. |
+| `-dc-agent-model <provider>:<model>` | Gives Ask the forum its own model (for example `deepseek:deepseek-v4-flash`) with a placeholder key; the sample Ask the forum runs are labeled with it, and both models become favorites. |
+| `-dc-no-agent-key` | With `-dc-agent-model`: that provider has no key, so only Ask the forum shows the setup card. |
 | `-dc-no-summary` | The open topic has no summary yet. |
 | `-dc-summary-running`, `-dc-chat-streaming`, `-dc-agent-running` | Work in progress. |
 | `-dc-chat-typing` | With `-dc-chat-streaming`: typing dots, no text yet. |
 | `-dc-stale-summary` | The `makers` sample topic's summary is behind the topic (stale notice). |
 | `-dc-scroll-sources` | Ask the forum: scrolls to the answer's sources. |
 | `-dc-focus-chat` | Raises the keyboard in the chat composer. |
-| `-dc-script <action>-after:<seconds>` | Changes state mid-use: `switch-provider`, `delete-key`, `remove-forum`, `unpin-forum`, `clear-all`, `reset-settings`. |
+| `-dc-script <action>-after:<seconds>` | Changes state mid-use: `switch-provider` (the current mode's model), `delete-key` (of the current mode's provider), `remove-forum`, `unpin-forum`, `clear-all`, `reset-settings`. |
 
 With `-dc-page-state topic` or `forumHome`, the browser also loads the real
 forum page behind the Assistant, unless `-dc-forums-home` is also passed: then
@@ -270,7 +272,7 @@ runs are labeled as Apple Intelligence runs and it is the selected provider.
 | `-dc-show-switcher` | Opens the forum switcher. |
 | `-dc-add-forum` | Opens the Add forum sheet. |
 | `-dc-bar top\|bottom` | Browser bar position for this launch. |
-| `-dc-content-blocking off` | Turns ad and tracker blocking off for this launch (settings unchanged). |
+| `-dc-content-blocking off` | Turns ad and tracker blocking off for this launch (settings unchanged). Blocking is off by default; turn it on in Settings › Browser or from the address-bar shield. |
 | `-dc-scroll-page <points>` | Scrolls each loaded page down. |
 | `-dc-force-width <points>` | iPad: letterboxes the app to that width, with the size class a Split View window of that width gets. |
 | `-dc-resize-demo [w1,w2,…]` | iPad: animates the window width through the list (default 1032, 800, 1032, 700, full), 6 s per step. |
@@ -283,7 +285,7 @@ runs are labeled as Apple Intelligence runs and it is the selected provider.
 | `-dc-onboarding-step <n\|name>` | Opens the walkthrough on a step: 1-based number, or `welcome`, `features`, `provider`, `forums`, `sync`, `share`, `privacy`, `done`. |
 | `-dc-scroll-bottom`, `-dc-focus` | Walkthrough: scroll to the bottom / focus the key field. |
 | `-dc-skip-onboarding` | Marks the walkthrough done. |
-| `-dc-show-settings <page>` | Presents Settings: `root`, or a page: `provider`, `sync`, `forums`, `summaries`, `agent`, `watched`, `browser`, `data`, `help`, `sharing`, `about`, `acknowledgements`. |
+| `-dc-show-settings <page>` | Presents Settings: `root`, or a page: `provider` (AI models), `sync`, `forums`, `summaries`, `agent`, `watched`, `browser`, `data`, `help`, `sharing`, `about`, `acknowledgements`. |
 | `-dc-panel-settings [page]` | Opens Settings inside the Assistant panel. |
 
 ### Sync
@@ -307,6 +309,133 @@ To run the Keychain probe on a device:
 xcrun devicectl device process launch --console --device <device id> \
   io.github.kccarlos.forumind -dc-keychain-sync-probe
 ```
+
+## Localization
+
+Forumind is in English (the development language), Simplified Chinese
+(`zh-Hans`) and Traditional Chinese (`zh-Hant`, Taiwan usage). Because the
+bundle has more than one localization, iOS shows **Settings › Forumind ›
+Language**, where people pick the app's language; the app's own
+**Settings › Language** row shows the current language and opens that page.
+The app can't change its language itself.
+
+The strings live in String Catalogs, added by `scripts/generate_project.rb`:
+
+| Catalog | Holds |
+| --- | --- |
+| `Forumind/Localizable.xcstrings` | The app's UI strings |
+| `Forumind/InfoPlist.xcstrings` | Info.plist strings (`NSLocalNetworkUsageDescription`; `CFBundleDisplayName` stays "Forumind") |
+| `ForumindShare/Localizable.xcstrings`, `ForumindShare/InfoPlist.xcstrings` | The share extension |
+
+The files shared by both targets (`IncomingLink.swift`, …) feed both
+catalogs, so a string they use needs the same translation in each.
+
+### Adding a string
+
+- SwiftUI literals localize by themselves: `Text("Summary")`,
+  `Button("Cancel")`, `Label("Pin", systemImage:)`, `.navigationTitle("…")`,
+  `Toggle`, `Section`, `.accessibilityLabel("…")`, including ternaries of
+  literals.
+- Any `String` that reaches the UI (computed titles, status texts, errors,
+  notification text, values passed to components that take a `String` such
+  as `DCPill(text:)`) needs `String(localized: "…", comment: "…")`. Add a
+  comment when the context isn't obvious (button or title, what a
+  placeholder is).
+- One format string per sentence, with interpolations:
+  `String(localized: "Summarizing part \(index) of \(count)…")` becomes the key
+  `Summarizing part %lld of %lld…`. Never glue translated fragments together;
+  other languages order words differently.
+- Counts: use the English plural as the key (`"\(count) posts"`) and give the
+  English entry `one`/`other` plural variations in the catalog (Chinese needs
+  only `other`). `LocalizationCatalogTests` fails if a counted noun has no
+  plural variations.
+- Don't localize forum content, AI output, model or provider names, URLs,
+  log messages, DEBUG launch-argument handling or DEBUG-only UI (use
+  `Text(verbatim:)` there), accessibility identifiers, or anything sent to
+  the model (prompts, tool descriptions, agent observations stay English).
+- Info.plist strings (usage descriptions) are keyed by the Info.plist key
+  in `InfoPlist.xcstrings`; the sync script doesn't touch those catalogs, so
+  add or update their entries by hand (or in Xcode).
+- Then sync the catalogs and translate (below).
+
+### Syncing and checking the catalogs
+
+The catalogs are committed JSON. Update them from the code with:
+
+```sh
+scripts/i18n/sync-catalogs.sh
+```
+
+It builds the app and the extension with `SWIFT_EMIT_LOC_STRINGS=YES` into
+its own derived-data folder, feeds the compiler's `.stringsdata` to
+`xcstringstool sync` (the tool Xcode uses), and prints a report. New keys are
+added; keys the code no longer uses are marked stale. The report
+(`scripts/i18n/check-catalogs.py --list`) lists every key that is missing a
+translation, isn't marked translated, is stale, or has format specifiers
+that differ from English. `ForumindTests/LocalizationCatalogTests` checks
+the same rules, plus plural variations, in the unit tests.
+
+To translate what's missing:
+
+```sh
+scripts/i18n/translations.py export Forumind/Localizable.xcstrings > todo.json
+# add "zh-Hans" / "zh-Hant" to each key (see the script's help for plurals)
+scripts/i18n/translations.py import Forumind/Localizable.xcstrings todo.json
+scripts/i18n/translations.py prune Forumind/Localizable.xcstrings   # drop stale keys
+scripts/i18n/check-catalogs.py
+```
+
+Editing the catalogs in Xcode's String Catalog editor works too; run the
+sync script afterwards so the committed file matches the code.
+
+Terminology: Forums 论坛 / 論壇, Summary 摘要, Chat 聊天, Ask the forum
+问论坛 / 問論壇, Pin 置顶 / 釘選, Keep 保留, Watched topics 关注的话题 /
+追蹤的話題, Settings 设置 / 設定, AI provider AI 提供方 / AI 供應商, API key
+API 密钥 / API 金鑰, iCloud Sync iCloud 同步. Apple Intelligence is
+"Apple 智能" in Simplified Chinese and "Apple Intelligence" in Traditional
+Chinese, as on Apple's own sites. AI models AI 模型, Summaries & chat 摘要与聊天 /
+摘要與聊天, Forum requests 论坛请求 / 論壇請求, Reading pace 读取节奏 /
+讀取節奏, the paces Gentle / Standard / Fast 温和 / 标准 / 快速 (溫和 / 標準 /
+快速), favorite models 常用模型, ad blocking 广告拦截 / 廣告阻擋.
+"Forumind" is never translated.
+
+### Adding a language
+
+1. Add its code to `known_regions` in `scripts/generate_project.rb` and
+   regenerate the project.
+2. Add it to `LANGUAGES` in `scripts/i18n/check-catalogs.py` and
+   `translations.py`, and to `languages` in
+   `ForumindTests/LocalizationCatalogTests.swift`.
+3. Translate every catalog (export, translate, import), including the
+   Info.plist catalogs, and add its prompt name to
+   `PromptBuilder.readerLanguageName` and `AppLanguage.englishName`.
+4. Optionally add a `SampleContent` set so `-dc-sample` screenshots are in
+   that language.
+
+### Trying a language
+
+Launch with the language and region as arguments (they apply to that launch
+only):
+
+```sh
+xcrun simctl launch <udid> io.github.kccarlos.forumind \
+  -AppleLanguages "(zh-Hans)" -AppleLocale zh_CN \
+  -dc-skip-onboarding -dc-sample -dc-forums-home -dc-assistant-mode summary
+```
+
+Use `"(zh-Hant)" -AppleLocale zh_TW` for Traditional Chinese. Tests run in
+the simulator's language (English by default). `-dc-seed-forums` saves its forums
+(only into an empty list), so uninstall the app before seeding in another
+language.
+
+### AI answer language
+
+Prompts are always English. When the app runs in English, summaries follow
+the discussion's language and chat and Ask the forum answers follow the
+question's. When it runs in another language, `PromptBuilder` tells the model
+to answer in that language by default (a chat question written in another
+language still gets an answer in that language). Custom instructions that
+name a language win.
 
 ## Updating the ad-blocking lists
 
@@ -337,6 +466,50 @@ It writes the light (opaque), dark and tinted 1024 px icons into
 `docs/brand/forumind-icon-1024.png`. Check the light icon has no alpha
 channel with `sips -g hasAlpha`. `docs/brand/forumind-mark.svg` uses the
 same coordinates; update it by hand.
+
+## App Store screenshots
+
+The App Store screenshots are rendered from raw simulator captures: a brand
+panel with a headline, a subline and the capture in a device frame, in
+English (`en-US`), Simplified Chinese (`zh-Hans`) and Traditional Chinese
+(`zh-Hant`). See [APP_STORE.md](APP_STORE.md#screenshots) for the captions
+and the capture list. To retake the captures:
+
+1. Build a DEBUG app for the simulator (for example the unit-test command
+   above) and use iPhone 17 Pro Max for 6.9" and iPad Pro 13-inch (M5) for
+   13".
+2. Before each capture, uninstall the app for a clean state and set the
+   status bar:
+   `xcrun simctl status_bar <udid> override --time 9:41 --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3`.
+3. Launch with the language arguments (`-AppleLanguages "(en)" -AppleLocale en_US`,
+   `"(zh-Hans)" zh_CN`, or `"(zh-Hant)" zh_TW`) and the capture's
+   sample-data arguments (only sample data: fictional forums, no real
+   people). Common: `-dc-skip-onboarding -dc-sample -dc-forums-home -dc-apple-intelligence on-device`.
+
+   | Capture | Arguments |
+   | --- | --- |
+   | `iphone-69-1-home` | `-dc-skip-onboarding -dc-seed-forums -dc-no-forum-icons -dc-forums-home` (no `-dc-sample`) |
+   | `iphone-69-2-summary`, `ipad-13-1-home-summary` | common + `-dc-assistant-mode summary` |
+   | `iphone-69-3-chat`, `ipad-13-2-chat` | common + `-dc-topic makers -dc-assistant-mode chat` |
+   | `iphone-69-4-agent`, `ipad-13-3-agent` | common + `-dc-assistant-mode agent` (English iPhone also `-dc-scroll-sources`) |
+   | `iphone-69-5-privacy` | `-dc-sample -dc-onboarding-step privacy` |
+   | `ipad-13-4-manage` | common + `-dc-open-manage` |
+   | `ipad-13-5-sync` | common + `-dc-panel-settings sync -dc-sync-status upToDate -dc-sync-explain` |
+
+4. Wait for the screen to settle (about 6 s), then
+   `xcrun simctl io <udid> screenshot appstore/screenshots-raw/<locale>/<name>.png`,
+   keeping the existing file names.
+
+Then re-render every language and check:
+
+```sh
+scripts/brand/render_store_screenshots.sh --preview "$TMPDIR/store-shots"
+scripts/ci/check-appstore-metadata.sh
+```
+
+`--preview` also writes small copies (`preview-<locale>-*.png`) and 3-up
+strips of the first three screenshots at search-result size, on white and
+on black (`strip-<locale>-<device>-<white|black>.png`).
 
 ## Platform notes
 

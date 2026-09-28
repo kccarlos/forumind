@@ -121,10 +121,34 @@ final class AppleIntelligenceTests: XCTestCase {
     func testReadinessFollowsAvailability() throws {
         let fake = FakeAppleIntelligence()
         let app = makeApp(fake)
-        app.settings.selectedProvider = .appleIntelligence
+        app.selectModel(ModelSelection(provider: .appleIntelligence, model: "Automatic"), for: .both)
         XCTAssertTrue(app.isProviderReady)
         fake.status = .unavailable(.appleIntelligenceNotEnabled)
         XCTAssertFalse(app.isProviderReady)
+    }
+
+    /// Apple Intelligence becoming unavailable affects only the role that
+    /// uses it; its stored model is the same "Automatic" on every device.
+    @MainActor
+    func testUnavailableAppleIntelligenceOnlyAffectsItsRole() throws {
+        let fake = FakeAppleIntelligence()
+        let app = makeApp(fake)
+        app.selectModel(ModelSelection(provider: .ollama, model: "llama3.2"), for: .role(.assistant))
+        app.selectProvider(.appleIntelligence, for: .role(.agent))
+        XCTAssertEqual(app.settings.agentModel, ModelSelection(provider: .appleIntelligence, model: "Automatic"))
+        XCTAssertEqual(app.providerSummary(for: .agent), "Apple Intelligence · On-device")
+        XCTAssertTrue(app.isProviderReady)
+        fake.status = .unavailable(.modelNotReady)
+        XCTAssertFalse(app.isProviderReady(for: .agent))
+        XCTAssertTrue(app.isProviderReady(for: .assistant))
+        XCTAssertEqual(app.settings.selectedProvider, .ollama)
+
+        // Swapped: summaries on Apple Intelligence, Ask the forum elsewhere.
+        app.useSameModel(as: .assistant)
+        app.selectProvider(.appleIntelligence, for: .role(.assistant))
+        XCTAssertFalse(app.isProviderReady(for: .assistant))
+        XCTAssertTrue(app.isProviderReady(for: .agent))
+        XCTAssertEqual(app.settings.selectedProvider, .appleIntelligence)
     }
 
     // MARK: Default provider
@@ -171,6 +195,8 @@ final class AppleIntelligenceTests: XCTestCase {
         XCTAssertEqual(app.settings.selectedProvider, .openRouter)
         app.applyAppleIntelligenceDefaultIfNeeded(status: .available(.onDevice), defaults: defaults)
         XCTAssertEqual(app.settings.selectedProvider, .appleIntelligence)
+        XCTAssertEqual(app.settings.assistantModel.provider, .appleIntelligence)
+        XCTAssertEqual(app.settings.agentModel.provider, .appleIntelligence, "a new user starts with it for both roles")
 
         // The user switches back; the default is not applied again.
         app.settings.selectedProvider = .openRouter

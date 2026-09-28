@@ -240,10 +240,7 @@ final class IncomingLinkTests: XCTestCase {
                 fileURL: inboxDirectory.appendingPathComponent("state.json")
             )
         )
-        app.settings.selectedProvider = .ollama
-        var configuration = app.settings.configuration(for: .ollama)
-        configuration.model = "llama3.2"
-        app.settings.setConfiguration(configuration, for: .ollama)
+        app.selectModel(ModelSelection(provider: .ollama, model: "llama3.2"), for: .both)
         XCTAssertTrue(app.isProviderReady)
         return app
     }

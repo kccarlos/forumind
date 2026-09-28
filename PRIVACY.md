@@ -85,10 +85,12 @@ device; they don't go through a push notification service.
 
 ### Ad and tracker blocking
 
-The browser blocks ads and trackers using filter lists that are **bundled
-with the app** (EasyList and EasyPrivacy). Blocking happens on your device;
-the app doesn't send your browsing to any list provider. You can turn blocking
-off, or allow a site, in **Settings › Browser**.
+The browser can block ads and trackers using filter lists that are **bundled
+with the app** (EasyList and EasyPrivacy). Blocking is **off by default**, out
+of respect for forum owners who rely on ads; turn it on, or allow a site, in
+**Settings › Browser** (or from the shield in the address bar). Blocking
+happens on your device; the app doesn't send your browsing to any list
+provider.
 
 ### Sharing to the app
 
