@@ -511,6 +511,24 @@ scripts/ci/check-appstore-metadata.sh
 strips of the first three screenshots at search-result size, on white and
 on black (`strip-<locale>-<device>-<white|black>.png`).
 
+## README images
+
+The README banner (`docs/brand/forumind-banner.png`, 1280 × 640, also the
+GitHub social preview) and its Chinese versions, plus the small screenshot
+copies in `docs/screenshots/store/<locale>/`, are rendered from the brand
+code and the App Store screenshots. After re-rendering the store
+screenshots, run:
+
+```sh
+brew install pngquant   # once; keeps the committed PNGs small
+scripts/brand/render_banner.sh --preview "$TMPDIR/banner"
+```
+
+The banner text lives in `scripts/brand/render_banner.swift`. `--preview`
+writes each banner at 600 px wide, the size chat apps show link previews
+at. The social preview is uploaded by hand in the GitHub repository's
+Settings › General › Social preview.
+
 ## Platform notes
 
 - iOS can suspend the app in the background. Queued work is saved and resumes
