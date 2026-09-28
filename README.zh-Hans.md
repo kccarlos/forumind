@@ -26,6 +26,8 @@ iPhone 与 iPad App，适用于任何基于 [Discourse](https://www.discourse.or
 > [App Store 链接](https://apps.apple.com/app/id6816718686)即可使用。在此之前，
 > 你可以[自行构建](#从源代码构建)。
 
+**想在电脑浏览器上使用？** 也可以试试 Chrome 扩展版本：[DiscourseCopilot](https://github.com/kccarlos/DiscourseCopilot)。
+
 ## 为什么选择 Forumind
 
 - **少读一点，多懂一些。** 不必逐条阅读，也能掌握 500 条回复的话题重点。

@@ -27,6 +27,8 @@ like [meta.discourse.org](https://meta.discourse.org), or your own community.
 > [App Store link](https://apps.apple.com/app/id6816718686) goes live once
 > Apple approves it. Until then, you can [build it yourself](#build-from-source).
 
+**Prefer your desktop browser?** Forumind's sibling is a Chrome extension: [DiscourseCopilot](https://github.com/kccarlos/DiscourseCopilot).
+
 ## Why Forumind
 
 - **Read less, know more.** Get the main points of a 500-reply topic without reading every post.
