@@ -84,6 +84,7 @@ jobs:
         env:
           DESTINATION: ${{ steps.sim.outputs.destination }}
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          VERTEX_API_KEY: ${{ secrets.VERTEX_API_KEY }}
         run: |
           set -o pipefail
           formatter=(cat)

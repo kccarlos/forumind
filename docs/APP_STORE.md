@@ -291,38 +291,40 @@ caption may promise an ad-free browser.
 
 Fill in App Store Connect › App Review Information **(owner)**: contact
 name, phone, and email (these are private, only for App Review; they are not
-kept in the repository). No demo account is needed. Suggested notes:
+kept in the repository). No demo account is needed.
 
-```text
-Forumind is a free, open-source reader for Discourse forums (any
-site built on the open-source Discourse forum software) with an AI assistant.
-No account or sign-in is required.
+App Review asks new apps for this information (Guideline 2.1), so put it in
+the Notes up front (the field holds at most 4,000 characters, plain text) and
+attach a **screen recording** from a physical device that starts at app
+launch and shows the main flow (walkthrough, connecting an AI provider,
+opening a forum, a summary, a follow-up question). The Notes should cover:
 
-How to test:
-1. On first launch, the walkthrough offers AI providers. On a device with
-   Apple Intelligence turned on, "Apple Intelligence" works without any key.
-   (Other providers need the user's own API key; you can skip that step.)
-2. Pin a suggested forum, for example meta.discourse.org (the Discourse
-   project's public community), or tap Add forum and enter
-   meta.discourse.org.
-3. Open any topic, tap Assistant, then Summary. Try Chat, and Ask the forum
-   (the assistant searches the forum and answers with numbered sources).
-4. Share extension: in Safari, open a topic on meta.discourse.org, tap Share,
-   choose Forumind, then Summarize.
-
-Notes:
-- The built-in browser can open any website (hence the web access age
-  rating) and can block ads/trackers with bundled EasyList/EasyPrivacy lists
-  (off by default; Settings › Browser, or the shield in the address bar).
-- iCloud sync is automatic when the device is signed in to iCloud: CloudKit
-  private database, end-to-end encrypted fields. There is no server of ours.
-  To see it, use two devices on one Apple Account; Settings › iCloud Sync
-  shows the status.
-- The app is not affiliated with Discourse (Civilized Discourse Construction
-  Kit, Inc.); it only reads public forum pages and pages the user is logged
-  in to.
-- Source code: https://github.com/kccarlos/forumind
-```
+1. **Screen recording:** what it shows; that the app has no accounts of its
+   own (no registration, login or account deletion), no user-generated
+   content of its own, and no paid content or in-app purchases.
+2. **Purpose and audience:** a reading companion for Discourse forums that
+   summarizes long topics, answers follow-up questions, and answers
+   questions from a forum search with numbered links to the posts used.
+3. **How to use the main features**, step by step: choose Apple
+   Intelligence in the walkthrough (no key needed); pin Discourse Meta
+   (meta.discourse.org); open a topic › Assistant › Summary › Create summary;
+   Chat; Ask the forum; the share extension from Safari; Settings (AI
+   models, iCloud Sync, ad blocker off by default, reading pace). Forum
+   sign-in is optional and uses the forum's own web login.
+4. **External services:** the user's chosen Discourse forums (public pages
+   and JSON endpoints, loaded directly); Apple Intelligence by default, or an
+   AI service the user connects with their own key, or a local model (Ollama,
+   LM Studio); iCloud (CloudKit private database, iCloud Keychain). No
+   servers of our own, no analytics, advertising, authentication or payment
+   services. Filter lists are bundled.
+5. **Regional differences:** none, except that the app isn't offered in
+   China mainland and Apple Intelligence availability is set by Apple.
+   Interface languages: English, Simplified and Traditional Chinese.
+6. **Regulated industries / third-party material:** not applicable; the app
+   displays forum pages like a browser and doesn't host content; reporting
+   and blocking stay with each forum; not affiliated with Civilized Discourse
+   Construction Kit, Inc.; EasyList/EasyPrivacy under CC BY-SA 3.0; link to
+   the source code.
 
 If the review device doesn't support Apple Intelligence, reviewers see why in
 Settings › AI provider. Don't put a personal API key in the notes: it would
@@ -362,6 +364,7 @@ Details of how the app chooses between on-device and PCC:
    Age Rating, and review information, and press **Add for Review** (or run
    `release.yml` with `submit_for_review`).
 5. Choose manual release, so you decide when it goes live after approval.
+   Check the setting again before each submission or resubmission.
 
 After release: bump the version with the next tag; the build number always
 increases (it's the workflow run number). Keep `release_notes.txt` updated for

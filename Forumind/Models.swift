@@ -9,6 +9,9 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
     case anthropic
     case groq
     case gemini
+    /// Gemini on Google Cloud Vertex AI with an API key (express mode, or a
+    /// project and location in the base URL). Same wire format as `gemini`.
+    case vertexAI = "vertexai"
     case ollama
     case xAI = "xai"
     case deepSeek = "deepseek"
@@ -26,6 +29,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .anthropic: "Anthropic"
         case .groq: "Groq"
         case .gemini: "Google Gemini"
+        case .vertexAI: "Google Vertex AI"
         case .ollama: String(localized: "Ollama (Local)", comment: "AI provider name: Ollama running on the user's own computer. Keep \"Ollama\".")
         case .xAI: "xAI Grok"
         case .deepSeek: "DeepSeek"
@@ -44,6 +48,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .anthropic: "claude-3-haiku-20240307"
         case .groq: "llama-3.1-8b-instant"
         case .gemini: "gemini-1.5-flash"
+        case .vertexAI: "gemini-2.5-flash"
         case .ollama: "llama3.2"
         case .xAI: "grok-3"
         case .deepSeek: "deepseek-chat"
@@ -60,6 +65,9 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .anthropic: "https://api.anthropic.com/v1"
         case .groq: "https://api.groq.com/openai/v1"
         case .gemini: "https://generativelanguage.googleapis.com/v1beta"
+        // Express mode's global host. A project key can use
+        // https://aiplatform.googleapis.com/v1/projects/<id>/locations/global.
+        case .vertexAI: "https://aiplatform.googleapis.com/v1"
         case .ollama: "http://localhost:11434"
         case .xAI: "https://api.x.ai/v1"
         case .deepSeek: "https://api.deepseek.com/v1"
@@ -78,6 +86,21 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
 
     /// A model server on the user's own computer (needs a server address).
     var isLocalServer: Bool { self == .ollama || self == .lmStudio }
+
+    /// Vertex AI has no model list an API key can read, so the picker offers
+    /// these Gemini models; any other model ID can still be typed.
+    static let vertexAIModels = [
+        "gemini-3.8-flash",
+        "gemini-3.7-flash",
+        "gemini-3.5-flash",
+        "gemini-3.5-flash-lite",
+        "gemini-3.1-pro-preview",
+        "gemini-3.1-flash-lite",
+        "gemini-3-flash-preview",
+        "gemini-2.5-pro",
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite"
+    ]
 }
 
 struct ProviderConfiguration: Codable, Equatable {

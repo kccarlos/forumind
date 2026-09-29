@@ -99,6 +99,7 @@ iPhone 與 iPad App，適用於任何以 [Discourse](https://www.discourse.org)
 | OpenAI | API 金鑰 | GPT 模型 |
 | Anthropic | API 金鑰 | Claude 模型 |
 | Google Gemini | API 金鑰 | Gemini 模型 |
+| Google Vertex AI | 來自 Google Cloud 的 Vertex AI API 金鑰 | Gemini 模型，費用計入你的 Cloud 專案 |
 | Groq | API 金鑰 | 快速的開放模型 |
 | xAI | API 金鑰 | Grok 模型 |
 | DeepSeek | API 金鑰 | DeepSeek 模型 |

@@ -5384,6 +5384,22 @@
         }
       }
     },
+    "Gemini models through your Google Cloud project, billed to it." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通过你的 Google Cloud 项目使用 Gemini 模型，费用计入该项目。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "透過你的 Google Cloud 專案使用 Gemini 模型，費用計入該專案。"
+          }
+        }
+      }
+    },
     "Generating summary…" : {
       "localizations" : {
         "zh-Hans" : {
@@ -5557,6 +5573,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在 Google AI Studio 取得金鑰"
+          }
+        }
+      }
+    },
+    "Get a key in the Google Cloud console" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Google Cloud 控制台获取密钥"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Google Cloud 主控台取得金鑰"
           }
         }
       }
@@ -12286,6 +12318,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "兩者都使用 %@"
+          }
+        }
+      }
+    },
+    "Use a Vertex AI API key. The model list is built in; you can also type any Gemini model ID that your project can use." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请使用 Vertex AI API 密钥。模型列表为内置列表；你也可以输入项目可用的任何 Gemini 模型 ID。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請使用 Vertex AI API 金鑰。模型列表為內建列表；你也可以輸入專案可用的任何 Gemini 模型 ID。"
           }
         }
       }

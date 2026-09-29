@@ -161,7 +161,10 @@ xcodebuild test -project Forumind.xcodeproj -scheme Forumind \
 - `ContentBlockingRulesTests` compiles every bundled filter-list chunk in the
   simulator's WebKit, so it takes a few seconds.
 - The live NVIDIA NIM test runs only when `TEST_RUNNER_NVIDIA_API_KEY` is set
-  in `xcodebuild`'s environment; otherwise it is skipped.
+  in `xcodebuild`'s environment; otherwise it is skipped. The live Vertex AI
+  test works the same way with `TEST_RUNNER_VERTEX_API_KEY` (optionally
+  `TEST_RUNNER_VERTEX_BASE_URL` for a project and location path, and
+  `TEST_RUNNER_VERTEX_MODEL`).
 - `KeychainSyncTests` needs a signed build for real synchronizable Keychain
   items (unsigned builds get `errSecMissingEntitlement`, and those tests
   skip). Run them ad-hoc signed:

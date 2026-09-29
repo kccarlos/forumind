@@ -152,7 +152,7 @@ longest ago go first, and a background check stops after about 20 seconds
 
 | File | Role |
 | --- | --- |
-| `AIService.swift` | Streaming chat/completion calls for every provider: OpenAI-compatible APIs (OpenAI, OpenRouter, Groq, xAI, DeepSeek, NVIDIA NIM, LM Studio), Anthropic, Google Gemini, and Ollama. Model listing and the "Test" check. |
+| `AIService.swift` | Streaming chat/completion calls for every provider: OpenAI-compatible APIs (OpenAI, OpenRouter, Groq, xAI, DeepSeek, NVIDIA NIM, LM Studio), Anthropic, Google Gemini and Google Vertex AI (same streaming format; Vertex AI takes the key in a header and has a built-in model list, so its "Test" counts tokens instead), and Ollama. Model listing and the "Test" check. |
 | `PromptBuilder.swift` | System prompts, hierarchical batching, and chat context. |
 | `SettingsProviderPage.swift`, `SettingsProviderForm.swift` | Settings › AI models (a model per role, each provider's key and address, favorites), the model picker, and the provider setup form used by onboarding and the "Connect an AI provider" sheet. |
 

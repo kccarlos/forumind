@@ -1,13 +1,21 @@
 name: Release
 
-# Tag v1.2.3 (or run manually) to build, upload to TestFlight, and publish a
-# GitHub Release. Every signed step is skipped cleanly when the App Store
+# Every push to main (each publish from the development repo) uploads a
+# TestFlight build. Tag v1.2.3 to also publish a GitHub Release, or run it
+# manually for metadata and review submission. Every signed step is skipped cleanly when the App Store
 # Connect secrets or the DEVELOPMENT_TEAM variable are missing, so forks and
 # fresh clones stay green. See docs/CI.md.
 
 on:
   push:
+    branches: [main]
     tags: ['v*']
+    # Docs and store texts don't change the app; metadata goes up manually.
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'appstore/**'
+      - '.github/ISSUE_TEMPLATE/**'
   workflow_dispatch:
     inputs:
       version:
@@ -62,6 +70,7 @@ jobs:
       signing: ${{ steps.check.outputs.signing }}
       metadata: ${{ steps.check.outputs.metadata }}
       version: ${{ steps.version.outputs.version }}
+      build: ${{ steps.version.outputs.build }}
     steps:
       - id: check
         env:
@@ -99,6 +108,12 @@ jobs:
           REF_NAME: ${{ github.ref_name }}
           REF_TYPE: ${{ github.ref_type }}
           INPUT_VERSION: ${{ inputs.version }}
+          # Repo variable: the version main builds upload under, once the
+          # project's own version has shipped (App Store Connect closes it).
+          VAR_VERSION: ${{ vars.MARKETING_VERSION }}
+          # Builds uploaded before this workflow ran (from Xcode) used low
+          # numbers; CI numbers start above them and always go up.
+          BUILD_BASE: ${{ vars.BUILD_NUMBER_BASE || '100' }}
         run: |
           # Tag v1.2.3 -> 1.2.3 (a pre-release suffix like -beta.1 is dropped:
           # App Store versions are numbers only). Manual runs use the input.
@@ -111,13 +126,21 @@ jobs:
               exit 1
             fi
             version="$INPUT_VERSION"
+          elif [[ -n "$VAR_VERSION" ]]; then
+            version="$VAR_VERSION"
           fi
-          echo "version=$version" >>"$GITHUB_OUTPUT"
-          echo "Marketing version: ${version:-<project default>}, build number: $GITHUB_RUN_NUMBER"
+          build=$((BUILD_BASE + GITHUB_RUN_NUMBER))
+          {
+            echo "version=$version"
+            echo "build=$build"
+          } >>"$GITHUB_OUTPUT"
+          echo "Marketing version: ${version:-<project default>}, build number: $build"
 
   simulator-build:
     name: Unsigned simulator build
     needs: preflight
+    # Attached to GitHub Releases; CI already builds every push to main.
+    if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
     runs-on: ${{ vars.CI_MACOS_RUNNER || 'xcode-27' }}
     timeout-minutes: 45
     steps:
@@ -127,6 +150,7 @@ jobs:
       - name: Build Release for iOS Simulator
         env:
           VERSION: ${{ needs.preflight.outputs.version }}
+          BUILD: ${{ needs.preflight.outputs.build }}
         run: |
           set -o pipefail
           extra=()
@@ -139,7 +163,7 @@ jobs:
             -derivedDataPath DerivedData \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
+            CURRENT_PROJECT_VERSION="$BUILD" \
             "${extra[@]}" \
             | xcbeautify --renderer github-actions
       - name: Package .app
@@ -165,6 +189,7 @@ jobs:
       APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
       APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
       VERSION: ${{ needs.preflight.outputs.version }}
+      BUILD: ${{ needs.preflight.outputs.build }}
     steps:
       - uses: actions/checkout@v7
       - name: Select Xcode
@@ -179,7 +204,7 @@ jobs:
         # the repo variables (DEVELOPMENT_TEAM, BUNDLE_ID_PREFIX, DC_ENABLE_PCC,
         # DC_ENABLE_CLOUDKIT). With a team, CloudKit is on.
         env:
-          BUILD_NUMBER: ${{ github.run_number }}
+          BUILD_NUMBER: ${{ needs.preflight.outputs.build }}
         run: bundle exec ruby scripts/generate_project.rb
 
       - name: Install signing material
@@ -207,7 +232,7 @@ jobs:
             -authenticationKeyIssuerID "$APP_STORE_CONNECT_ISSUER_ID" \
             DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
             CODE_SIGN_STYLE=Automatic \
-            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
+            CURRENT_PROJECT_VERSION="$BUILD" \
             "${extra[@]}" \
             | xcbeautify --renderer github-actions
 

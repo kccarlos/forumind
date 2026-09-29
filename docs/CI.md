@@ -6,7 +6,7 @@ in `scripts/ci/` also run locally.
 | Workflow | When | What |
 | --- | --- | --- |
 | `ci.yml` | Every pull request and push to `main` | Lint, project drift, unit tests, unsigned Release build |
-| `release.yml` | Tags `v*`, or manual | Simulator build, TestFlight upload, App Store metadata, GitHub Release |
+| `release.yml` | Push to `main` (app changes), tags `v*`, or manual | TestFlight upload; for tags and manual runs also a simulator build, App Store metadata, GitHub Release |
 | `update-filter-lists.yml` | Mondays, or manual | Refreshes the ad-blocking rules and opens a PR ([AD_BLOCKING.md](AD_BLOCKING.md)) |
 
 ## `ci.yml`
@@ -45,8 +45,8 @@ iPhone on the newest iOS runtime, as `platform=iOS Simulator,id=<UDID>`, so the
 job survives device renames. `SIM_PREFER` and `SIM_EXCLUDE` take
 comma-separated device names.
 
-**Optional secret:** `NVIDIA_API_KEY` runs the live NVIDIA NIM test; without
-it, that test is skipped.
+**Optional secrets:** `NVIDIA_API_KEY` runs the live NVIDIA NIM test and
+`VERTEX_API_KEY` the live Vertex AI test; without them, those tests are skipped.
 
 ## `release.yml`
 
@@ -63,10 +63,12 @@ flowchart LR
 1. **preflight** (Linux) checks which secrets and variables exist and works
    out the version. Tag `v1.2.3` gives marketing version `1.2.3` (a suffix
    like `-beta.1` is dropped, since App Store versions are numbers only);
-   manual runs use the `version` input, or the project's version if it's empty.
-   The **build number** is `github.run_number`, which always goes up, as App
-   Store Connect requires.
-2. **simulator-build** (always) builds an unsigned Release `.app` for the
+   manual runs use the `version` input; otherwise the `MARKETING_VERSION` repo
+   variable, or the project's version if that is empty.
+   The **build number** is `BUILD_NUMBER_BASE` (repo variable, default 100)
+   plus `github.run_number`, so it always goes up, as App Store Connect
+   requires, and starts above builds uploaded from Xcode.
+2. **simulator-build** (tags and manual runs) builds an unsigned Release `.app` for the
    simulator and uploads `Forumind-simulator.app.zip`.
 3. **testflight** (when the App Store Connect secrets and the
    `DEVELOPMENT_TEAM` variable are set, and the `testflight` input is on):
@@ -96,7 +98,13 @@ GitHub Release, and the signed jobs are skipped with a notice.
 
 ### Cutting a release
 
+Every push to `main` that changes more than docs (`**.md`, `docs/`,
+`appstore/`) uploads a TestFlight build under the current version. Once a
+version is released, App Store Connect accepts no more builds for it: set the
+`MARKETING_VERSION` variable (or bump the generator's version) to the next one.
+
 ```sh
+gh variable set MARKETING_VERSION -R $R --body 1.0.1   # after 1.0.0 ships
 git tag v1.0.0 && git push origin v1.0.0          # build + TestFlight + GitHub Release
 
 gh workflow run release.yml --ref main \
@@ -151,8 +159,9 @@ gh secret set APPLE_CERTIFICATE_PASSWORD -R $R --body 'p12-export-password'
 # extension, one .mobileprovision or a zip of several.
 zip -j profiles.zip *.mobileprovision && base64 -i profiles.zip | gh secret set APPLE_PROVISIONING_PROFILES_BASE64 -R $R
 
-# Secret (optional): live NVIDIA NIM test in CI.
+# Secrets (optional): live NVIDIA NIM and Vertex AI tests in CI.
 gh secret set NVIDIA_API_KEY -R $R
+gh secret set VERTEX_API_KEY -R $R
 
 # Variables (not secret).
 gh variable set DEVELOPMENT_TEAM -R $R --body 'YOURTEAMID'                          # required for TestFlight
@@ -169,10 +178,13 @@ gh variable set DC_ENABLE_CLOUDKIT -R $R --body 'NO'  # optional: only to ship w
 | `APPLE_CERTIFICATE_P12_BASE64`, `APPLE_CERTIFICATE_PASSWORD` | secret | TestFlight (in practice) |
 | `APPLE_PROVISIONING_PROFILES_BASE64` | secret | Optional |
 | `NVIDIA_API_KEY` | secret | Optional live test |
+| `VERTEX_API_KEY` | secret | Optional live test |
 | `DEVELOPMENT_TEAM` | variable | TestFlight |
 | `BUNDLE_ID_PREFIX` | variable | Optional, forks |
 | `DC_ENABLE_PCC` | variable | Optional, `YES` to build with Private Cloud Compute ([APPLE_INTELLIGENCE.md](APPLE_INTELLIGENCE.md)) |
 | `DC_ENABLE_CLOUDKIT` | variable | Optional, `NO` to build without iCloud sync (default: on whenever `DEVELOPMENT_TEAM` is set) |
+| `MARKETING_VERSION` | variable | Optional, the version `main` builds upload under (default: the project's) |
+| `BUILD_NUMBER_BASE` | variable | Optional, added to the run number (default 100) |
 | `CI_MACOS_RUNNER`, `CI_XCODE_APP` | variable | Optional runner override (below) |
 
 Signing notes:

@@ -147,6 +147,13 @@ struct ProviderGuide: Equatable {
                 link: URL(string: "https://aistudio.google.com/app/apikey")!,
                 linkTitle: String(localized: "Get a key in Google AI Studio")
             )
+        case .vertexAI:
+            ProviderGuide(
+                blurb: String(localized: "Gemini models through your Google Cloud project, billed to it."),
+                link: URL(string: "https://console.cloud.google.com/apis/credentials")!,
+                linkTitle: String(localized: "Get a key in the Google Cloud console"),
+                note: String(localized: "Use a Vertex AI API key. The model list is built in; you can also type any Gemini model ID that your project can use.")
+            )
         case .ollama:
             ProviderGuide(
                 blurb: String(localized: "Runs on your own computer. No key and no usage bill."),

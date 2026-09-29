@@ -860,6 +860,107 @@ final class CoreTests: XCTestCase {
         XCTAssertFalse(streamed.isEmpty, "Streaming produced no content deltas.")
     }
 
+    func testVertexAIProviderDefaultsAndBuiltInModels() async throws {
+        let configuration = ProviderConfiguration(provider: .vertexAI)
+        XCTAssertEqual(configuration.baseURL, "https://aiplatform.googleapis.com/v1")
+        XCTAssertEqual(configuration.model, "gemini-2.5-flash")
+        XCTAssertTrue(AIProvider.vertexAI.requiresAPIKey)
+        XCTAssertEqual(AIProvider(rawValue: "vertexai"), .vertexAI)
+        XCTAssertTrue(AIProvider.vertexAIModels.contains(configuration.model))
+        // The list is built in: no request is made.
+        let session = stubbedSession { _ in
+            XCTFail("Vertex AI model listing should not reach the network")
+            throw URLError(.badServerResponse)
+        }
+        let models = try await AIService(session: session).discoverModels(configuration: configuration, provider: .vertexAI)
+        XCTAssertEqual(models, AIProvider.vertexAIModels)
+    }
+
+    func testVertexAIStreamsGeminiEventsWithHeaderKey() async throws {
+        var configuration = ProviderConfiguration(provider: .vertexAI)
+        configuration.apiKey = "vertex-test-key"
+        var seen: URLRequest?
+        let session = stubbedSession { request in
+            seen = request
+            let events = [
+                #"data: {"candidates":[{"content":{"role":"model","parts":[{"text":"Hello"}]}}]}"#,
+                "",
+                #"data: {"candidates":[{"content":{"role":"model","parts":[{"text":" there"}]}}]}"#,
+                ""
+            ].joined(separator: "\n")
+            return Self.response(request, status: 200, body: events)
+        }
+        let text = try await AIService(session: session).complete(
+            system: "Be brief.",
+            messages: [ChatMessage(role: .user, content: "Hi")],
+            configuration: configuration,
+            provider: .vertexAI
+        )
+        XCTAssertEqual(text, "Hello there")
+        let request = try XCTUnwrap(seen)
+        XCTAssertEqual(
+            request.url?.absoluteString,
+            "https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-2.5-flash:streamGenerateContent?alt=sse"
+        )
+        XCTAssertEqual(request.value(forHTTPHeaderField: "x-goog-api-key"), "vertex-test-key")
+        XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+    }
+
+    func testVertexAIConnectionTestChecksTheKeyWithCountTokens() async throws {
+        var configuration = ProviderConfiguration(provider: .vertexAI)
+        configuration.baseURL = "https://aiplatform.googleapis.com/v1/projects/demo/locations/global/"
+        configuration.apiKey = "bad-key"
+        var seen: URLRequest?
+        let session = stubbedSession { request in
+            seen = request
+            return Self.response(request, status: 400, body: #"{"error":{"message":"API key not valid."}}"#)
+        }
+        do {
+            try await AIService(session: session).testConnection(configuration: configuration, provider: .vertexAI)
+            XCTFail("A rejected key must fail the connection test")
+        } catch AssistantError.http(let status, let message) {
+            XCTAssertEqual(status, 400)
+            XCTAssertTrue(message.contains("API key not valid"))
+        }
+        XCTAssertEqual(
+            seen?.url?.absoluteString,
+            "https://aiplatform.googleapis.com/v1/projects/demo/locations/global/publishers/google/models/gemini-2.5-flash:countTokens"
+        )
+        XCTAssertEqual(seen?.httpMethod, "POST")
+    }
+
+    /// Opt-in live check: set TEST_RUNNER_VERTEX_API_KEY when running
+    /// xcodebuild; skipped otherwise. TEST_RUNNER_VERTEX_BASE_URL overrides
+    /// the express-mode host (for a project and location path).
+    @MainActor
+    func testVertexAIProviderLiveConnectionAndStreaming() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let apiKey = environment["VERTEX_API_KEY"], !apiKey.isEmpty else {
+            throw XCTSkip("VERTEX_API_KEY is not set for the test runner.")
+        }
+        var configuration = ProviderConfiguration(provider: .vertexAI)
+        configuration.apiKey = apiKey
+        if let base = environment["VERTEX_BASE_URL"], !base.isEmpty { configuration.baseURL = base }
+        if let model = environment["VERTEX_MODEL"], !model.isEmpty { configuration.model = model }
+        let service = AIService()
+
+        try await service.testConnection(configuration: configuration, provider: .vertexAI)
+
+        var streamed = ""
+        let answer = try await service.answer(
+            source: "Post 1: The welcome offer is 80k points after $6k spend.",
+            summary: "",
+            history: [ChatMessage(role: .user, content: "Reply with only the number of points in the welcome offer.")],
+            contextLimit: 10_000,
+            customPrompt: "",
+            configuration: configuration,
+            provider: .vertexAI,
+            onDelta: { delta in streamed += delta }
+        )
+        XCTAssertTrue(answer.contains("80"), "Unexpected answer: \(answer.prefix(200))")
+        XCTAssertFalse(streamed.isEmpty, "Streaming produced no content deltas.")
+    }
+
     func testSummaryBatchLimitNormalizationAndLabels() {
         XCTAssertEqual(SummaryBatchLimit.normalized(1), SummaryBatchLimit.minimum)
         XCTAssertEqual(SummaryBatchLimit.normalized(5_000_000), SummaryBatchLimit.maximum)

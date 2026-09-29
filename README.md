@@ -106,6 +106,7 @@ good model:
 | OpenAI | An API key | GPT models |
 | Anthropic | An API key | Claude models |
 | Google Gemini | An API key | Gemini models |
+| Google Vertex AI | A Vertex AI API key from Google Cloud | Gemini models, billed to your Cloud project |
 | Groq | An API key | Fast open models |
 | xAI | An API key | Grok models |
 | DeepSeek | An API key | DeepSeek models |

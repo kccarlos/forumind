@@ -33,7 +33,7 @@ question to the AI service **you** choose:
   stored or made accessible to Apple. See Apple's privacy information on
   Apple Intelligence.
 - **A provider you connect** (for example OpenAI, Anthropic, Google Gemini,
-  OpenRouter, Groq, xAI, DeepSeek, or NVIDIA NIM): requests go straight from
+  Google Vertex AI, OpenRouter, Groq, xAI, DeepSeek, or NVIDIA NIM): requests go straight from
   your device to that provider using your own API key, and that provider's
   privacy policy applies to what you send it.
 - **A model on your own computer** (Ollama or LM Studio): requests go to that

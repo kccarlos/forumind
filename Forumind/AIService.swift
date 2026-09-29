@@ -225,6 +225,9 @@ class AIService {
             let backend = try appleIntelligence.requireBackend()
             return [backend.label]
         }
+        if provider == .vertexAI {
+            return AIProvider.vertexAIModels
+        }
         let base = normalizedBaseURL(configuration.baseURL)
         var request: URLRequest
 
@@ -281,7 +284,36 @@ class AIService {
         if provider.requiresAPIKey && configuration.apiKey.isEmpty {
             throw AssistantError.missingConfiguration(String(localized: "\(provider.displayName) API key is required.", comment: "Error; the placeholder is the AI provider's name"))
         }
+        if provider == .vertexAI {
+            // The model list is built in, so check the key against the model
+            // itself; counting tokens is free and spends no generation quota.
+            try validate(configuration: configuration, provider: provider)
+            var request = URLRequest(url: try vertexAIURL(configuration: configuration, method: "countTokens"))
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: [
+                "contents": [["role": "user", "parts": [["text": "Hello"]]]]
+            ])
+            applyAuthentication(to: &request, configuration: configuration, provider: provider)
+            let (data, response) = try await session.data(for: request)
+            try validate(response: response, data: data)
+            return
+        }
         _ = try await discoverModels(configuration: configuration, provider: provider)
+    }
+
+    /// `{base}/publishers/google/models/{model}:{method}`; the base is the
+    /// express-mode host or a project and location path.
+    private func vertexAIURL(configuration: ProviderConfiguration, method: String) throws -> URL {
+        let base = normalizedBaseURL(configuration.baseURL)
+        let escapedModel = configuration.model.addingPercentEncoding(
+            withAllowedCharacters: .urlPathAllowed
+        ) ?? configuration.model
+        guard let url = URL(string: "\(base)/publishers/google/models/\(escapedModel):\(method)")
+        else {
+            throw AssistantError.invalidResponse
+        }
+        return url
     }
 
     func streamText(
@@ -389,19 +421,21 @@ class AIService {
                 }
             ]
 
-        case .gemini:
+        case .gemini, .vertexAI:
             let escapedModel = configuration.model.addingPercentEncoding(
                 withAllowedCharacters: .urlPathAllowed
             ) ?? configuration.model
+            let path = provider == .vertexAI ? "publishers/google/models" : "models"
             guard var components = URLComponents(
-                string: "\(base)/models/\(escapedModel):streamGenerateContent"
+                string: "\(base)/\(path)/\(escapedModel):streamGenerateContent"
             ) else {
                 throw AssistantError.invalidResponse
             }
-            components.queryItems = [
-                URLQueryItem(name: "alt", value: "sse"),
-                URLQueryItem(name: "key", value: configuration.apiKey)
-            ]
+            components.queryItems = [URLQueryItem(name: "alt", value: "sse")]
+            // Vertex AI takes the key in a header (see applyAuthentication).
+            if provider == .gemini {
+                components.queryItems?.append(URLQueryItem(name: "key", value: configuration.apiKey))
+            }
             guard let endpoint = components.url else { throw AssistantError.invalidResponse }
             url = endpoint
             body = [
@@ -493,6 +527,8 @@ class AIService {
         case .anthropic:
             request.setValue(configuration.apiKey, forHTTPHeaderField: "x-api-key")
             request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        case .vertexAI:
+            request.setValue(configuration.apiKey, forHTTPHeaderField: "x-goog-api-key")
         case .gemini, .ollama, .lmStudio:
             break
         default:
@@ -531,7 +567,7 @@ class AIService {
         switch provider {
         case .anthropic:
             return ((json["delta"] as? [String: Any])?["text"] as? String)
-        case .gemini:
+        case .gemini, .vertexAI:
             let candidates = json["candidates"] as? [[String: Any]]
             let content = candidates?.first?["content"] as? [String: Any]
             let parts = content?["parts"] as? [[String: Any]]
