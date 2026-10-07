@@ -258,7 +258,20 @@ jobs:
           APP_STORE_CONNECT_API_KEY_P8_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8_BASE64 }}
           # Submitting for review in this run needs the processed build.
           WAIT: ${{ github.event_name == 'workflow_dispatch' && inputs.submit_for_review }}
-        run: bundle exec fastlane beta ipa:dist/Forumind.ipa wait:"$WAIT"
+          # Repo variable: external groups (comma-separated) that get every
+          # build, e.g. "Public beta". Empty: upload only.
+          TESTFLIGHT_GROUPS: ${{ vars.TESTFLIGHT_GROUPS }}
+        run: |
+          # "What to Test": the commit message (the publish summary), unless
+          # it is publish.sh's default; then the App Store release notes.
+          subject="$(git log -1 --format=%s)"
+          if [[ -n "$subject" && "$subject" != "Sync from development" ]]; then
+            body="$(git log -1 --format=%B | sed -e '/^Claude-Session:/d')"
+            export TESTFLIGHT_CHANGELOG="What's new: ${body}
+
+          Please report anything that looks wrong or confusing through TestFlight feedback or GitHub issues."
+          fi
+          bundle exec fastlane beta ipa:dist/Forumind.ipa wait:"$WAIT" groups:"$TESTFLIGHT_GROUPS"
 
       - uses: actions/upload-artifact@v7
         with:

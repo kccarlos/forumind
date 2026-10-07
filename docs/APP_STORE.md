@@ -129,9 +129,10 @@ Fill in the age rating questionnaire (App Information › Age Rating) honestly.
 The deciding answer is **Unrestricted Web Access: Yes**: the built-in browser
 can open any website, not only Discourse forums. Under Apple's current age
 ratings (4+, 9+, 13+, 16+, 18+), unrestricted web access places the app at
-**16+**. Also expect questions about user-generated content: forums are
-user-generated content that the app displays but does not host or moderate;
-the app itself has no posting, messaging, or social features. Answer the
+**16+**. Answer **User-Generated Content: Yes**: App Review treats the forums
+users read and post to in the app as user-generated content (guideline 2.3.6),
+and the app provides the guideline 1.2 precautions (Terms of Use, report,
+block, filter; see [ARCHITECTURE.md](ARCHITECTURE.md#moderation)). Answer the
 remaining content questions **None**.
 
 If a lower rating ever matters, the browser would have to be limited to
@@ -300,8 +301,12 @@ launch and shows the main flow (walkthrough, connecting an AI provider,
 opening a forum, a summary, a follow-up question). The Notes should cover:
 
 1. **Screen recording:** what it shows; that the app has no accounts of its
-   own (no registration, login or account deletion), no user-generated
-   content of its own, and no paid content or in-app purchases.
+   own (no registration, login or account deletion) and no paid content or
+   in-app purchases. Because users read and post to forums in the app, the
+   recording must also show the user-generated content precautions
+   (guideline 1.2): the Terms of Use accepted in the walkthrough before using
+   the app, ⋯ › Report or block on a topic (report a post, block a user), and
+   Settings › Data & privacy (blocked users, filtered words).
 2. **Purpose and audience:** a reading companion for Discourse forums that
    summarizes long topics, answers follow-up questions, and answers
    questions from a forum search with numbered links to the posts used.
@@ -321,10 +326,17 @@ opening a forum, a summary, a follow-up question). The Notes should cover:
    China mainland and Apple Intelligence availability is set by Apple.
    Interface languages: English, Simplified and Traditional Chinese.
 6. **Regulated industries / third-party material:** not applicable; the app
-   displays forum pages like a browser and doesn't host content; reporting
-   and blocking stay with each forum; not affiliated with Civilized Discourse
+   displays forum pages like a browser and doesn't host content; reports go
+   to the developer and are acted on within 24 hours (the public moderation
+   list), and to the forum's moderators; not affiliated with Civilized Discourse
    Construction Kit, Inc.; EasyList/EasyPrivacy under CC BY-SA 3.0; link to
    the source code.
+
+**Login services (guideline 4.8):** the app has no login of its own; forum
+sign-in is the forum's own web page, so its "Continue with Google" buttons
+fall under 4.8's exception for clients of a third-party service. Say so in
+the Notes rather than adding Sign in with Apple, which would have nothing to
+sign in to.
 
 If the review device doesn't support Apple Intelligence, reviewers see why in
 Settings › AI provider. Don't put a personal API key in the notes: it would

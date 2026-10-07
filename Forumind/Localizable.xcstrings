@@ -946,6 +946,40 @@
         }
       }
     },
+    "@%@ is blocked." : {
+      "comment" : "Report sheet status; the placeholder is a forum username",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已屏蔽 @%@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已封鎖 @%@。"
+          }
+        }
+      }
+    },
+    "@%@ · #%lld" : {
+      "comment" : "Report sheet row: username and post number",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "@%@ · #%lld"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "@%@ · #%lld"
+          }
+        }
+      }
+    },
     "A 2,000-post topic takes about 10 seconds." : {
       "comment" : "Forum requests footer for the Standard pace",
       "localizations" : {
@@ -1298,6 +1332,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "依網址加入論壇…"
+          }
+        }
+      }
+    },
+    "Add a word or phrase" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加字词或短语"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新增字詞或片語"
           }
         }
       }
@@ -2669,6 +2719,55 @@
         }
       }
     },
+    "Before you continue" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "继续之前"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "繼續之前"
+          }
+        }
+      }
+    },
+    "Block" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "屏蔽"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "封鎖"
+          }
+        }
+      }
+    },
+    "Block @%@?" : {
+      "comment" : "Confirmation title; the placeholder is a forum username",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "屏蔽 @%@？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "封鎖 @%@？"
+          }
+        }
+      }
+    },
     "Block ads" : {
       "localizations" : {
         "zh-Hans" : {
@@ -2714,6 +2813,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "阻擋追蹤器"
+          }
+        }
+      }
+    },
+    "Block user" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "屏蔽用户"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "封鎖使用者"
+          }
+        }
+      }
+    },
+    "Blocked" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已屏蔽"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已封鎖"
+          }
+        }
+      }
+    },
+    "Blocked users" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已屏蔽的用户"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已封鎖的使用者"
           }
         }
       }
@@ -3861,6 +4008,22 @@
         }
       }
     },
+    "Copied" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已复制"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已拷貝"
+          }
+        }
+      }
+    },
     "Copy" : {
       "localizations" : {
         "zh-Hans" : {
@@ -3905,6 +4068,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "拷貝回答"
+          }
+        }
+      }
+    },
+    "Copy report" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "复制举报"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拷貝檢舉"
           }
         }
       }
@@ -4295,6 +4474,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "要刪除這個已儲存的摘要嗎？"
+          }
+        }
+      }
+    },
+    "Details (optional)" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "详细说明（可选）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "詳細說明（選填）"
           }
         }
       }
@@ -4973,6 +5168,39 @@
         }
       }
     },
+    "Filter what you see" : {
+      "comment" : "Terms of Use summary row title",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "过滤你看到的内容"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "過濾你看到的內容"
+          }
+        }
+      }
+    },
+    "Filtered words" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "过滤字词"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "過濾字詞"
+          }
+        }
+      }
+    },
     "Finish" : {
       "localizations" : {
         "zh-Hans" : {
@@ -5299,6 +5527,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "論壇由自行負擔伺服器費用的個人和社群經營。一次讀取一頁，能讓 Forumind 當個有禮貌的訪客，也能避免被限制速率。"
+          }
+        }
+      }
+    },
+    "Forums are run by their own communities. Objectionable content and abusive users are not tolerated, whether you read or post through Forumind." : {
+      "comment" : "Terms of Use summary row",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "论坛由各自的社区运营。无论你是通过 Forumind 阅读还是发帖，令人反感的内容和滥用行为都不被容忍。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "論壇由各自的社群經營。無論你是透過 Forumind 閱讀還是發文，令人反感的內容和濫用行為都不被容許。"
           }
         }
       }
@@ -5648,6 +5893,40 @@
         }
       }
     },
+    "Harassment or bullying" : {
+      "comment" : "Content report reason",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "骚扰或欺凌"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "騷擾或霸凌"
+          }
+        }
+      }
+    },
+    "Hate speech" : {
+      "comment" : "Content report reason",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仇恨言论"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仇恨言論"
+          }
+        }
+      }
+    },
     "Help" : {
       "localizations" : {
         "zh-Hans" : {
@@ -5677,6 +5956,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Cursor 程式碼編輯器的說明、問題回報和使用技巧。"
+          }
+        }
+      }
+    },
+    "Hide posts that contain words you don’t want to see in Settings › Data & privacy." : {
+      "comment" : "Terms of Use summary row",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在“设置 › 数据与隐私”中隐藏包含你不想看到的字词的帖子。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在「設定 › 資料與隱私」中隱藏包含你不想看到的字詞的貼文。"
           }
         }
       }
@@ -5854,6 +6150,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "如何從 Safari 或 Chrome 分享"
+          }
+        }
+      }
+    },
+    "I agree to the Terms of Use" : {
+      "comment" : "Toggle the user must turn on before using the app",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "我同意使用条款"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "我同意使用條款"
+          }
+        }
+      }
+    },
+    "Illegal content" : {
+      "comment" : "Content report reason",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "违法内容"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "違法內容"
           }
         }
       }
@@ -6507,6 +6837,22 @@
         }
       }
     },
+    "Mail isn’t set up on this device. Send the report from any email app, or copy it." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此设备上未设置“邮件”。你可以用任何邮件 App 发送举报，或复制举报内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此裝置上未設定「郵件」。你可以用任何郵件 App 寄出檢舉，或拷貝檢舉內容。"
+          }
+        }
+      }
+    },
     "Manage" : {
       "comment" : "Screen title: manage saved summaries, chats, runs and activity",
       "localizations" : {
@@ -6769,6 +7115,38 @@
         }
       }
     },
+    "Next" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下一步"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下一步"
+          }
+        }
+      }
+    },
+    "Next, your email app opens with the report filled in. Send it to finish." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接下来会打开你的邮件 App，并已填好举报内容。发送邮件即可完成举报。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接下來會打開你的郵件 App，並已填好檢舉內容。寄出郵件即可完成檢舉。"
+          }
+        }
+      }
+    },
     "No API key" : {
       "comment" : "Settings › AI models, provider row: no key saved for this provider",
       "localizations" : {
@@ -6963,6 +7341,22 @@
         }
       }
     },
+    "No one is blocked. To block someone, open a topic, then ⋯ › Report or block." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有屏蔽任何人。要屏蔽某人，请打开一个话题，然后选择 ⋯ › 举报或屏蔽。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有封鎖任何人。要封鎖某人，請打開一個話題，然後選擇 ⋯ › 檢舉或封鎖。"
+          }
+        }
+      }
+    },
     "No pinned forums" : {
       "localizations" : {
         "zh-Hans" : {
@@ -6991,6 +7385,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "還沒有釘選的論壇"
+          }
+        }
+      }
+    },
+    "No posts are on screen. Scroll to a post, then open this again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "屏幕上没有帖子。请滚动到某个帖子，然后再次打开此页面。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "螢幕上沒有貼文。請捲動到某則貼文，然後再次打開此頁面。"
           }
         }
       }
@@ -7039,6 +7449,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "還沒有摘要。你提出第一個問題時，聊天會讀取這個話題。"
+          }
+        }
+      }
+    },
+    "No tolerance for abuse" : {
+      "comment" : "Terms of Use summary row title",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "零容忍滥用行为"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "零容忍濫用行為"
           }
         }
       }
@@ -7453,6 +7880,23 @@
         }
       }
     },
+    "On any topic, open ⋯ › Report or block to report a post or user, or to hide everything a user posts. Reports are reviewed within 24 hours and offending content is removed from the app." : {
+      "comment" : "Terms of Use summary row; ⋯ is the browser's More menu",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在任何话题中，打开 ⋯ › 举报或屏蔽，即可举报帖子或用户，或隐藏某个用户发布的全部内容。举报会在 24 小时内处理，违规内容会从 App 中移除。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在任何話題中，打開 ⋯ › 檢舉或封鎖，即可檢舉貼文或使用者，或隱藏某位使用者發佈的全部內容。檢舉會在 24 小時內處理，違規內容會從 App 中移除。"
+          }
+        }
+      }
+    },
     "On your computer" : {
       "comment" : "Settings › AI models, provider row: a model server on the user's own computer",
       "localizations" : {
@@ -7531,6 +7975,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "只傳送到兩個地方"
+          }
+        }
+      }
+    },
+    "Only where it needs to go" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只发往必要的地方"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只傳到必要的地方"
           }
         }
       }
@@ -7787,6 +8247,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "以全螢幕打開"
+          }
+        }
+      }
+    },
+    "Open in email app" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在邮件 App 中打开"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在郵件 App 中打開"
           }
         }
       }
@@ -8244,6 +8720,22 @@
         }
       }
     },
+    "Please read and accept the Terms of Use. They explain what isn’t allowed and how to report and block content." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请阅读并接受使用条款。条款说明了哪些内容不被允许，以及如何举报和屏蔽内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請閱讀並接受使用條款。條款說明了哪些內容不被允許，以及如何檢舉和封鎖內容。"
+          }
+        }
+      }
+    },
     "Popular forums" : {
       "localizations" : {
         "zh-Hans" : {
@@ -8305,6 +8797,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "尚未取得貼文"
+          }
+        }
+      }
+    },
+    "Posts from blocked users are hidden in the browser and left out of summaries, chat, and Ask the forum." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已屏蔽用户的帖子会在浏览器中隐藏，也不会用于摘要、聊天和“问论坛”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已封鎖使用者的貼文會在瀏覽器中隱藏，也不會用於摘要、聊天和「問論壇」。"
+          }
+        }
+      }
+    },
+    "Posts on screen" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "屏幕上的帖子"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "螢幕上的貼文"
+          }
+        }
+      }
+    },
+    "Posts that contain any of these are hidden on every forum. Swipe to remove one." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "包含其中任何一项的帖子会在所有论坛中隐藏。轻扫即可移除。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "包含其中任何一項的貼文會在所有論壇中隱藏。滑動即可移除。"
           }
         }
       }
@@ -8719,6 +9259,22 @@
         }
       }
     },
+    "Read the full Terms of Use" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "阅读完整的使用条款"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "閱讀完整的使用條款"
+          }
+        }
+      }
+    },
     "Read, not cited · %@" : {
       "comment" : "Source the agent read but didn't cite; the placeholder is the forum host",
       "localizations" : {
@@ -8964,6 +9520,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "就緒 · %@"
+          }
+        }
+      }
+    },
+    "Reason" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "原因"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "原因"
           }
         }
       }
@@ -9274,6 +9846,183 @@
         }
       }
     },
+    "Report" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "举报"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "檢舉"
+          }
+        }
+      }
+    },
+    "Report a problem by email" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通过邮件报告问题"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "透過郵件回報問題"
+          }
+        }
+      }
+    },
+    "Report and block" : {
+      "comment" : "Terms of Use summary row title",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "举报和屏蔽"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "檢舉和封鎖"
+          }
+        }
+      }
+    },
+    "Report or block" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "举报或屏蔽"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "檢舉或封鎖"
+          }
+        }
+      }
+    },
+    "Report or block…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "举报或屏蔽…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "檢舉或封鎖…"
+          }
+        }
+      }
+    },
+    "Report post" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "举报帖子"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "檢舉貼文"
+          }
+        }
+      }
+    },
+    "Report this topic" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "举报此话题"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "檢舉此話題"
+          }
+        }
+      }
+    },
+    "Report topic" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "举报话题"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "檢舉話題"
+          }
+        }
+      }
+    },
+    "Report user" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "举报用户"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "檢舉使用者"
+          }
+        }
+      }
+    },
+    "Reports are reviewed within 24 hours." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "举报会在 24 小时内处理。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "檢舉會在 24 小時內處理。"
+          }
+        }
+      }
+    },
+    "Reports go to the Forumind developer by email and are reviewed within 24 hours. Offending content is removed from the app for everyone." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "举报会通过邮件发送给 Forumind 开发者，并在 24 小时内处理。违规内容会为所有用户从 App 中移除。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "檢舉會透過郵件傳送給 Forumind 開發者，並在 24 小時內處理。違規內容會為所有使用者從 App 中移除。"
+          }
+        }
+      }
+    },
     "Requests go only to the forum you’re reading and the AI provider you chose. Sync uses your own iCloud." : {
       "localizations" : {
         "zh-Hans" : {
@@ -9286,6 +10035,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "請求只會傳送到你正在閱讀的論壇和你選擇的 AI 供應商。同步使用你自己的 iCloud。"
+          }
+        }
+      }
+    },
+    "Requests go only to the forum you’re reading and the AI provider you chose. Sync uses your own iCloud. Once a day the app downloads Forumind’s public list of removed content, sending nothing about you." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请求只会发送到你正在阅读的论坛和你选择的 AI 服务商。同步使用你自己的 iCloud。App 每天会下载一次 Forumind 公开的已移除内容列表，不会发送任何关于你的信息。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請求只會傳送到你正在閱讀的論壇和你選擇的 AI 服務商。同步使用你自己的 iCloud。App 每天會下載一次 Forumind 公開的已移除內容列表，不會傳送任何關於你的資訊。"
           }
         }
       }
@@ -9891,6 +10656,22 @@
         }
       }
     },
+    "Send report" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发送举报"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "寄出檢舉"
+          }
+        }
+      }
+    },
     "Sent only to %@. Both models use this key." : {
       "localizations" : {
         "zh-Hans" : {
@@ -10020,6 +10801,23 @@
         }
       }
     },
+    "Sexual content" : {
+      "comment" : "Content report reason",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "色情内容"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "色情內容"
+          }
+        }
+      }
+    },
     "Share" : {
       "localizations" : {
         "zh-Hans" : {
@@ -10080,6 +10878,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "從 Safari 或 Chrome 分享"
+          }
+        }
+      }
+    },
+    "Share report" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享举报"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享檢舉"
           }
         }
       }
@@ -10277,6 +11091,23 @@
         }
       }
     },
+    "Something else" : {
+      "comment" : "Content report reason",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其他问题"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其他問題"
+          }
+        }
+      }
+    },
     "Source %lld: %@" : {
       "localizations" : {
         "en" : {
@@ -10327,6 +11158,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "來源"
+          }
+        }
+      }
+    },
+    "Spam or scam" : {
+      "comment" : "Content report reason",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "垃圾信息或诈骗"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "垃圾訊息或詐騙"
           }
         }
       }
@@ -10636,6 +11484,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "安全儲存在 iOS 鑰匙圈中"
+          }
+        }
+      }
+    },
+    "Subject" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主题"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主旨"
           }
         }
       }
@@ -11359,6 +12223,22 @@
         }
       }
     },
+    "Terms of Use" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用条款"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用條款"
+          }
+        }
+      }
+    },
     "Test & save" : {
       "localizations" : {
         "zh-Hans" : {
@@ -11387,6 +12267,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在測試連線…"
+          }
+        }
+      }
+    },
+    "Thanks. Send the email to finish your report." : {
+      "comment" : "Report sheet status after a report email is prepared",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "谢谢。发送邮件即可完成举报。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "謝謝。寄出郵件即可完成檢舉。"
           }
         }
       }
@@ -11603,6 +12500,22 @@
         }
       }
     },
+    "Their posts on %@ are hidden right away and left out of summaries, chat, and Ask the forum. You can unblock them in Settings › Data & privacy. The developer is told about the block so the content can be reviewed." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此用户在 %@ 上的帖子会立即隐藏，也不会用于摘要、聊天和“问论坛”。你可以在“设置 › 数据与隐私”中取消屏蔽。开发者会收到屏蔽通知，以便审核相关内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此使用者在 %@ 上的貼文會立即隱藏，也不會用於摘要、聊天和「問論壇」。你可以在「設定 › 資料與隱私」中解除封鎖。開發者會收到封鎖通知，以便審核相關內容。"
+          }
+        }
+      }
+    },
     "Then create a summary or ask the forum a question." : {
       "localizations" : {
         "zh-Hans" : {
@@ -11759,6 +12672,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "提示"
+          }
+        }
+      }
+    },
+    "To" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "收件人"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "收件人"
           }
         }
       }
@@ -12103,6 +13032,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法使用"
+          }
+        }
+      }
+    },
+    "Unblock" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消屏蔽"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "解除封鎖"
           }
         }
       }
@@ -12613,6 +13558,23 @@
         }
       }
     },
+    "Violence or threats" : {
+      "comment" : "Content report reason",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暴力或威胁"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暴力或威脅"
+          }
+        }
+      }
+    },
     "Wait for the current answer or cancel it in Manage." : {
       "localizations" : {
         "zh-Hans" : {
@@ -12938,6 +13900,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "同步的內容"
+          }
+        }
+      }
+    },
+    "What’s wrong?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有什么问题？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有什麼問題？"
           }
         }
       }

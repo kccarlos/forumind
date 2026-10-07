@@ -216,8 +216,16 @@ struct AppSettings: Codable, Equatable {
     var syncAPIKeys = true
     /// How quickly requests go to one forum (see ForumRequestPacing.swift).
     var forumRequestPace: ForumRequestPace = .default
+    /// Users whose posts are hidden, per forum (see Moderation.swift).
+    var blockedUsers: [BlockedUser] = []
+    /// Words and phrases whose posts are hidden on every forum.
+    var filteredWords: [String] = []
+    /// The Terms of Use version accepted on this device (0: none yet).
+    var acceptedTermsVersion = 0
 
     init() {}
+
+    var hasAcceptedCurrentTerms: Bool { acceptedTermsVersion >= ModerationTerms.currentVersion }
 
     private enum CodingKeys: String, CodingKey {
         case selectedProvider
@@ -239,6 +247,9 @@ struct AppSettings: Codable, Equatable {
         case adBlockAllowedSites
         case syncAPIKeys
         case forumRequestPace
+        case blockedUsers
+        case filteredWords
+        case acceptedTermsVersion
     }
 
     // Snapshots written by earlier versions lack the newer keys; a missing key
@@ -307,6 +318,9 @@ struct AppSettings: Codable, Equatable {
         // polite default.
         forumRequestPace = (try? container.decodeIfPresent(ForumRequestPace.self, forKey: .forumRequestPace))
             .flatMap { $0 } ?? .default
+        blockedUsers = (try? container.decodeIfPresent([BlockedUser].self, forKey: .blockedUsers)).flatMap { $0 } ?? []
+        filteredWords = (try? container.decodeIfPresent([String].self, forKey: .filteredWords)).flatMap { $0 } ?? []
+        acceptedTermsVersion = (try? container.decodeIfPresent(Int.self, forKey: .acceptedTermsVersion)).flatMap { $0 } ?? 0
     }
 
     func configuration(for provider: AIProvider) -> ProviderConfiguration {

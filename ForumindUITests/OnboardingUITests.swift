@@ -45,10 +45,12 @@ final class OnboardingUITests: DCUITestCase {
         next.tap()
         assertStep(6, progress)
 
-        // Share → Privacy → Done.
+        // Share → Privacy → Done. Privacy needs the Terms of Use accepted.
         XCTAssertTrue(waitForHittable(next))
         next.tap()
         assertStep(7, progress)
+        XCTAssertFalse(next.isEnabled, "Continue works before the Terms of Use are accepted.")
+        acceptTerms(app)
         XCTAssertTrue(waitForHittable(next))
         next.tap()
 
@@ -64,11 +66,18 @@ final class OnboardingUITests: DCUITestCase {
         XCTAssertTrue(app.buttons["forumSwitcher"].exists)
     }
 
-    func testSkipJumpsToTheLastStep() throws {
+    func testSkipStopsAtTheTermsThenJumpsToTheLastStep() throws {
         let app = launch(["-dc-onboarding-step", "features"])
 
         let skipAll = app.buttons["onboardingSkipAll"]
         XCTAssertTrue(waitForHittable(skipAll, timeout: 20), "Skip is missing on a middle step.")
+        skipAll.tap()
+        // The Terms of Use can't be skipped.
+        assertStep(7, any(app, "onboardingProgress"))
+        XCTAssertFalse(app.buttons["onboardingContinue"].isEnabled)
+        skipAll.tap()
+        assertStep(7, any(app, "onboardingProgress"))
+        acceptTerms(app)
         skipAll.tap()
         let browse = app.buttons["onboardingBrowseForums"]
         XCTAssertTrue(waitForHittable(browse), "Skip did not jump to the last step.")
@@ -90,7 +99,10 @@ final class OnboardingUITests: DCUITestCase {
         XCTAssertTrue(waitForHittable(back))
         back.tap()
         assertStep(3, progress)
-        // Leave the walkthrough completed for the other tests.
+        // Leave the walkthrough completed for the other tests (Skip stops
+        // at the Terms of Use first).
+        app.buttons["onboardingSkipAll"].tap()
+        acceptTerms(app)
         app.buttons["onboardingSkipAll"].tap()
         let browse = app.buttons["onboardingBrowseForums"]
         XCTAssertTrue(waitForHittable(browse))
@@ -112,5 +124,15 @@ final class OnboardingUITests: DCUITestCase {
             file: file,
             line: line
         )
+    }
+
+    private func acceptTerms(_ app: XCUIApplication) {
+        let agree = app.switches["termsAgree"]
+        for _ in 0..<6 where !agree.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(waitForHittable(agree), "The Terms of Use toggle is missing.")
+        // Tap the switch itself (right edge), not its label.
+        agree.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
     }
 }

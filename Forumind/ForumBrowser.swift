@@ -201,6 +201,15 @@ final class ForumBrowserModel: NSObject, ObservableObject {
                 forMainFrameOnly: true
             )
         )
+        // Hides blocked and filtered posts; the rules arrive per page
+        // (`applyModerationToPage`).
+        configuration.userContentController.addUserScript(
+            WKUserScript(
+                source: ModerationScript.installer,
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            )
+        )
 
         webView = WKWebView(frame: .zero, configuration: configuration)
         contentBlocker = ContentBlocker(
@@ -664,8 +673,37 @@ final class ForumBrowserModel: NSObject, ObservableObject {
             homeSiteURL = siteURL
         }
         guard context != pageContext else { return }
+        let siteChanged = context.siteURL != pageContext.siteURL
         pageContext = context
         onPageContextChanged?(context)
+        if siteChanged { applyModerationToPage() }
+    }
+
+    /// Blocked users, filtered words and the developer's list (AppModel
+    /// keeps this current). Changes apply to the page at once.
+    var moderationRules: ModerationRules = .none {
+        didSet {
+            guard moderationRules != oldValue else { return }
+            applyModerationToPage()
+        }
+    }
+
+    func applyModerationToPage() {
+        guard webView.url.map(Self.isBrowsableURL) == true else { return }
+        let config = ModerationScript.config(rules: moderationRules, siteURL: pageContext.siteURL)
+        webView.evaluateJavaScript(ModerationScript.source(config: config), completionHandler: nil)
+    }
+
+    /// Posts on screen now (not hidden), newest layout first; for reporting.
+    func visiblePosts() async -> [VisiblePost] {
+        let script = "window.__forumindModeration ? JSON.stringify(window.__forumindModeration.posts()) : '[]'"
+        guard let json = try? await webView.evaluateJavaScript(script) as? String,
+              let data = json.data(using: .utf8),
+              let posts = try? JSONDecoder().decode([VisiblePost].self, from: data)
+        else {
+            return []
+        }
+        return posts
     }
 
     /// Pages the browser may show: http and https.
@@ -764,6 +802,7 @@ extension ForumBrowserModel: WKNavigationDelegate {
         Task { @MainActor in
             if self.showsCrashNotice { self.showsCrashNotice = false }
             self.updateNavigationState()
+            self.applyModerationToPage()
             await self.probeCurrentPage()
             #if DEBUG
             // `-dc-scroll-page <points>`: scrolls each loaded page (screenshots).

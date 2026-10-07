@@ -32,6 +32,8 @@ struct OnboardingFlow: View {
     @State private var movingForward = true
     @State private var providerState: ProviderTestState = .idle
     @State private var selectedForums: Set<String>
+    /// The Terms of Use toggle on the privacy step (required to continue).
+    @State private var termsAgreed: Bool
     @FocusState private var focused: Bool
     @State private var keyboardVisible = false
 
@@ -40,6 +42,7 @@ struct OnboardingFlow: View {
         self.onFinish = onFinish
         _step = State(initialValue: initialStep)
         _selectedForums = State(initialValue: Set(app.pinnedForums.map(\.siteURL)))
+        _termsAgreed = State(initialValue: app.settings.hasAcceptedCurrentTerms)
     }
 
     private var usesCard: Bool {
@@ -118,7 +121,9 @@ struct OnboardingFlow: View {
 
             Button("Skip") {
                 DCHaptics.tap()
-                go(to: .done)
+                // The Terms of Use can't be skipped.
+                if termsAgreed { app.acceptTerms() }
+                go(to: termsAgreed ? .done : .privacy)
             }
             .font(.subheadline.weight(.semibold))
             .frame(minWidth: DCTheme.controlHeight, minHeight: DCTheme.controlHeight)
@@ -142,6 +147,7 @@ struct OnboardingFlow: View {
                     Text(primaryTitle)
                 }
                 .buttonStyle(DCPrimaryButtonStyle())
+                .disabled(step == .privacy && !termsAgreed)
                 .accessibilityIdentifier("onboardingContinue")
 
                 if step.allowsSkip {
@@ -242,7 +248,7 @@ struct OnboardingFlow: View {
         case .forums: OnboardingForumsPage(app: app, selected: $selectedForums)
         case .sync: OnboardingSyncPage(app: app)
         case .share: OnboardingSharePage()
-        case .privacy: OnboardingPrivacyPage()
+        case .privacy: OnboardingPrivacyPage(termsAgreed: $termsAgreed)
         case .done: OnboardingDonePage(app: app, providerState: providerState)
         }
     }
@@ -277,6 +283,10 @@ struct OnboardingFlow: View {
         focused = false
         if step == .forums { applyForumSelection() }
         if step == .provider { app.saveSettings() }
+        if step == .privacy {
+            guard termsAgreed else { return }
+            app.acceptTerms()
+        }
         go(to: step.next)
     }
 

@@ -183,7 +183,9 @@ enum SyncSettings {
     static let deviceLocalKeys: Set<String> = [
         "browserBarPosition",
         "hasCompletedOnboarding",
-        "syncAPIKeys"
+        "syncAPIKeys",
+        // Each device's user accepts the Terms of Use on that device.
+        "acceptedTermsVersion"
     ]
 
     /// Each provider configuration is one unit: `configurations.<provider>`.

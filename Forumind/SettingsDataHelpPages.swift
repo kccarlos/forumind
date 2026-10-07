@@ -60,6 +60,8 @@ struct SettingsDataPage: View {
                 Text("Clearing deletes saved summaries, chats, answers, and watched topics for that forum. The forum stays in your list.")
             }
 
+            ModerationSettingsSections(app: app)
+
             Section {
                 Button(role: .destructive) {
                     confirmingClearAll = true

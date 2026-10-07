@@ -138,6 +138,10 @@ final class AppModel: ObservableObject {
     @Published var chatStreams: [UUID: String] = [:]
     @Published var chatDraft = ""
     @Published var presentedError: String?
+    /// The developer's moderation list (last good copy; see Moderation.swift).
+    @Published var remoteModeration: RemoteModerationList? = RemoteModerationCache.load() {
+        didSet { applyModerationRules() }
+    }
     @Published var settingsStatus = ""
     /// Models each provider offers, from the last successful load.
     @Published var discoveredModels: [AIProvider: [String]] = [:]
@@ -310,6 +314,7 @@ final class AppModel: ObservableObject {
         self.browser.homeSiteURL = currentForum?.siteURL
         // Ad/tracker blocking starts before the first page load.
         configureContentBlocking()
+        applyModerationRules()
         if self.browser.webView.url == nil {
             self.browser.loadHome()
         }
@@ -1385,6 +1390,9 @@ final class AppModel: ObservableObject {
         }
         if let role = needsProviderSetup, isProviderReady(for: role) { needsProviderSetup = nil }
         contentBlockingSettingsDidChange(from: old)
+        if old.blockedUsers != settings.blockedUsers || old.filteredWords != settings.filteredWords {
+            applyModerationRules()
+        }
         saveSettings()
     }
 
@@ -1401,6 +1409,10 @@ final class AppModel: ObservableObject {
         var fresh = AppSettings()
         fresh.hasCompletedOnboarding = settings.hasCompletedOnboarding
         fresh.syncAPIKeys = settings.syncAPIKeys
+        // Moderation is the user's safety choice, not a preference to reset.
+        fresh.acceptedTermsVersion = settings.acceptedTermsVersion
+        fresh.blockedUsers = settings.blockedUsers
+        fresh.filteredWords = settings.filteredWords
         settings = fresh
         discoveredModels = [:]
         settingsStatus = ""
@@ -1894,7 +1906,7 @@ final class AppModel: ObservableObject {
         defer { progress.cancel() }
         let feed = SummaryProgressFeed(output: progress, map: WorkProgress.summary(ai:))
         let summary = try await aiService.generateSummary(
-            content: fetch.content,
+            content: moderated(fetch.content, siteURL: session.siteURL, topicID: session.topicID),
             configuration: context.configuration,
             provider: context.provider,
             customPrompt: context.topicInstructions,
@@ -1963,7 +1975,7 @@ final class AppModel: ObservableObject {
         }
         chatStreams[recordID] = ""
         let answer = try await aiService.answer(
-            source: session.source,
+            source: moderated(session.source, siteURL: session.siteURL, topicID: session.topicID),
             summary: session.summary,
             history: session.history,
             contextLimit: context.contextLimit,
@@ -2204,7 +2216,7 @@ final class AppModel: ObservableObject {
                 progress: { stepProgress(0.1 + 0.8 * $0) }
             )
             let bounded = PromptBuilder.boundedForumContext(
-                session.source,
+                moderated(session.source, siteURL: session.siteURL, topicID: session.topicID),
                 limit: context.agentReadLimit
             )
             return (
@@ -2229,7 +2241,7 @@ final class AppModel: ObservableObject {
             defer { progress.cancel() }
             let feed = SummaryProgressFeed(output: progress) { stepProgress(0.4 + 0.55 * $0) }
             let summary = try await aiService.generateSummary(
-                content: session.source,
+                content: moderated(session.source, siteURL: session.siteURL, topicID: session.topicID),
                 configuration: summarizer.configuration,
                 provider: summarizer.provider,
                 customPrompt: PromptBuilder.effectiveInstructions(

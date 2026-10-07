@@ -27,6 +27,30 @@
       },
       "shouldTranslate" : false
     },
+    "NSCameraUsageDescription" : {
+      "comment" : "Privacy - Camera Usage Description: shown when a forum page in the browser asks for a photo or video.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A forum page can ask for a photo or video, for example a profile picture or an attachment to your post."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "论坛网页可能会请求拍摄照片或视频，例如头像或帖子附件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "論壇網頁可能會要求拍攝照片或影片，例如大頭貼或貼文附件。"
+          }
+        }
+      }
+    },
     "NSLocalNetworkUsageDescription" : {
       "comment" : "Privacy - Local Network Usage Description: shown when iOS asks for local-network access (Ollama or LM Studio).",
       "extractionState" : "manual",
@@ -47,6 +71,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Forumind 可以連線到你區域網路上的 Ollama 或 LM Studio 伺服器。"
+          }
+        }
+      }
+    },
+    "NSMicrophoneUsageDescription" : {
+      "comment" : "Privacy - Microphone Usage Description: shown when a forum page asks to record a video.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A forum page can ask you to record a video, which includes sound."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "论坛网页可能会请求录制视频，其中包含声音。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "論壇網頁可能會要求錄製影片，其中包含聲音。"
+          }
+        }
+      }
+    },
+    "NSPhotoLibraryAddUsageDescription" : {
+      "comment" : "Privacy - Photo Library Additions Usage Description: shown when the user saves an image from a forum page.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Forumind can save images from forum pages to your photo library when you ask it to."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在你要求时，Forumind 可以将论坛网页中的图片保存到你的照片图库。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在你要求時，Forumind 可以將論壇網頁中的圖片儲存到你的照片圖庫。"
           }
         }
       }

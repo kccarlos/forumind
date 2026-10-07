@@ -235,6 +235,23 @@ by default, out of respect for forum owners who rely on ads; nothing is
 looked up or compiled until it's turned on. Details:
 [AD_BLOCKING.md](AD_BLOCKING.md).
 
+### Moderation
+
+App Store guideline 1.2 asks apps that show user-generated content for terms
+of use, reporting, blocking and filtering. `Moderation.swift` holds the model:
+`BlockedUser` and the filtered words live in `AppSettings` (synced; the
+accepted Terms of Use version is per device), `RemoteModerationList` is the
+developer's public list in [`moderation/`](../moderation/) (fetched at most
+daily), and `ModerationRules` combines them. `ModerationFilter` drops hidden
+posts from Discourse's `/raw` topic text where prompts are built
+(`AppModel.moderated(_:siteURL:topicID:)`), and `ModerationScript` hides them
+in the web view (by post author, number and text, with a `MutationObserver`).
+`ModerationViews.swift` has the Terms of Use card (walkthrough privacy step,
+and a sheet for anyone who hasn't accepted the current version), the Report
+or block sheet (browser ⋯ menu on a topic; reports are emails to the
+developer), and the Settings › Data & privacy sections. Terms:
+[TERMS.md](../TERMS.md).
+
 ### Sync
 
 iCloud sync through CloudKit, on by default when an iCloud account is

@@ -95,6 +95,13 @@ private struct RootView: View {
         )
     }
 
+    private var showsTermsGate: Binding<Bool> {
+        Binding(
+            get: { app.settings.hasCompletedOnboarding && !replayingOnboarding && app.needsTermsAcceptance },
+            set: { _ in }
+        )
+    }
+
     var body: some View {
         ContentView(app: app)
             .environment(\.replayOnboarding, ReplayOnboardingAction { replayingOnboarding = true })
@@ -102,6 +109,11 @@ private struct RootView: View {
                 OnboardingFlow(app: app, initialStep: initialStep) {
                     replayingOnboarding = false
                 }
+            }
+            // Existing users (and a walkthrough closed early) accept the
+            // Terms of Use before using the app.
+            .fullScreenCover(isPresented: showsTermsGate) {
+                TermsGateView(app: app)
             }
             .sheet(isPresented: $showingProviderSetup, onDismiss: {
                 app.needsProviderSetup = nil

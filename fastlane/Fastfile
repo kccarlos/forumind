@@ -8,6 +8,8 @@
 # Optional: BUNDLE_ID_PREFIX (default io.github.kccarlos.forumind).
 #
 #   bundle exec fastlane beta ipa:dist/Forumind.ipa
+#   bundle exec fastlane beta ipa:dist/Forumind.ipa groups:"Public beta"
+#     (TESTFLIGHT_CHANGELOG, if set, is the build's "What to Test")
 #   bundle exec fastlane metadata [version:1.0.0] [screenshots:true] [submit:true]
 
 default_platform(:ios)
@@ -47,13 +49,19 @@ end
 
 platform :ios do
   desc "Upload an exported IPA to TestFlight"
-  desc "Options: ipa (default dist/Forumind.ipa), wait (wait for processing; default false)"
+  desc "Options: ipa (default dist/Forumind.ipa), wait (wait for processing; default false),"
+  desc "groups (comma-separated external TestFlight groups to give the build to)"
   lane :beta do |options|
     ipa = File.expand_path(options[:ipa] || repo_path("dist", "Forumind.ipa"), repo_path)
     UI.user_error!("No IPA at #{ipa}") unless File.file?(ipa)
     notes_path = repo_path("appstore", "metadata", "en-US", "release_notes.txt")
 
-    wait = truthy?(options[:wait])
+    groups = options[:groups].to_s.split(",").map(&:strip).reject(&:empty?)
+    # Giving the build to testers needs the processed build.
+    wait = truthy?(options[:wait]) || groups.any?
+
+    changelog = ENV["TESTFLIGHT_CHANGELOG"].to_s.strip
+    changelog = File.read(notes_path).strip if changelog.empty? && File.file?(notes_path)
 
     upload_options = {
       api_key: asc_api_key,
@@ -63,8 +71,32 @@ platform :ios do
       distribute_external: false
     }
     # "What to Test" can only be set once the build has finished processing.
-    upload_options[:changelog] = File.read(notes_path).strip if wait && File.file?(notes_path)
+    upload_options[:changelog] = changelog[0, 4000] if wait && !changelog.empty?
     upload_to_testflight(**upload_options)
+    return if groups.empty?
+
+    # A separate step so a distribution problem (for example the version's
+    # first build still waiting for Beta App Review) never loses the upload.
+    # Apple decides whether a build needs review; later builds of an approved
+    # version usually go straight to testers.
+    begin
+      upload_to_testflight(
+        api_key: asc_api_key,
+        app_identifier: app_identifier_from_env,
+        distribute_only: true,
+        app_version: get_ipa_info_plist_value(ipa: ipa, key: "CFBundleShortVersionString"),
+        build_number: get_ipa_info_plist_value(ipa: ipa, key: "CFBundleVersion"),
+        distribute_external: true,
+        groups: groups,
+        changelog: changelog[0, 4000],
+        notify_external_testers: true,
+        submit_beta_review: true
+      )
+    rescue => e
+      message = "Uploaded, but could not give the build to #{groups.join(', ')}: #{e.message}"
+      UI.important(message)
+      puts "::warning::#{message.gsub(/\s+/, ' ')}" if ENV["GITHUB_ACTIONS"]
+    end
   end
 
   desc "Upload App Store metadata (and optionally screenshots) from appstore/"

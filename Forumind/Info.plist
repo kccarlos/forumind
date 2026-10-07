@@ -50,8 +50,14 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>A forum page can ask for a photo or video, for example a profile picture or an attachment to your post.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Forumind can connect to an Ollama or LM Studio server on your local network.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>A forum page can ask you to record a video, which includes sound.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Forumind can save images from forum pages to your photo library when you ask it to.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

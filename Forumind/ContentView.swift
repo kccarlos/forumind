@@ -31,6 +31,8 @@ struct ContentView: View {
     @State private var expandedPanel: ExpandedPanelRoute?
     @State private var showingLoginInfo = false
     @State private var showingAddForum = false
+    /// The topic the Report or block sheet is about.
+    @State private var reportTopic: ForumTopic?
     @State private var keyboardVisible = false
     @State private var addressFocusRequest = 0
     /// Assistant panel width chosen with the handle (0 = default 40%).
@@ -63,6 +65,7 @@ struct ContentView: View {
             }
             #endif
             app.restorePendingTasksIfNeeded()
+            await app.refreshRemoteModerationIfNeeded()
         }
         .onOpenURL { url in
             app.handleDeepLink(url)
@@ -101,6 +104,9 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showingLoginInfo) {
             LoginReadinessView(browser: app.browser)
+        }
+        .sheet(item: $reportTopic) { topic in
+            ReportSheet(app: app, topic: topic, forumName: forumName(for: topic))
         }
         .sheet(isPresented: $showingAddForum) {
             AddForumSheet(app: app) { forum in
@@ -165,11 +171,18 @@ struct ContentView: View {
         )
     }
 
+    private func forumName(for topic: ForumTopic) -> String {
+        if let name = app.forum(for: topic.siteURL)?.displayName { return name }
+        let pageName = app.browser.pageContext.forumName
+        return pageName.isEmpty ? ForumSite.host(of: topic.siteURL) : pageName
+    }
+
     private var actions: BrowserActions {
         BrowserActions(
             noteInteraction: { focusedPane = .browser },
             showLoginInfo: { showingLoginInfo = true },
             addForum: { showingAddForum = true },
+            report: { topic in reportTopic = topic },
             openForum: { forum in
                 app.openForum(forum)
                 showPane(.browser)
@@ -317,6 +330,8 @@ struct BrowserActions {
     var noteInteraction: () -> Void = {}
     var showLoginInfo: () -> Void
     var addForum: () -> Void
+    /// Report or block content in a topic.
+    var report: (ForumTopic) -> Void = { _ in }
     var openForum: (Forum) -> Void
     var showForumsHome: () -> Void
 }
@@ -746,6 +761,16 @@ private struct BrowserChrome: View {
                     } label: {
                         Label("Copy Link", systemImage: "link")
                     }
+                }
+            }
+            if let topic = browser.pageContext.topic, !showsHome {
+                Section {
+                    Button {
+                        actions.report(topic)
+                    } label: {
+                        Label("Report or block…", systemImage: "flag")
+                    }
+                    .accessibilityIdentifier("menuReportOrBlock")
                 }
             }
         } label: {

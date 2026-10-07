@@ -81,7 +81,13 @@ flowchart LR
      profiles (`import-signing.sh`),
    - archives with `xcodebuild archive -allowProvisioningUpdates` and API-key
      authentication, exports an App Store IPA (`write-export-options.sh`),
-   - uploads it with `bundle exec fastlane beta`,
+   - uploads it with `bundle exec fastlane beta`. With the `TESTFLIGHT_GROUPS`
+     variable set (for example `Public beta`), it waits for processing and
+     gives the build to those external groups, with the commit message (the
+     publish summary) as "What to Test"; Apple decides whether the build needs
+     Beta App Review (later builds of an approved version usually don't). A
+     distribution error leaves the upload in place and shows as a warning,
+     so the version's first build waiting for review doesn't fail the run,
    - keeps the IPA and dSYMs as workflow artifacts, and deletes the keychain
      and key files at the end.
 4. **metadata** (manual runs with `submit_metadata`): validates `appstore/`,
@@ -185,13 +191,23 @@ gh variable set DC_ENABLE_CLOUDKIT -R $R --body 'NO'  # optional: only to ship w
 | `DC_ENABLE_CLOUDKIT` | variable | Optional, `NO` to build without iCloud sync (default: on whenever `DEVELOPMENT_TEAM` is set) |
 | `MARKETING_VERSION` | variable | Optional, the version `main` builds upload under (default: the project's) |
 | `BUILD_NUMBER_BASE` | variable | Optional, added to the run number (default 100) |
+| `TESTFLIGHT_GROUPS` | variable | Optional, external TestFlight groups (comma-separated) that get every build |
 | `CI_MACOS_RUNNER`, `CI_XCODE_APP` | variable | Optional runner override (below) |
 
 Signing notes:
 
-- Signing is automatic: the API key lets `xcodebuild` create or download the
-  App Store provisioning profiles for the app and the share extension, so
-  `APPLE_PROVISIONING_PROFILES_BASE64` is usually not needed.
+- Signing is automatic. With an **Admin** API key, `xcodebuild` can create or
+  download the App Store provisioning profiles for the app and the share
+  extension itself. With an **App Manager** key it can't (the export fails
+  with "Cloud signing permission error" and "No profiles … were found"), so
+  also set `APPLE_PROVISIONING_PROFILES_BASE64`: a zip of the two
+  "iOS Team Store Provisioning Profile" files Xcode keeps in
+  `~/Library/Developer/Xcode/UserData/Provisioning Profiles`, made for the
+  same Apple Distribution certificate as the p12. Refresh it when they expire
+  (yearly) or when the app gains a capability.
+- `gh secret set NAME` only prompts in an interactive terminal; elsewhere it
+  stores whatever arrives on stdin (an empty password makes the p12 import
+  fail with "passphrase … not correct").
 - Automatic signing on a fresh CI machine usually **can't create an Apple
   Distribution certificate**, so in practice you need
   `APPLE_CERTIFICATE_P12_BASE64`. Preflight warns if it's missing.

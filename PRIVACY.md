@@ -1,7 +1,7 @@
 # Privacy Policy
 
 **Forumind for iPhone and iPad**
-Effective date: September 27, 2026
+Effective date: October 6, 2026
 
 Forumind is a free, open-source app that helps you read Discourse
 forums with an AI assistant. This policy explains, in plain words, what the
@@ -92,6 +92,19 @@ of respect for forum owners who rely on ads; turn it on, or allow a site, in
 happens on your device; the app doesn't send your browsing to any list
 provider.
 
+### Moderation
+
+You can block forum users and filter words (**Settings › Data & privacy**);
+these choices are stored with your settings (and synced with them). Once a
+day the app downloads the developer's public list of removed content
+(<https://github.com/kccarlos/forumind/tree/main/moderation>) from GitHub;
+this is a plain request for a public file and sends nothing about you.
+
+If you report content (**⋯ › Report or block**), your email app opens with a
+report to the developer that includes the forum, topic or post link, the
+reason, and any details you add. It's sent only if you send it, from your
+own email account, and is used only to review the report.
+
 ### Sharing to the app
 
 When you share a page from Safari, Chrome, or another app to
@@ -100,7 +113,7 @@ on your device. Nothing else is read from the sharing app.
 
 ## What the developer collects
 
-Nothing. The app has no analytics, crash-reporting SDK, advertising, or
+Nothing, apart from reports you choose to email (see Moderation). The app has no analytics, crash-reporting SDK, advertising, or
 tracking, and no third-party code. The developer does not operate servers
 that receive your data. The app does not track you across apps or websites.
 

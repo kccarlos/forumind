@@ -372,6 +372,7 @@ extension AppModel {
     /// - `-dc-show-settings <page>` Settings on launch (root, provider, forums, …)
     /// - `-dc-panel-settings`      opens Settings inside the assistant panel
     /// - `-dc-keychain-sync-probe` also skips the walkthrough so the probe alert shows
+    /// - `-dc-terms-gate`          shows the Terms of Use sheet past the walkthrough
     func applyOnboardingDebugArguments() {
         let arguments = OnboardingDebug.arguments
         if arguments.contains("-dc-panel-settings") {
@@ -380,11 +381,17 @@ extension AppModel {
         }
         if arguments.contains("-dc-reset") || OnboardingDebug.initialStep != nil {
             settings.hasCompletedOnboarding = false
+            settings.acceptedTermsVersion = 0
         }
         // The keychain probe's alert can't show over the walkthrough cover.
         if arguments.contains("-dc-skip-onboarding") || OnboardingDebug.settingsPage != nil
             || arguments.contains(KeychainSyncProbe.launchArgument) {
             settings.hasCompletedOnboarding = true
+        }
+        // Launches that skip the walkthrough (UI tests, samples, screenshots)
+        // also skip the Terms of Use; `-dc-terms-gate` shows them instead.
+        if settings.hasCompletedOnboarding {
+            settings.acceptedTermsVersion = arguments.contains("-dc-terms-gate") ? 0 : ModerationTerms.currentVersion
         }
     }
 }
