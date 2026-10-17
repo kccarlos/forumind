@@ -6,6 +6,7 @@
 
 <p align="center">
   <a href="https://apps.apple.com/app/id6816718686"><img src="https://img.shields.io/badge/App_Store-in_review-0D96F6?logo=appstore&logoColor=white" alt="App Store: in review"></a>
+  <a href="https://testflight.apple.com/join/XsfttG4P"><img src="https://img.shields.io/badge/TestFlight-public_beta-0D96F6?logo=apple&logoColor=white" alt="TestFlight: public beta"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License: Apache-2.0"></a>
   <img src="https://img.shields.io/badge/iOS_%7C_iPadOS-17%2B-000000?logo=apple&logoColor=white" alt="iOS and iPadOS 17 or later">
   <img src="https://img.shields.io/badge/Swift-F05138?logo=swift&logoColor=white" alt="Swift">
@@ -25,7 +26,8 @@ like [meta.discourse.org](https://meta.discourse.org), or your own community.
 
 > **App Store:** Forumind has been submitted and is in review. The
 > [App Store link](https://apps.apple.com/app/id6816718686) goes live once
-> Apple approves it. Until then, you can [build it yourself](#build-from-source).
+> Apple approves it. Until then, **[join the public beta on TestFlight](https://testflight.apple.com/join/XsfttG4P)**
+> on your iPhone or iPad, or [build it yourself](#build-from-source).
 
 **Prefer your desktop browser?** Forumind's sibling is a Chrome extension: [DiscourseCopilot](https://github.com/kccarlos/DiscourseCopilot).
 
@@ -133,6 +135,14 @@ provider, so two models from the same provider share one key.
 
 Forumind is in App Store review. Once Apple approves it, it will be here:
 **[Forumind on the App Store](https://apps.apple.com/app/id6816718686)**.
+
+### TestFlight public beta
+
+Try the latest build now: open **[https://testflight.apple.com/join/XsfttG4P](https://testflight.apple.com/join/XsfttG4P)** on your
+iPhone or iPad, install Apple's TestFlight app if asked, and tap **Accept**.
+New builds arrive in TestFlight automatically. Send feedback from TestFlight
+(take a screenshot, or open Forumind in TestFlight › Send Beta Feedback) or
+[open an issue](https://github.com/kccarlos/forumind/issues).
 
 ### Build from source
 

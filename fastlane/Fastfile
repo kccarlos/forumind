@@ -84,6 +84,8 @@ platform :ios do
         api_key: asc_api_key,
         app_identifier: app_identifier_from_env,
         distribute_only: true,
+        # Without the IPA, fastlane can't tell the platform and would ask.
+        app_platform: "ios",
         app_version: get_ipa_info_plist_value(ipa: ipa, key: "CFBundleShortVersionString"),
         build_number: get_ipa_info_plist_value(ipa: ipa, key: "CFBundleVersion"),
         distribute_external: true,

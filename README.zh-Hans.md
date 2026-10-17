@@ -6,6 +6,7 @@
 
 <p align="center">
   <a href="https://apps.apple.com/app/id6816718686"><img src="https://img.shields.io/badge/App_Store-%E5%AE%A1%E6%A0%B8%E4%B8%AD-0D96F6?logo=appstore&logoColor=white" alt="App Store：审核中"></a>
+  <a href="https://testflight.apple.com/join/XsfttG4P"><img src="https://img.shields.io/badge/TestFlight-%E5%85%AC%E5%BC%80%E6%B5%8B%E8%AF%95-0D96F6?logo=apple&logoColor=white" alt="TestFlight：公开测试"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="许可证：Apache-2.0"></a>
   <img src="https://img.shields.io/badge/iOS_%7C_iPadOS-17%2B-000000?logo=apple&logoColor=white" alt="iOS 与 iPadOS 17 或更高版本">
   <img src="https://img.shields.io/badge/Swift-F05138?logo=swift&logoColor=white" alt="Swift">
@@ -24,7 +25,7 @@ iPhone 与 iPad App，适用于任何基于 [Discourse](https://www.discourse.or
 
 > **App Store：** Forumind 已提交审核，正在审核中。Apple 审核通过后，
 > [App Store 链接](https://apps.apple.com/app/id6816718686)即可使用。在此之前，
-> 你可以[自行构建](#从源代码构建)。
+> 你可以**[通过 TestFlight 加入公开测试](https://testflight.apple.com/join/XsfttG4P)**，或[自行构建](#从源代码构建)。
 
 **想在电脑浏览器上使用？** 也可以试试 Chrome 扩展版本：[DiscourseCopilot](https://github.com/kccarlos/DiscourseCopilot)。
 
@@ -124,6 +125,13 @@ iPhone 与 iPad App，适用于任何基于 [Discourse](https://www.discourse.or
 
 Forumind 正在接受 App Store 审核。Apple 审核通过后，可在这里下载：
 **[App Store 上的 Forumind](https://apps.apple.com/app/id6816718686)**。
+
+### TestFlight 公开测试
+
+现在就可以试用最新版本：在 iPhone 或 iPad 上打开 **[https://testflight.apple.com/join/XsfttG4P](https://testflight.apple.com/join/XsfttG4P)**，
+按提示安装 Apple 的 TestFlight App，然后轻点**接受**。新版本会自动推送到
+TestFlight。你可以在 TestFlight 中反馈（截屏，或在 TestFlight 中打开
+Forumind › 发送 Beta 版反馈），也可以[提交 issue](https://github.com/kccarlos/forumind/issues)。
 
 ### 从源代码构建
 
