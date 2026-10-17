@@ -149,21 +149,23 @@ from the repo root:
 ```sh
 R=kccarlos/forumind
 
-# Secrets: App Store Connect API key (required for TestFlight and metadata).
-# App Store Connect › Users and Access › Integrations › App Store Connect API
-# › Team Keys, role "App Manager" (or "Admin").
-gh secret set APP_STORE_CONNECT_API_KEY_ID  -R $R --body 'ABC123DEFG'
-gh secret set APP_STORE_CONNECT_ISSUER_ID   -R $R --body '00000000-0000-0000-0000-000000000000'
-base64 -i AuthKey_ABC123DEFG.p8 | gh secret set APP_STORE_CONNECT_API_KEY_P8_BASE64 -R $R
+# Secret: the only signing secret is a 1Password service account token that
+# can read the vault `github`; the jobs load the rest with
+# 1password/load-secrets-action. Repository level (see below).
+# -n: no trailing newline (with one, every load fails with "(400) structure
+# of request was invalid").
+op read -n "op://Private/OP service account github-actions/credential" | gh secret set OP_SERVICE_ACCOUNT_TOKEN -R $R
 
-# Secrets: Apple Distribution certificate + private key, exported from
-# Keychain Access as .p12 (recommended; see below).
-base64 -i distribution.p12 | gh secret set APPLE_CERTIFICATE_P12_BASE64 -R $R
-gh secret set APPLE_CERTIFICATE_PASSWORD -R $R --body 'p12-export-password'
-
-# Secret (optional): App Store provisioning profiles for the app and the share
-# extension, one .mobileprovision or a zip of several.
-zip -j profiles.zip *.mobileprovision && base64 -i profiles.zip | gh secret set APPLE_PROVISIONING_PROFILES_BASE64 -R $R
+# The 1Password items in vault `github` (every value one line, files base64):
+#   app-store-connect-api-key       key_id, issuer_id, p8_base64
+#     App Store Connect › Users and Access › Integrations › App Store Connect API
+#     › Team Keys, role "App Manager" (or "Admin"); base64 of AuthKey_<id>.p8.
+#   apple-distribution              p12_base64, password
+#     Apple Distribution certificate + private key, exported from Keychain
+#     Access as .p12 (recommended; see below).
+#   forumind-provisioning-profiles  profiles_base64
+#     base64 of a zip of the app and share-extension App Store profiles:
+#     zip -j profiles.zip *.mobileprovision
 
 # Secrets (optional): live NVIDIA NIM and Vertex AI tests in CI.
 gh secret set NVIDIA_API_KEY -R $R
@@ -178,11 +180,10 @@ gh variable set DC_ENABLE_CLOUDKIT -R $R --body 'NO'  # optional: only to ship w
 
 | Name | Kind | Needed for |
 | --- | --- | --- |
-| `APP_STORE_CONNECT_API_KEY_ID` | secret | TestFlight, metadata |
-| `APP_STORE_CONNECT_ISSUER_ID` | secret | TestFlight, metadata |
-| `APP_STORE_CONNECT_API_KEY_P8_BASE64` | secret | TestFlight, metadata |
-| `APPLE_CERTIFICATE_P12_BASE64`, `APPLE_CERTIFICATE_PASSWORD` | secret | TestFlight (in practice) |
-| `APPLE_PROVISIONING_PROFILES_BASE64` | secret | Optional |
+| `OP_SERVICE_ACCOUNT_TOKEN` | secret | TestFlight, metadata (reads the 1Password items above) |
+| `app-store-connect-api-key` | 1Password item | TestFlight, metadata |
+| `apple-distribution` | 1Password item | TestFlight (in practice) |
+| `forumind-provisioning-profiles` | 1Password item | TestFlight with an App Manager key |
 | `NVIDIA_API_KEY` | secret | Optional live test |
 | `VERTEX_API_KEY` | secret | Optional live test |
 | `DEVELOPMENT_TEAM` | variable | TestFlight |
@@ -200,7 +201,7 @@ Signing notes:
   download the App Store provisioning profiles for the app and the share
   extension itself. With an **App Manager** key it can't (the export fails
   with "Cloud signing permission error" and "No profiles … were found"), so
-  also set `APPLE_PROVISIONING_PROFILES_BASE64`: a zip of the two
+  also fill the 1Password item `forumind-provisioning-profiles`: a zip of the two
   "iOS Team Store Provisioning Profile" files Xcode keeps in
   `~/Library/Developer/Xcode/UserData/Provisioning Profiles`, made for the
   same Apple Distribution certificate as the p12. Refresh it when they expire
@@ -210,19 +211,25 @@ Signing notes:
   fail with "passphrase … not correct").
 - Automatic signing on a fresh CI machine usually **can't create an Apple
   Distribution certificate**, so in practice you need
-  `APPLE_CERTIFICATE_P12_BASE64`. Preflight warns if it's missing.
+  the `apple-distribution` item.
 - Create the app record in App Store Connect before the first upload (see
   [APP_STORE.md](APP_STORE.md)).
 - iCloud sync adds the **iCloud (CloudKit)** and **Push Notifications**
   capabilities and the container `iCloud.<BUNDLE_ID_PREFIX>` to the app's App
   ID. Automatic signing adds them on the first signed build; profiles made
   before that are invalid for the app afterwards, so if you use
-  `APPLE_PROVISIONING_PROFILES_BASE64`, regenerate the App Store profile and
-  update the secret.
+  `forumind-provisioning-profiles`, regenerate the App Store profile and
+  update the item.
 - Deploy the CloudKit schema to production before the first TestFlight build
   ([SYNC.md](SYNC.md#cloudkit-schema)); TestFlight and App Store builds use the
   production environment.
-- Keep these secrets at **repository** level. Preflight has no environment,
+- Each job loads 1Password in up to **three attempts, 30 s apart** (steps
+  `op1`..`op3`; the first two may fail without failing the job, and later
+  steps read `steps.op1.outputs.X || steps.op2.outputs.X || steps.op3.outputs.X`).
+  The 1Password CLI fails intermittently on macOS 27, GitHub's `xcode-27`
+  runners included, with `(400) … structure of request was invalid` or
+  `error initializing client: (500)`, even with a good token.
+- Keep `OP_SERVICE_ACCOUNT_TOKEN` at **repository** level. Preflight has no environment,
   so it can't see environment-only secrets; the upload would always be
   skipped.
 - The `testflight` and `metadata` jobs use a GitHub Environment named

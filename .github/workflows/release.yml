@@ -74,25 +74,22 @@ jobs:
     steps:
       - id: check
         env:
-          HAS_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID != '' }}
-          HAS_ISSUER: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID != '' }}
-          HAS_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8_BASE64 != '' }}
-          HAS_P12: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 != '' }}
+          # Signing material is in 1Password (vault github); this is the token.
+          HAS_OP: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN != '' }}
           WANT_TESTFLIGHT: ${{ github.event_name != 'workflow_dispatch' || inputs.testflight }}
           WANT_METADATA: ${{ github.event_name == 'workflow_dispatch' && inputs.submit_metadata }}
         run: |
           asc=false signing=false metadata=false
-          if [[ "$HAS_KEY_ID" == true && "$HAS_ISSUER" == true && "$HAS_P8" == true ]]; then
+          if [[ "$HAS_OP" == true ]]; then
             asc=true
           else
-            echo "::notice::App Store Connect API key secrets are not set; skipping TestFlight and metadata."
+            echo "::notice::OP_SERVICE_ACCOUNT_TOKEN is not set; skipping TestFlight and metadata."
           fi
           if [[ "$asc" == true && "$WANT_TESTFLIGHT" == true ]]; then
             if [[ -z "$DEVELOPMENT_TEAM" ]]; then
               echo "::warning::Repo variable DEVELOPMENT_TEAM is not set; skipping the signed archive."
             else
               signing=true
-              [[ "$HAS_P12" == true ]] || echo "::warning::APPLE_CERTIFICATE_P12_BASE64 is not set; the archive fails unless automatic signing can get a distribution certificate."
             fi
           fi
           if [[ "$asc" == true && "$WANT_METADATA" == true ]]; then
@@ -186,8 +183,6 @@ jobs:
     timeout-minutes: 90
     environment: testflight
     env:
-      APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
-      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
       VERSION: ${{ needs.preflight.outputs.version }}
       BUILD: ${{ needs.preflight.outputs.build }}
     steps:
@@ -207,12 +202,74 @@ jobs:
           BUILD_NUMBER: ${{ needs.preflight.outputs.build }}
         run: bundle exec ruby scripts/generate_project.rb
 
+      # 1Password, three attempts 30 s apart: the CLI fails intermittently on
+      # macOS 27 runners (see docs/CI.md). Values are step outputs, so only the
+      # steps that name them see them; a failed attempt leaves its outputs empty.
+      - name: Secrets from 1Password (attempt 1)
+        id: op1
+        continue-on-error: true
+        uses: 1password/load-secrets-action@70062d7a876d3eb6334754fa26efd2fbd90c32f2 # v5.0.1
+        with:
+          export-env: false
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          APP_STORE_CONNECT_API_KEY_ID: op://github/app-store-connect-api-key/key_id
+          APP_STORE_CONNECT_ISSUER_ID: op://github/app-store-connect-api-key/issuer_id
+          APPLE_CERTIFICATE_P12_BASE64: op://github/apple-distribution/p12_base64
+          APPLE_CERTIFICATE_PASSWORD: op://github/apple-distribution/password
+          APPLE_PROVISIONING_PROFILES_BASE64: op://github/forumind-provisioning-profiles/profiles_base64
+          APP_STORE_CONNECT_API_KEY_P8_BASE64: op://github/app-store-connect-api-key/p8_base64
+      - name: Wait before 1Password attempt 2
+        if: steps.op1.outcome == 'failure'
+        run: sleep 30
+      - name: Secrets from 1Password (attempt 2)
+        id: op2
+        if: steps.op1.outcome == 'failure'
+        continue-on-error: true
+        uses: 1password/load-secrets-action@70062d7a876d3eb6334754fa26efd2fbd90c32f2 # v5.0.1
+        with:
+          export-env: false
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          APP_STORE_CONNECT_API_KEY_ID: op://github/app-store-connect-api-key/key_id
+          APP_STORE_CONNECT_ISSUER_ID: op://github/app-store-connect-api-key/issuer_id
+          APPLE_CERTIFICATE_P12_BASE64: op://github/apple-distribution/p12_base64
+          APPLE_CERTIFICATE_PASSWORD: op://github/apple-distribution/password
+          APPLE_PROVISIONING_PROFILES_BASE64: op://github/forumind-provisioning-profiles/profiles_base64
+          APP_STORE_CONNECT_API_KEY_P8_BASE64: op://github/app-store-connect-api-key/p8_base64
+      - name: Wait before 1Password attempt 3
+        if: steps.op2.outcome == 'failure'
+        run: sleep 30
+      - name: Secrets from 1Password (attempt 3)
+        id: op3
+        if: steps.op2.outcome == 'failure'
+        uses: 1password/load-secrets-action@70062d7a876d3eb6334754fa26efd2fbd90c32f2 # v5.0.1
+        with:
+          export-env: false
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          APP_STORE_CONNECT_API_KEY_ID: op://github/app-store-connect-api-key/key_id
+          APP_STORE_CONNECT_ISSUER_ID: op://github/app-store-connect-api-key/issuer_id
+          APPLE_CERTIFICATE_P12_BASE64: op://github/apple-distribution/p12_base64
+          APPLE_CERTIFICATE_PASSWORD: op://github/apple-distribution/password
+          APPLE_PROVISIONING_PROFILES_BASE64: op://github/forumind-provisioning-profiles/profiles_base64
+          APP_STORE_CONNECT_API_KEY_P8_BASE64: op://github/app-store-connect-api-key/p8_base64
+
+      # Key and issuer IDs are identifiers, not secrets: exported for every step.
+      - name: App Store Connect key IDs
+        env:
+          APP_STORE_CONNECT_API_KEY_ID: ${{ steps.op1.outputs.APP_STORE_CONNECT_API_KEY_ID || steps.op2.outputs.APP_STORE_CONNECT_API_KEY_ID || steps.op3.outputs.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ steps.op1.outputs.APP_STORE_CONNECT_ISSUER_ID || steps.op2.outputs.APP_STORE_CONNECT_ISSUER_ID || steps.op3.outputs.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          echo "APP_STORE_CONNECT_API_KEY_ID=$APP_STORE_CONNECT_API_KEY_ID" >>"$GITHUB_ENV"
+          echo "APP_STORE_CONNECT_ISSUER_ID=$APP_STORE_CONNECT_ISSUER_ID" >>"$GITHUB_ENV"
+
       - name: Install signing material
         env:
-          APP_STORE_CONNECT_API_KEY_P8_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8_BASE64 }}
-          APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_PROVISIONING_PROFILES_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILES_BASE64 }}
+          APP_STORE_CONNECT_API_KEY_P8_BASE64: ${{ steps.op1.outputs.APP_STORE_CONNECT_API_KEY_P8_BASE64 || steps.op2.outputs.APP_STORE_CONNECT_API_KEY_P8_BASE64 || steps.op3.outputs.APP_STORE_CONNECT_API_KEY_P8_BASE64 }}
+          APPLE_CERTIFICATE_P12_BASE64: ${{ steps.op1.outputs.APPLE_CERTIFICATE_P12_BASE64 || steps.op2.outputs.APPLE_CERTIFICATE_P12_BASE64 || steps.op3.outputs.APPLE_CERTIFICATE_P12_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ steps.op1.outputs.APPLE_CERTIFICATE_PASSWORD || steps.op2.outputs.APPLE_CERTIFICATE_PASSWORD || steps.op3.outputs.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_PROVISIONING_PROFILES_BASE64: ${{ steps.op1.outputs.APPLE_PROVISIONING_PROFILES_BASE64 || steps.op2.outputs.APPLE_PROVISIONING_PROFILES_BASE64 || steps.op3.outputs.APPLE_PROVISIONING_PROFILES_BASE64 }}
         run: scripts/ci/import-signing.sh
 
       - name: Archive
@@ -255,7 +312,7 @@ jobs:
 
       - name: Upload to TestFlight
         env:
-          APP_STORE_CONNECT_API_KEY_P8_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8_BASE64 }}
+          APP_STORE_CONNECT_API_KEY_P8_BASE64: ${{ steps.op1.outputs.APP_STORE_CONNECT_API_KEY_P8_BASE64 || steps.op2.outputs.APP_STORE_CONNECT_API_KEY_P8_BASE64 || steps.op3.outputs.APP_STORE_CONNECT_API_KEY_P8_BASE64 }}
           # Submitting for review in this run needs the processed build.
           WAIT: ${{ github.event_name == 'workflow_dispatch' && inputs.submit_for_review }}
           # Repo variable: external groups (comma-separated) that get every
@@ -298,10 +355,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: testflight
-    env:
-      APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
-      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-      APP_STORE_CONNECT_API_KEY_P8_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8_BASE64 }}
     steps:
       - uses: actions/checkout@v7
       - name: Validate metadata
@@ -310,10 +363,64 @@ jobs:
         with:
           ruby-version: '3.3'
           bundler-cache: true
+      # 1Password, three attempts 30 s apart: the CLI fails intermittently on
+      # macOS 27 runners (see docs/CI.md). Values are step outputs, so only the
+      # steps that name them see them; a failed attempt leaves its outputs empty.
+      - name: Secrets from 1Password (attempt 1)
+        id: op1
+        continue-on-error: true
+        uses: 1password/load-secrets-action@70062d7a876d3eb6334754fa26efd2fbd90c32f2 # v5.0.1
+        with:
+          export-env: false
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          APP_STORE_CONNECT_API_KEY_ID: op://github/app-store-connect-api-key/key_id
+          APP_STORE_CONNECT_ISSUER_ID: op://github/app-store-connect-api-key/issuer_id
+          APP_STORE_CONNECT_API_KEY_P8_BASE64: op://github/app-store-connect-api-key/p8_base64
+      - name: Wait before 1Password attempt 2
+        if: steps.op1.outcome == 'failure'
+        run: sleep 30
+      - name: Secrets from 1Password (attempt 2)
+        id: op2
+        if: steps.op1.outcome == 'failure'
+        continue-on-error: true
+        uses: 1password/load-secrets-action@70062d7a876d3eb6334754fa26efd2fbd90c32f2 # v5.0.1
+        with:
+          export-env: false
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          APP_STORE_CONNECT_API_KEY_ID: op://github/app-store-connect-api-key/key_id
+          APP_STORE_CONNECT_ISSUER_ID: op://github/app-store-connect-api-key/issuer_id
+          APP_STORE_CONNECT_API_KEY_P8_BASE64: op://github/app-store-connect-api-key/p8_base64
+      - name: Wait before 1Password attempt 3
+        if: steps.op2.outcome == 'failure'
+        run: sleep 30
+      - name: Secrets from 1Password (attempt 3)
+        id: op3
+        if: steps.op2.outcome == 'failure'
+        uses: 1password/load-secrets-action@70062d7a876d3eb6334754fa26efd2fbd90c32f2 # v5.0.1
+        with:
+          export-env: false
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          APP_STORE_CONNECT_API_KEY_ID: op://github/app-store-connect-api-key/key_id
+          APP_STORE_CONNECT_ISSUER_ID: op://github/app-store-connect-api-key/issuer_id
+          APP_STORE_CONNECT_API_KEY_P8_BASE64: op://github/app-store-connect-api-key/p8_base64
+
+      # Key and issuer IDs are identifiers, not secrets: exported for every step.
+      - name: App Store Connect key IDs
+        env:
+          APP_STORE_CONNECT_API_KEY_ID: ${{ steps.op1.outputs.APP_STORE_CONNECT_API_KEY_ID || steps.op2.outputs.APP_STORE_CONNECT_API_KEY_ID || steps.op3.outputs.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ steps.op1.outputs.APP_STORE_CONNECT_ISSUER_ID || steps.op2.outputs.APP_STORE_CONNECT_ISSUER_ID || steps.op3.outputs.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          echo "APP_STORE_CONNECT_API_KEY_ID=$APP_STORE_CONNECT_API_KEY_ID" >>"$GITHUB_ENV"
+          echo "APP_STORE_CONNECT_ISSUER_ID=$APP_STORE_CONNECT_ISSUER_ID" >>"$GITHUB_ENV"
+
       - name: Upload metadata with fastlane deliver
         env:
           VERSION: ${{ needs.preflight.outputs.version }}
           SCREENSHOTS: ${{ inputs.upload_screenshots }}
+          APP_STORE_CONNECT_API_KEY_P8_BASE64: ${{ steps.op1.outputs.APP_STORE_CONNECT_API_KEY_P8_BASE64 || steps.op2.outputs.APP_STORE_CONNECT_API_KEY_P8_BASE64 || steps.op3.outputs.APP_STORE_CONNECT_API_KEY_P8_BASE64 }}
           SUBMIT: ${{ inputs.submit_for_review }}
         run: |
           bundle exec fastlane metadata \
