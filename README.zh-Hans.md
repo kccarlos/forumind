@@ -86,6 +86,24 @@ iPhone 与 iPad App，适用于任何基于 [Discourse](https://www.discourse.or
   出于对依赖广告的论坛站长的尊重，默认关闭；可在 设置 › 浏览器 中开启。
 - **支持你的语言。** 英文、简体中文和繁体中文。
 
+## 支持的论坛
+
+Forumind 支持**任何基于 [Discourse](https://www.discourse.org) 的论坛**，
+无论公开还是私有、官方托管还是自行部署：在 App 中打开论坛地址即可（私有论坛请在
+App 内登录）。可以用 Forumind 阅读的热门 Discourse 社区举例：
+
+| 主题 | 论坛 |
+| --- | --- |
+| AI 与开发者工具 | [OpenAI Developer Community](https://community.openai.com), [Cursor Community Forum](https://forum.cursor.com), [Hugging Face Forums](https://discuss.huggingface.co), [LangChain Forum](https://forum.langchain.com), [n8n Community](https://community.n8n.io), [Fly.io Community](https://community.fly.io), [Let's Encrypt Community](https://community.letsencrypt.org) |
+| 编程语言与机器学习 | [Discussions on Python.org](https://discuss.python.org), [Swift Forums](https://forums.swift.org), [Rust Users Forum](https://users.rust-lang.org), [Rust Internals](https://internals.rust-lang.org), [Julia Discourse](https://discourse.julialang.org), [Kotlin Discussions](https://discuss.kotlinlang.org), [PyTorch Forums](https://discuss.pytorch.org), [Ray Forum](https://discuss.ray.io) |
+| 开源、Linux 与游戏引擎 | [Discourse Meta](https://meta.discourse.org), [Ubuntu Discourse](https://discourse.ubuntu.com), [NixOS Discourse](https://discourse.nixos.org), [Manjaro Linux Forum](https://forum.manjaro.org), [Mozilla Discourse](https://discourse.mozilla.org), [Godot Forum](https://forum.godotengine.org), [Babylon.js Forum](https://forum.babylonjs.com), [freeCodeCamp Forum](https://forum.freecodecamp.org) |
+| App、智能家居与硬件 | [Home Assistant Community](https://community.home-assistant.io), [Obsidian Forum](https://forum.obsidian.md), [Level1Techs Forums](https://forum.level1techs.com) |
+| 中文社区 | [美卡论坛 USCardForum](https://www.uscardforum.com), [LINUX DO](https://linux.do) |
+
+首次设置时，App 会推荐其中几个论坛；其他论坛输入地址即可添加。论坛名称归各自
+所有者所有，Forumind 与这些社区没有隶属关系。知道应该列在这里的 Discourse 论坛？
+欢迎[提交 issue](https://github.com/kccarlos/forumind/issues)。
+
 ## 选择你的 AI
 
 **Apple 智能** 是最简单的选择：在支持的设备上，App 会使用 Apple 的设备端

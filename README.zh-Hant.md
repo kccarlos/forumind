@@ -86,6 +86,24 @@ iPhone 與 iPad App，適用於任何以 [Discourse](https://www.discourse.org)
   出於對仰賴廣告的論壇站長的尊重，預設為關閉；可在 設定 › 瀏覽器 中開啟。
 - **支援你的語言。** 英文、簡體中文和繁體中文。
 
+## 支援的論壇
+
+Forumind 支援**任何以 [Discourse](https://www.discourse.org) 架設的論壇**，
+無論公開或私人、官方託管或自行架設：在 App 中打開論壇網址即可（私人論壇請在
+App 內登入）。可以用 Forumind 閱讀的熱門 Discourse 社群舉例：
+
+| 主題 | 論壇 |
+| --- | --- |
+| AI 與開發者工具 | [OpenAI Developer Community](https://community.openai.com), [Cursor Community Forum](https://forum.cursor.com), [Hugging Face Forums](https://discuss.huggingface.co), [LangChain Forum](https://forum.langchain.com), [n8n Community](https://community.n8n.io), [Fly.io Community](https://community.fly.io), [Let's Encrypt Community](https://community.letsencrypt.org) |
+| 程式語言與機器學習 | [Discussions on Python.org](https://discuss.python.org), [Swift Forums](https://forums.swift.org), [Rust Users Forum](https://users.rust-lang.org), [Rust Internals](https://internals.rust-lang.org), [Julia Discourse](https://discourse.julialang.org), [Kotlin Discussions](https://discuss.kotlinlang.org), [PyTorch Forums](https://discuss.pytorch.org), [Ray Forum](https://discuss.ray.io) |
+| 開源、Linux 與遊戲引擎 | [Discourse Meta](https://meta.discourse.org), [Ubuntu Discourse](https://discourse.ubuntu.com), [NixOS Discourse](https://discourse.nixos.org), [Manjaro Linux Forum](https://forum.manjaro.org), [Mozilla Discourse](https://discourse.mozilla.org), [Godot Forum](https://forum.godotengine.org), [Babylon.js Forum](https://forum.babylonjs.com), [freeCodeCamp Forum](https://forum.freecodecamp.org) |
+| App、智慧家庭與硬體 | [Home Assistant Community](https://community.home-assistant.io), [Obsidian Forum](https://forum.obsidian.md), [Level1Techs Forums](https://forum.level1techs.com) |
+| 中文社群 | [美卡论坛 USCardForum](https://www.uscardforum.com), [LINUX DO](https://linux.do) |
+
+首次設定時，App 會推薦其中幾個論壇；其他論壇輸入網址即可加入。論壇名稱歸各自
+所有者所有，Forumind 與這些社群沒有隸屬關係。知道應該列在這裡的 Discourse 論壇？
+歡迎[提交 issue](https://github.com/kccarlos/forumind/issues)。
+
 ## 選擇你的 AI
 
 **Apple Intelligence** 是最簡單的選擇：在支援的裝置上，App 會使用 Apple 的

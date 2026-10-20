@@ -92,6 +92,26 @@ like [meta.discourse.org](https://meta.discourse.org), or your own community.
   on ads; turn it on in Settings › Browser.
 - **In your language.** English, Simplified Chinese, and Traditional Chinese.
 
+## Supported forums
+
+Forumind works with **any forum that runs [Discourse](https://www.discourse.org)**,
+public or private, hosted or self-hosted: open its address in the app (log in
+in the app for private forums). Some popular Discourse communities it works
+with:
+
+| Topic | Forums |
+| --- | --- |
+| AI and developer tools | [OpenAI Developer Community](https://community.openai.com), [Cursor Community Forum](https://forum.cursor.com), [Hugging Face Forums](https://discuss.huggingface.co), [LangChain Forum](https://forum.langchain.com), [n8n Community](https://community.n8n.io), [Fly.io Community](https://community.fly.io), [Let's Encrypt Community](https://community.letsencrypt.org) |
+| Programming languages and ML | [Discussions on Python.org](https://discuss.python.org), [Swift Forums](https://forums.swift.org), [Rust Users Forum](https://users.rust-lang.org), [Rust Internals](https://internals.rust-lang.org), [Julia Discourse](https://discourse.julialang.org), [Kotlin Discussions](https://discuss.kotlinlang.org), [PyTorch Forums](https://discuss.pytorch.org), [Ray Forum](https://discuss.ray.io) |
+| Open source, Linux, and game engines | [Discourse Meta](https://meta.discourse.org), [Ubuntu Discourse](https://discourse.ubuntu.com), [NixOS Discourse](https://discourse.nixos.org), [Manjaro Linux Forum](https://forum.manjaro.org), [Mozilla Discourse](https://discourse.mozilla.org), [Godot Forum](https://forum.godotengine.org), [Babylon.js Forum](https://forum.babylonjs.com), [freeCodeCamp Forum](https://forum.freecodecamp.org) |
+| Apps, smart home, and hardware | [Home Assistant Community](https://community.home-assistant.io), [Obsidian Forum](https://forum.obsidian.md), [Level1Techs Forums](https://forum.level1techs.com) |
+| Chinese-language communities | [美卡论坛 USCardForum](https://www.uscardforum.com), [LINUX DO](https://linux.do) |
+
+The app suggests a few of these when you set it up; add any other forum by its
+address. Forum names belong to their owners; Forumind isn't affiliated with
+these communities. Know a Discourse forum that should be listed?
+[Open an issue](https://github.com/kccarlos/forumind/issues).
+
 ## Choose your AI
 
 **Apple Intelligence** is the easiest option: on devices that support it, the
