@@ -40,8 +40,9 @@ question to the AI service **you** choose:
   computer over your local network and nowhere else.
 
 Nothing is sent to an AI service until you start a summary, chat, search, or
-voice session, make a daily digest (or turn on the daily digest, which makes
-it when you open the app), or turn on automatic summary refresh for a watched
+voice session, make a daily digest or its podcast (or turn on the daily
+digest or podcast, which are made when you open the app), use read aloud
+with Google's voices, or turn on automatic summary refresh for a watched
 topic.
 
 ### Live voice (optional)
@@ -70,13 +71,36 @@ provider.
   page asks to record a video). iOS shows the microphone indicator while it
   is on, including when the screen is locked during a session.
 
+### Podcast and read aloud (optional)
+
+The Today page can turn your digest into a short spoken podcast, and
+summaries and digest cards can be read aloud.
+
+- The podcast's script is written by your AI provider, like the digest
+  itself, from the digest's cards and the topics they're about.
+- Reading it out uses either **this device's voices**, which are free, work
+  offline and send nothing, or **Google's voices** (Gemini text-to-speech,
+  through Google AI Studio or Google Vertex AI) when you have a Google key.
+  With Google's voices, the text to be spoken (the script, a summary or a
+  card) goes straight from your device to Google with your own API key. No
+  audio is recorded. The app asks for your consent, naming Google, before it
+  first sends text this way. You can withdraw that consent in **Settings ›
+  Daily digest**, separately from the voice consent.
+- The same free-tier terms apply as for voice: on the free tier of Google AI
+  Studio, Google may use what you send to improve its products, and people
+  may review it.
+- The podcast is made only while the app is open. Making it every day is off
+  until you turn it on.
+- The audio is kept in the app's cache on your device, with its digest, for
+  at most 7 days. It is deleted with its digest. iOS may also clear it.
+
 ### What's stored on your device
 
 - Your summaries, chats, Ask the forum runs, watched topics, forums, and
   settings are stored in the app's private storage on your device.
-- **Daily digests** (the last 7) and the forum data fetched for them stay on
-  your device; they aren't synced. Delete them in **Settings › Daily
-  digest**.
+- **Daily digests** (the last 7), the forum data fetched for them, and their
+  podcast audio stay on your device; they aren't synced. Delete them in
+  **Settings › Daily digest**.
 - Chats and activity you haven't marked **Keep** are cleared after a day;
   summaries are kept up to a limit. You can delete data per forum, or
   everything, in **Settings › Data & privacy**.

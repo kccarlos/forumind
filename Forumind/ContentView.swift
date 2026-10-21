@@ -115,6 +115,7 @@ struct ContentView: View {
             }
         }
         .modifier(VoiceConsentPresenter(app: app, voice: app.voice))
+        .modifier(PodcastConsentPresenter(podcast: app.podcast, isEnabled: !app.showsTodayPage))
         .sheet(isPresented: $showingAddForum) {
             AddForumSheet(app: app) { forum in
                 app.openForum(forum)

@@ -629,6 +629,9 @@ struct AssistantPanel: View {
                     ShareLink(item: app.currentSession?.summary ?? "") {
                         Label("Share", systemImage: "square.and.arrow.up")
                     }
+                    if let session = app.currentSession, session.hasSummary {
+                        ReadAloudButton(podcast: app.podcast, id: "summary-\(session.topicKey)", title: session.title, text: session.summary)
+                    }
                     Spacer()
                     Button {
                         withAnimation(DCMotion.respecting(reduceMotion)) {

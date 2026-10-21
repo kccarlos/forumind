@@ -101,6 +101,9 @@ struct TodayPage: View {
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: DCTheme.spacingS, leading: 4, bottom: 0, trailing: 4))
                 if let today = app.todaysDigest {
+                    if today.cards.contains(where: { $0.state == .done }) {
+                        PodcastTodaySection(app: app, podcast: app.podcast, digest: today, onOpen: onOpen)
+                    }
                     todaySections(today)
                 } else {
                     startSection
@@ -140,6 +143,14 @@ struct TodayPage: View {
                                 Label("Make Again", systemImage: "arrow.clockwise")
                             }
                         }
+                        if app.podcast.episode?.digestID == app.todaysDigest?.id, app.podcast.episode != nil,
+                           !app.podcast.activity.isRunning, app.podcast.canMake {
+                            Button {
+                                app.podcast.remake()
+                            } label: {
+                                Label("Make Podcast Again", systemImage: "waveform")
+                            }
+                        }
                         Button {
                             showsSettings = true
                         } label: {
@@ -153,8 +164,12 @@ struct TodayPage: View {
                 }
             }
         }
+        .modifier(PodcastConsentPresenter(podcast: app.podcast))
         .dcFormSheet()
-        .task { app.resumeDigestIfNeeded() }
+        .task {
+            app.resumeDigestIfNeeded()
+            app.podcast.resumeIfNeeded()
+        }
         .accessibilityIdentifier("todayPage")
     }
 
@@ -425,6 +440,12 @@ struct DigestCardView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 Spacer(minLength: DCTheme.spacingS)
+                if card.state == .done, !card.summary.isEmpty {
+                    ReadAloudButton(podcast: app.podcast, id: "card-\(card.topicKey)", title: card.title,
+                                    text: "\(card.title).\n\(card.summary)", compact: true)
+                        .font(.subheadline)
+                        .buttonStyle(.borderless)
+                }
                 reasonPill
             }
             Button { onOpen(card.url) } label: {
@@ -605,6 +626,8 @@ struct SettingsDigestPage: View {
                 .accessibilityIdentifier("digestNotifies")
             }
 
+            SettingsPodcastSections(app: app, podcast: app.podcast)
+
             Section {
                 Button(role: .destructive) {
                     confirmingDelete = true
@@ -618,7 +641,7 @@ struct SettingsDigestPage: View {
             } header: {
                 Text("History")
             } footer: {
-                Text("The last 7 digests are kept on this device only; they aren’t synced with iCloud.")
+                Text("The last 7 digests and their podcasts are kept on this device only; they aren’t synced with iCloud.")
             }
         }
         .formStyle(.grouped)
@@ -627,5 +650,7 @@ struct SettingsDigestPage: View {
         .onChange(of: app.settings.dailyDigestIncludesTrending) { app.saveSettings() }
         .onChange(of: app.settings.dailyDigestMaxCards) { app.saveSettings() }
         .onChange(of: app.settings.dailyDigestNotifies) { app.saveSettings() }
+        .onChange(of: app.settings.podcastDailyEnabled) { app.saveSettings() }
+        .onChange(of: app.settings.podcast) { app.saveSettings() }
     }
 }

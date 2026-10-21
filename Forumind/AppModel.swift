@@ -268,6 +268,14 @@ final class AppModel: ObservableObject {
     var voicePageSubscription: AnyCancellable?
     /// Starts voice sessions for the UI (Voice/VoiceController.swift).
     private(set) lazy var voice = VoiceController(app: self)
+    /// The podcast: episodes, the player, read-aloud (Podcast/PodcastController.swift).
+    private(set) lazy var podcast: PodcastController = {
+        let controller = PodcastController(app: self, store: PodcastStore(directory: podcastDirectory))
+        controller.voice = voice
+        return controller
+    }()
+    /// Where podcast audio is cached (`Caches/Podcasts`; tests pass their own).
+    let podcastDirectory: URL
     /// Every page context change (both kinds); `pageChanges` debounces it.
     let pageUpdates = PassthroughSubject<PageContext, Never>()
     /// How long the page must settle before `pageChanges` reports it.
@@ -291,9 +299,11 @@ final class AppModel: ObservableObject {
         planner: AgentPlanner? = nil,
         notifier: WatchNotifier = .shared,
         cloudSync: CloudSyncController? = nil,
-        backgroundScheduler: BackgroundTaskScheduling = BGTaskScheduler.shared
+        backgroundScheduler: BackgroundTaskScheduling = BGTaskScheduler.shared,
+        podcastDirectory: URL? = nil
     ) {
         self.store = store
+        self.podcastDirectory = podcastDirectory ?? PodcastStore.defaultDirectory
         self.backgroundScheduler = backgroundScheduler
         digestStore = DigestStore(directory: store.directoryURL)
         self.keyStore = store.keys
@@ -408,6 +418,8 @@ final class AppModel: ObservableObject {
             await self?.checkWatchedTopics(reason: .background)
         }
         loadDigests()
+        // Podcast audio of deleted or week-old digests goes.
+        podcast.reconcile()
         openTodayObserver = NotificationCenter.default.addObserver(
             forName: WatchNotifier.openTodayNotification,
             object: nil,
@@ -1317,6 +1329,7 @@ final class AppModel: ObservableObject {
             Task { [weak self] in await self?.refreshNotificationAuthorization() }
             openTodayFromNotification()
             resumeDigestIfNeeded()
+            podcast.resumeIfNeeded()
         case .inactive:
             // Coalesced edits must not be lost if the app is closed next.
             flushPendingSaves()
@@ -1328,6 +1341,8 @@ final class AppModel: ObservableObject {
             // Summaries are made in the foreground only; the run continues
             // from the same card next time.
             pauseDigest()
+            // Likewise the podcast's chapters; playback goes on.
+            podcast.pauseGeneration()
             if settings.dailyDigestEnabled { scheduleDigestPrefetch() }
         @unknown default:
             break

@@ -193,7 +193,11 @@ enum SyncSettings {
         // Voice spends the user's key on this device, and its consent is
         // given per device.
         "voiceEnabled",
-        "voiceConsent"
+        "voiceConsent",
+        // The daily podcast spends credits on this device; sending its
+        // script to Google is agreed to per device.
+        "podcastDailyEnabled",
+        "podcastConsent"
     ]
 
     /// Each provider configuration is one unit: `configurations.<provider>`.

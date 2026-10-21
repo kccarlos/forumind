@@ -56,6 +56,8 @@ extension AppModel {
             prefetch: digestPrefetch,
             notifiedDay: digestNotifiedDay
         ))
+        // Deleted, made again or trimmed: their podcast audio goes too.
+        podcast.reconcile()
     }
 
     // MARK: Settings and scheduling
@@ -307,6 +309,7 @@ extension AppModel {
 
     func deleteAllDigests() {
         pauseDigest()
+        podcast.deleteAll()
         digests = []
         digestPrefetch = nil
         digestNotifiedDay = nil
@@ -321,6 +324,8 @@ extension AppModel {
             || digestPrefetch?.trending[siteURL] != nil
         guard affected else { return }
         pauseDigest()
+        // Their podcasts talked about the forum's topics.
+        podcast.deleteEpisodes(digests.filter { $0.cards.contains { $0.siteURL == siteURL } }.map(\.id))
         digests = digests.map { digest in
             var copy = digest
             copy.cards.removeAll { $0.siteURL == siteURL }
@@ -447,6 +452,9 @@ extension AppModel {
         }
         digests[index].completedAt = Date()
         saveDigests()
+        // Done: the daily podcast may start right away.
+        digestActivity = .idle
+        podcast.digestCompleted(id)
     }
 
     /// The card's text, cheapest first:

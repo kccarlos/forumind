@@ -96,6 +96,7 @@ and after every page, so the bar and status keep moving during long reads.
 | `Models.swift` | Codable models: `AppSettings`, `TopicSession`, `AgentRun`, `WatchedTopic`, `WorkRecord`, provider configuration, `ModelSelection`. |
 | `WatchSupport.swift` | Local notifications (watched topics, the daily digest) and the Background App Refresh task for watched topics. |
 | `DailyDigest.swift`, `AppModel+Digest.swift`, `DigestViews.swift` | The daily digest: cards, planning, the prefetch and its background task, storage; making the cards; the Today page, its Forums home row, and Settings › Daily digest. |
+| `Podcast/*.swift`, `PodcastViews.swift` | The podcast: settings and consent, the script and its checks, Gemini TTS and on-device speech, the episode cache, the player with Now Playing, the controller (making, Ask about this, read aloud); the Today page's mini player and chapter list, the consent sheet, the read-aloud button. |
 
 **Work queue.** Summaries, chats, and agent runs are `WorkRecord`s. Two run at
 once (`TaskLimiter`), with per-topic ordering, up to 50 queued, progress and
@@ -465,6 +466,159 @@ that audio and the page content they ask about go to Google (App Review
 5.1.2). The consent, like "voice on", is kept per device; the voice
 preferences sync. The session refuses to start without it.
 
+### Podcast
+
+| File | Role |
+| --- | --- |
+| `Podcast/PodcastSettings.swift` | Hosts (ids `A`/`B`, default names per language), voices, engine choice, length; the TTS consent; engine selection. |
+| `Podcast/PodcastScript.swift` | Chapters, the fixed intro and outro, the chapter prompt, JSON parsing and the speech checks, the fallback chapter. |
+| `Podcast/PodcastSpeech.swift` | The speech-engine protocol, the Gemini TTS request, response decoding (WAV or L16), WAV reading and writing, retries. |
+| `Podcast/PodcastSystemSpeech.swift` | `AVSpeechSynthesizer` written to a file; picking two system voices. |
+| `Podcast/PodcastStore.swift` | Episodes and their files in `Caches/Podcasts/<digest id>/`, cleanup. |
+| `Podcast/PodcastPlayer.swift` | The timeline, the player, interruptions and route changes, the hand-over to voice, positions, Now Playing and remote commands. |
+| `Podcast/PodcastController.swift` | Making episodes, Ask about this, read aloud, cleanup (`app.podcast`). |
+
+A finished digest can be heard as a two-host episode, "Today on Forumind –
+<date>". It has a fixed intro and outro in the interface language (no AI)
+and one chapter per summarized card (cards that failed or wait are left out;
+an episode made from a partial digest doesn't grow later). Topic titles are
+made speakable before they are said or given to the model ("[Solved]",
+backticks and links go).
+
+**Script.** Each topic chapter is one request to the assistant model (the
+user's provider or Apple Intelligence, `AIService.complete`), so Apple
+Intelligence stays within its budget and playback can start after the first
+chapter. The prompt names the hosts and their roles (host A guides, host B
+asks), the language (`AppLanguage`; there is no separate reading language
+yet), the position ("topic 2 of 5", the previous title for a transition),
+the length (about 150 words, or 260 Chinese characters, per minute; 1 minute
+by default, ½–3 in Settings) and the posts the chapter may cite. The input
+is the card's facts, its summary and, when the topic was read, a short
+moderated excerpt. The answer is JSON (`title`, `post`, `turns` of
+`speaker` A/B and `text`) and is rejected when:
+
+- it isn't that JSON, or has fewer than two turns or only one host;
+- a spoken line contains a URL, a forum link, code or backticks, angle
+  brackets or braces, a shell command or flag, a stack trace, a
+  configuration line (`key_name: value`), a file path, Markdown or a hash;
+- it has a number that the card and the excerpt don't contain.
+
+A rejected answer is asked for again once with the reason. After a second
+rejection the chapter is built from the card itself: its title, then its
+summary with anything unspeakable removed. A cited post the card doesn't
+link to falls back to the card's own link (first new reply, else the
+accepted answer, else the top post).
+
+**Speech.** Each chapter is synthesized on its own and saved as one file.
+
+- **Gemini TTS** (`gemini-3.8-flash-tts`) is the default when a Gemini or
+  Vertex key exists and the user agreed. It uses unary `generateContent` on
+  `{base}/models/…` (AI Studio) or `{base}/publishers/google/models/…`
+  (Vertex AI), with the key in `x-goog-api-key` on both and the base address
+  from Settings › AI models.
+  - Every turn is a part with `speech_metadata` (`speaker` A or B, and a
+    `style`).
+  - Two hosts use `speechConfig.multiSpeakerVoiceConfig.speakerVoiceConfigs`
+    with prebuilt voices; one host (read aloud) uses
+    `speechConfig.voiceConfig.voice`.
+  - The response's `inlineData` parts are decoded by sniffing the bytes. A
+    RIFF header is a WAV (the documented default, 24 kHz mono 16-bit);
+    otherwise the data is L16 with the rate from the mime type. The parts
+    are joined and written as one WAV.
+  - A `blockReason` or a response without audio is an error.
+  - 429, 500, 503 and 504 are retried up to five attempts. The wait is
+    `Retry-After` or the error's `RetryInfo.retryDelay`, otherwise an
+    exponential backoff from 2 s with jitter, capped at 60 s.
+  - Any other 4xx stops the run, since every chapter would fail the same way.
+- **On-device**: `AVSpeechSynthesizer.write(_:toBufferCallback:)`, turn by
+  turn. Two system voices for the language are chosen: no novelty voices,
+  the best quality first, and host B of the other gender when one is known.
+  With only one voice, host B speaks it at a higher pitch. Every buffer is
+  converted to 22.05 kHz mono Float32 and written to a CAF with 0.35 s
+  between turns.
+
+The defaults are hosts Ava and Leo (localized names), voices Kore and Puck
+(Google's own multi-speaker pair, firm and upbeat), and 1 minute per topic.
+Automatic uses Google's voices when a key exists and the user agreed, and
+otherwise the device's.
+
+**Consent.** Google's voices send the script, which is text written from the
+digest and not audio, to Google with the user's key. The consent is separate
+from the voice consent (`podcastConsent`, per provider, on this device),
+because:
+
+- it covers different data (text, not microphone audio);
+- either one can be given or withdrawn without the other;
+- the microphone button's visibility depends on the voice consent alone.
+
+A tap on Make, Play or Listen asks once per provider, and the sheet also
+offers the device's voices. The daily podcast never asks: without consent
+it uses the device's voices.
+
+**When it runs.** The podcast is made only while the app is open:
+
+- the Today page's **Play** (it starts as soon as the first chapter is
+  ready) and **Make Podcast**;
+- right after today's digest finishes on open, when **Make the podcast every
+  day** is on. That switch is off by default and kept on the device.
+
+Each step is saved. Going to the background stops the run, and the chapter
+being made starts again next time; playback goes on. No AI or TTS call runs
+in the background.
+
+**Player.** The audio session is `.playback` / `.spokenAudio`, never
+`.voiceChat`, so the microphone stays off. Playback continues in the
+background (`UIBackgroundModes: audio`).
+
+- Now Playing shows the episode title, the chapter title, the duration and
+  elapsed time over all chapters made so far, and the chapter number.
+- `MPRemoteCommandCenter` handles play/pause, ±15 s, next and previous
+  chapter, and the scrubber. Which of these the lock screen and AirPods
+  show depends on iOS; check on a device.
+- The position is saved every 5 s, on pause and on going to the background,
+  and restored on the next launch.
+- A call or Siri pauses playback, and it resumes when iOS says it may.
+  Unplugging headphones (`.oldDeviceUnavailable`) pauses. Other route
+  changes don't, including the category change of the voice hand-over.
+
+The Today page shows **Play** and **Make Podcast**, then a mini player (the
+chapter, progress, ⏮ −15 +15 ⏭, the status, **Ask about this**) and the
+chapter list. Tapping a chapter plays it. A chapter's arrow opens its topic
+at the cited post (`openDigestLink` → `openTopic(at:)`).
+
+**Ask about this.** It works as follows:
+
+1. The episode pauses (`suspendForVoice`).
+2. The Today page closes, and the chapter's topic opens at its post.
+3. After the page has gone, `VoiceController.start()` runs through the usual
+   consent gate. The opened topic is the session's first topic brief.
+4. `VoiceController.onFinished` fires when the session ends, the consent is
+   declined, or the start fails.
+5. The player then sets `.playback` / `.spokenAudio` again and waits up to
+   2 s while the output is still Bluetooth HFP (AirPods switch back to A2DP
+   once the microphone closes).
+6. It reloads the chapter, so it plays on that route at normal quality, and
+   continues at the same place.
+
+A remote Play is refused while the voice session runs.
+
+**Read aloud.** A saved summary (the summary card's **Listen**) and a digest
+card (its speaker button) can be read by one host with the same engines.
+The text is made speakable: a code block becomes "the text includes code",
+and links and Markdown are removed. It is cut into pieces of about 1,200
+characters at sentence ends, and playback starts with the first. The audio
+is reused when the same text is read again with the same voice.
+
+**Storage.** An episode lives in `Caches/Podcasts/<digest id>/`. It holds
+`episode.json` (the script, engine, voices, each chapter's file, duration
+and state) and one audio file per chapter, and is kept apart from
+`digests.json`. Read-aloud audio lives in `Caches/Podcasts/read-aloud/`.
+After every digest save, and at launch, the cache is reconciled: an episode
+goes when its digest is deleted, made again or trimmed to the last 7, or
+when it is older than 7 days. Delete All Digests and removing a forum's
+cards delete episodes too, and a deleted episode stops playing. If iOS
+purges the cache, a chapter whose file is missing is spoken again.
+
 ### Share extension and incoming links
 
 | File | Role |
@@ -563,7 +717,7 @@ the 50 most recent agent runs are kept.
 
 | Target | What it covers |
 | --- | --- |
-| `ForumindTests` | Unit tests: forum identity and URL building, forum request pacing (fake clock), the daily digest (card plan, prefetch cap, scheduling, resumable cards), the work queue and state transitions, incoming links, onboarding, agent sources (topic and post level), post-level browsing (the current list, landing URLs, page position and its debounce, find/read with moderation, research single-flight, result trimming), the voice agent offline (Gemini Live message fixtures, the session against a fake transport, fake audio and a manual clock, tool mapping, context notes, consent, typed input, the cost guard), the audio pipeline without hardware (sample-rate conversion, framing, the voice-activity detector on four short speech fixtures in `ForumindTests/Audio` mixed with generated noise, the jitter buffer and time-stretch replays, the time-pitch graph rendered offline, the microphone watchdog), post-level Discourse parsing (trimmed JSON fixtures in `DiscourseFixtures.swift`), content blocking (compiles every bundled chunk in WebKit), CloudKit sync against a fake transport (two simulated devices), Keychain sync, iPad layout math, String Catalog completeness (every key translated, matching format specifiers, plural variations). |
-| `ForumindUITests` | UI tests on simulators (Forums home, the Today page, landing on a post and the result cards on a live topic, the voice consent sheet and bar on a scripted session, onboarding, settings navigation, share hand-off, iPad layouts) and smoke tests for physical devices. |
+| `ForumindTests` | Unit tests: forum identity and URL building, forum request pacing (fake clock), the daily digest (card plan, prefetch cap, scheduling, resumable cards), the work queue and state transitions, incoming links, onboarding, agent sources (topic and post level), post-level browsing (the current list, landing URLs, page position and its debounce, find/read with moderation, research single-flight, result trimming), the podcast (script JSON and its speech checks, chapters from cards, the Gemini TTS request on both endpoints and responses from fixtures, retries, engine and system-voice selection, the player's timeline, chapter navigation and remembered position with fakes, Ask about this pausing and resuming, the opt-in defaults, cache cleanup), the voice agent offline (Gemini Live message fixtures, the session against a fake transport, fake audio and a manual clock, tool mapping, context notes, consent, typed input, the cost guard), the audio pipeline without hardware (sample-rate conversion, framing, the voice-activity detector on four short speech fixtures in `ForumindTests/Audio` mixed with generated noise, the jitter buffer and time-stretch replays, the time-pitch graph rendered offline, the microphone watchdog), post-level Discourse parsing (trimmed JSON fixtures in `DiscourseFixtures.swift`), content blocking (compiles every bundled chunk in WebKit), CloudKit sync against a fake transport (two simulated devices), Keychain sync, iPad layout math, String Catalog completeness (every key translated, matching format specifiers, plural variations). |
+| `ForumindUITests` | UI tests on simulators (Forums home, the Today page and its podcast on a fake engine, landing on a post and the result cards on a live topic, the voice consent sheet and bar on a scripted session, onboarding, settings navigation, share hand-off, iPad layouts) and smoke tests for physical devices. |
 
 See [DEVELOPMENT.md](DEVELOPMENT.md) for how to run them.

@@ -13,6 +13,9 @@ final class VoiceController: ObservableObject {
     @Published var consentProvider: VoiceProvider?
     /// Why a session couldn't start (no key, voice off), shown in the bar.
     @Published private(set) var startFailure: VoiceSession.Failure?
+    /// Called once a session is over, the consent was declined, or a
+    /// session couldn't start (the podcast's "Ask about this" resumes then).
+    var onFinished: (() -> Void)?
 
     private weak var app: AppModel?
     /// The device's audio; made on the first session (it asks for the
@@ -91,6 +94,7 @@ final class VoiceController: ObservableObject {
 
     func declineConsent() {
         consentProvider = nil
+        finished()
     }
 
     func end() {
@@ -122,9 +126,17 @@ final class VoiceController: ObservableObject {
     private func show(_ failure: VoiceSession.Failure) {
         session = nil
         startFailure = failure
+        finished()
     }
 
     private func sessionEnded() {
         app?.voiceSessionEnded()
+        finished()
+    }
+
+    private func finished() {
+        let callback = onFinished
+        onFinished = nil
+        callback?()
     }
 }

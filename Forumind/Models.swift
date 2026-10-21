@@ -237,6 +237,12 @@ struct AppSettings: Codable, Equatable {
     var voiceEnabled = false
     var voiceConsent: [String: Date] = [:]
     var voice = VoiceSettings()
+    /// The daily podcast (Forumind/Podcast): made right after the digest
+    /// finishes on open. Off by default (it spends AI and TTS credits); the
+    /// switch and the consent to send the script to Google are per device.
+    var podcastDailyEnabled = false
+    var podcastConsent: [String: Date] = [:]
+    var podcast = PodcastSettings()
 
     init() {}
 
@@ -273,6 +279,9 @@ struct AppSettings: Codable, Equatable {
         case voiceEnabled
         case voiceConsent
         case voice
+        case podcastDailyEnabled
+        case podcastConsent
+        case podcast
     }
 
     // Snapshots written by earlier versions lack the newer keys; a missing key
@@ -356,6 +365,9 @@ struct AppSettings: Codable, Equatable {
         voiceEnabled = (try? container.decodeIfPresent(Bool.self, forKey: .voiceEnabled)).flatMap { $0 } ?? false
         voiceConsent = (try? container.decodeIfPresent([String: Date].self, forKey: .voiceConsent)).flatMap { $0 } ?? [:]
         voice = (try? container.decodeIfPresent(VoiceSettings.self, forKey: .voice)).flatMap { $0 } ?? VoiceSettings()
+        podcastDailyEnabled = (try? container.decodeIfPresent(Bool.self, forKey: .podcastDailyEnabled)).flatMap { $0 } ?? false
+        podcastConsent = (try? container.decodeIfPresent([String: Date].self, forKey: .podcastConsent)).flatMap { $0 } ?? [:]
+        podcast = (try? container.decodeIfPresent(PodcastSettings.self, forKey: .podcast)).flatMap { $0 } ?? PodcastSettings()
     }
 
     func configuration(for provider: AIProvider) -> ProviderConfiguration {

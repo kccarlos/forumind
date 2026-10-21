@@ -455,6 +455,29 @@
         }
       }
     },
+    "%lld of %lld chapters ready" : {
+      "comment" : "Podcast progress: chapters recorded so far, then the number of chapters",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld of %2$lld chapters ready"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已就绪 %lld/%lld 章"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已就緒 %lld/%lld 章"
+          }
+        }
+      }
+    },
     "%lld of %lld ready" : {
       "comment" : "Daily digest progress: cards summarized so far, then the number of cards",
       "localizations" : {
@@ -1055,6 +1078,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld 千字元"
+          }
+        }
+      }
+    },
+    "(The text includes code; see the topic.)" : {
+      "comment" : "Read aloud: said instead of a code block",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "（这里有一段代码，请到话题里查看。）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "（這裡有一段程式碼，請到話題裡查看。）"
           }
         }
       }
@@ -1913,6 +1953,22 @@
         }
       }
     },
+    "Agree and Continue" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "同意并继续"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "同意並繼續"
+          }
+        }
+      }
+    },
     "Agree and Start" : {
       "localizations" : {
         "zh-Hans" : {
@@ -2102,6 +2158,29 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "And I’m %@. Here’s what’s new on your forums, starting with “%@”." : {
+      "comment" : "Podcast intro, spoken by the second host; the placeholders are the host's name and the first topic's title",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "And I’m %1$@. Here’s what’s new on your forums, starting with “%2$@”."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "我是%@。来看看你的论坛有什么新动态，先从“%@”说起。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "我是%@。來看看你的論壇有什麼新動態，先從「%@」說起。"
           }
         }
       }
@@ -2697,6 +2776,22 @@
         }
       }
     },
+    "Ask about this" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "问问这个"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "問問這個"
+          }
+        }
+      }
+    },
     "Ask about this topic" : {
       "localizations" : {
         "zh-Hans" : {
@@ -2959,6 +3054,39 @@
         }
       }
     },
+    "Automatic uses Google’s voices when you have a Google Gemini or Vertex AI key and have agreed to send the script to Google; otherwise this device’s voices. Nothing is made in the background. The daily switch is kept on this device." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“自动”在你有 Google Gemini 或 Vertex AI 密钥并同意把脚本发送给 Google 时使用 Google 的声音，否则使用本设备的声音。不会在后台制作。“每天制作”开关只保存在本设备上。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「自動」在你有 Google Gemini 或 Vertex AI 金鑰並同意把腳本傳送給 Google 時使用 Google 的聲音，否則使用本裝置的聲音。不會在背景製作。「每天製作」開關只儲存在本裝置上。"
+          }
+        }
+      }
+    },
+    "Ava" : {
+      "comment" : "Podcast: the default name of the first host (the guide). A short name that is easy to say in this language.",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "小安"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "小安"
+          }
+        }
+      }
+    },
     "Available from %@" : {
       "localizations" : {
         "zh-Hans" : {
@@ -2987,6 +3115,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "返回"
+          }
+        }
+      }
+    },
+    "Back 15 seconds" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "后退 15 秒"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "倒退 15 秒"
           }
         }
       }
@@ -3537,6 +3681,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "幾秒鐘掌握任何 Discourse 論壇的討論"
+          }
+        }
+      }
+    },
+    "Chapter %lld of %lld" : {
+      "comment" : "Podcast: the current chapter, then the number of chapters",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Chapter %1$lld of %2$lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第 %lld 章，共 %lld 章"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第 %lld 章，共 %lld 章"
           }
         }
       }
@@ -4603,6 +4770,23 @@
         }
       }
     },
+    "Couldn’t be recorded" : {
+      "comment" : "Podcast chapter error without details",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法录制"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法錄製"
+          }
+        }
+      }
+    },
     "Couldn’t check your iCloud account." : {
       "localizations" : {
         "zh-Hans" : {
@@ -5279,6 +5463,40 @@
         }
       }
     },
+    "Each chapter is one request to your AI provider (%@)." : {
+      "comment" : "Today page: what making the podcast's script costs; the placeholder is the provider and model",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每一章会向你的 AI 服务商（%@）发送一次请求。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每一章會向你的 AI 服務商（%@）傳送一次請求。"
+          }
+        }
+      }
+    },
+    "Each chapter is one text-to-speech request, billed to your key or counted against its free quota. This device’s voices are free and offline instead." : {
+      "comment" : "Podcast consent: cost",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每一章是一次文字转语音请求，费用计入你的密钥，或占用其免费额度。改用本设备的声音则免费且可离线使用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每一章是一次文字轉語音請求，費用計入你的金鑰，或佔用其免費額度。改用本裝置的聲音則免費且可離線使用。"
+          }
+        }
+      }
+    },
     "Each item keeps its most recent edit. A chat you cleared on one device stays cleared on the others." : {
       "localizations" : {
         "zh-Hans" : {
@@ -5620,6 +5838,23 @@
         }
       }
     },
+    "Every topic is in the chapter list, so you can open it at the post we talked about. See you tomorrow." : {
+      "comment" : "Podcast outro, spoken by the second host",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每个话题都在章节列表里，可以直接打开到我们聊到的那一楼。明天见。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每個話題都在章節列表裡，可以直接打開到我們聊到的那一樓。明天見。"
+          }
+        }
+      }
+    },
     "Exclude Chat history" : {
       "localizations" : {
         "zh-Hans" : {
@@ -5893,6 +6128,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "完成"
+          }
+        }
+      }
+    },
+    "First host" : {
+      "comment" : "Settings: the podcast's first host's name",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第一位主持人"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第一位主持人"
+          }
+        }
+      }
+    },
+    "First host’s voice" : {
+      "comment" : "Settings: the Google voice of the podcast's first host",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第一位主持人的声音"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第一位主持人的聲音"
           }
         }
       }
@@ -6294,6 +6563,22 @@
         }
       }
     },
+    "Forward 15 seconds" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "前进 15 秒"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "快轉 15 秒"
+          }
+        }
+      }
+    },
     "Full post:\n%@" : {
       "comment" : "Exported text: heading followed by the forum post and its replies",
       "localizations" : {
@@ -6601,6 +6886,57 @@
         }
       }
     },
+    "Google returned audio in a format Forumind can’t play (%@)." : {
+      "comment" : "Podcast error; the placeholder is the audio format",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Google 返回的音频格式 Forumind 无法播放（%@）。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Google 傳回的音訊格式 Forumind 無法播放（%@）。"
+          }
+        }
+      }
+    },
+    "Google returned no audio (%@)." : {
+      "comment" : "Podcast error; the placeholder is Google's reason, in English",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Google 没有返回音频（%@）。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Google 沒有傳回音訊（%@）。"
+          }
+        }
+      }
+    },
+    "Google voices" : {
+      "comment" : "Podcast speech engine setting: Gemini text-to-speech",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Google 的声音"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Google 的聲音"
+          }
+        }
+      }
+    },
     "Google’s terms for this service" : {
       "localizations" : {
         "zh-Hans" : {
@@ -6613,6 +6949,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Google 對此服務的條款"
+          }
+        }
+      }
+    },
+    "Google’s text-to-speech failed (%lld): %@" : {
+      "comment" : "Podcast error; the placeholders are the HTTP status and Google's message, in English",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Google’s text-to-speech failed (%1$lld): %2$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Google 文字转语音失败（%lld）：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Google 文字轉語音失敗（%lld）：%@"
+          }
+        }
+      }
+    },
+    "Google’s voices read it with your key." : {
+      "comment" : "Today page: the podcast is spoken by Gemini text-to-speech, billed to the user's key",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由 Google 的声音朗读，使用你的密钥。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由 Google 的聲音朗讀，使用你的金鑰。"
           }
         }
       }
@@ -6801,6 +7177,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "雲端服務 — 需要 API 金鑰"
+          }
+        }
+      }
+    },
+    "Hosts" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主持人"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主持人"
           }
         }
       }
@@ -7421,6 +7813,39 @@
         }
       }
     },
+    "Length per topic" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每个话题的时长"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每個話題的時長"
+          }
+        }
+      }
+    },
+    "Leo" : {
+      "comment" : "Podcast: the default name of the second host (the curious co-host). A short name that is easy to say in this language.",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "小林"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "小林"
+          }
+        }
+      }
+    },
     "Listed latest topics" : {
       "comment" : "Agent step",
       "localizations" : {
@@ -7434,6 +7859,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "列出了最新話題"
+          }
+        }
+      }
+    },
+    "Listen" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "收听"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "收聽"
+          }
+        }
+      }
+    },
+    "Listen to today" : {
+      "comment" : "Today page: the podcast section's title",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "收听今天"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "收聽今天"
           }
         }
       }
@@ -7681,6 +8139,38 @@
         }
       }
     },
+    "Make Podcast" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "制作播客"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "製作 Podcast"
+          }
+        }
+      }
+    },
+    "Make Podcast Again" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新制作播客"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新製作 Podcast"
+          }
+        }
+      }
+    },
     "Make Today’s Digest" : {
       "localizations" : {
         "zh-Hans" : {
@@ -7726,6 +8216,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "為今天的話題產生摘要"
+          }
+        }
+      }
+    },
+    "Make the podcast every day" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每天制作播客"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每天製作 Podcast"
           }
         }
       }
@@ -8075,6 +8581,22 @@
         }
       }
     },
+    "Next chapter" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下一章"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下一章"
+          }
+        }
+      }
+    },
     "Next result" : {
       "comment" : "Result cards over the page: open the next card",
       "localizations" : {
@@ -8088,6 +8610,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "下一個結果"
+          }
+        }
+      }
+    },
+    "Next up: “%@”." : {
+      "comment" : "Podcast: introduces a topic when its dialogue couldn't be written; the placeholder is the topic title",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接下来是“%@”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接下來是「%@」。"
           }
         }
       }
@@ -8907,6 +9446,23 @@
         }
       }
     },
+    "Offline. The podcast continues when you’re back online." : {
+      "comment" : "Podcast: couldn't reach the AI provider or Google",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已离线。恢复联网后播客会继续制作。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已離線。恢復連線後 Podcast 會繼續製作。"
+          }
+        }
+      }
+    },
     "Ollama (Local)" : {
       "comment" : "AI provider name: Ollama running on the user's own computer. Keep \"Ollama\".",
       "localizations" : {
@@ -8975,6 +9531,23 @@
         }
       }
     },
+    "On the free tier of Google AI Studio, Google may use what you send to improve its products, and people may review it." : {
+      "comment" : "Podcast consent: Google's free-tier data use",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Google AI Studio 免费层级中，Google 可能会用你发送的内容改进其产品，也可能有人工审阅。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Google AI Studio 免費方案中，Google 可能會用你傳送的內容改進其產品，也可能有人工審閱。"
+          }
+        }
+      }
+    },
     "On the free tier of Google AI Studio, Google may use what you send to improve its products, and people may review it. Don’t say or open anything you want to keep private." : {
       "comment" : "Voice consent: Google's free-tier data use",
       "localizations" : {
@@ -9038,6 +9611,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "裝置端"
+          }
+        }
+      }
+    },
+    "On-device voices" : {
+      "comment" : "Podcast speech engine setting: the iPhone's built-in voices",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本设备的声音"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本裝置的聲音"
           }
         }
       }
@@ -9458,6 +10048,23 @@
         }
       }
     },
+    "Open the topic" : {
+      "comment" : "Podcast chapter list: opens the chapter's topic at the post it talks about",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开话题"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打開話題"
+          }
+        }
+      }
+    },
     "Opens %@" : {
       "localizations" : {
         "zh-Hans" : {
@@ -9687,6 +10294,22 @@
         }
       }
     },
+    "Pause" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂停"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暫停"
+          }
+        }
+      }
+    },
     "Paused for a call or Siri." : {
       "comment" : "Voice notice: iOS interrupted the audio",
       "localizations" : {
@@ -9700,6 +10323,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "因通話或 Siri 已暫停。"
+          }
+        }
+      }
+    },
+    "Pauses the podcast and starts a voice conversation about this topic" : {
+      "comment" : "Podcast: what Ask about this does",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂停播客，开始关于这个话题的语音对话"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暫停 Podcast，開始關於這個話題的語音對話"
           }
         }
       }
@@ -9946,6 +10586,22 @@
         }
       }
     },
+    "Play" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "播放"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "播放"
+          }
+        }
+      }
+    },
     "Please read and accept the Terms of Use. They explain what isn’t allowed and how to report and block content." : {
       "localizations" : {
         "zh-Hans" : {
@@ -9962,6 +10618,39 @@
         }
       }
     },
+    "Podcast" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "播客"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcast"
+          }
+        }
+      }
+    },
+    "Podcast privacy" : {
+      "comment" : "Settings › Daily digest: what the podcast sends to Google",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "播客隐私"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcast 隱私"
+          }
+        }
+      }
+    },
     "Popular forums" : {
       "localizations" : {
         "zh-Hans" : {
@@ -9974,6 +10663,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "熱門論壇"
+          }
+        }
+      }
+    },
+    "Position" : {
+      "comment" : "Podcast progress bar",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "播放位置"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "播放位置"
           }
         }
       }
@@ -10121,6 +10827,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在準備清單…"
+          }
+        }
+      }
+    },
+    "Previous chapter" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上一章"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上一章"
           }
         }
       }
@@ -10481,6 +11203,23 @@
         }
       }
     },
+    "Read aloud" : {
+      "comment" : "Button: reads the summary aloud",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "朗读"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "朗讀"
+          }
+        }
+      }
+    },
     "Read every reply and create a focused overview." : {
       "localizations" : {
         "zh-Hans" : {
@@ -10800,6 +11539,23 @@
         }
       }
     },
+    "Ready to play" : {
+      "comment" : "Podcast: every chapter is recorded",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可以播放"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可以播放"
+          }
+        }
+      }
+    },
     "Ready · %@" : {
       "comment" : "Apple Intelligence status: ready, then the backend (On-device or Private Cloud Compute)",
       "localizations" : {
@@ -10895,6 +11651,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在重新連線…"
+          }
+        }
+      }
+    },
+    "Recording “%@”…" : {
+      "comment" : "Podcast: a chapter is being spoken; the placeholder is its title",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在录制“%@”…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在錄製「%@」…"
+          }
+        }
+      }
+    },
+    "Recording…" : {
+      "comment" : "Podcast chapter: being written or spoken",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在录制…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在錄製…"
           }
         }
       }
@@ -11527,6 +12317,22 @@
         }
       }
     },
+    "Right after the digest is made when you open Forumind: one request per chapter to your AI provider, then the voices." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开 Forumind 并做好摘要后立即制作：每章向 AI 服务商发送一次请求，然后朗读。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打開 Forumind 並做好摘要後立即製作：每章向 AI 服務商傳送一次請求，然後朗讀。"
+          }
+        }
+      }
+    },
     "Route" : {
       "comment" : "Voice Health row: the audio output and input",
       "localizations" : {
@@ -11931,6 +12737,57 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "未選擇要搜尋的論壇。更改論壇"
+          }
+        }
+      }
+    },
+    "Second host" : {
+      "comment" : "Settings: the podcast's second host's name",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第二位主持人"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第二位主持人"
+          }
+        }
+      }
+    },
+    "Second host’s voice" : {
+      "comment" : "Settings: the Google voice of the podcast's second host",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第二位主持人的声音"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第二位主持人的聲音"
+          }
+        }
+      }
+    },
+    "See you tomorrow" : {
+      "comment" : "Podcast: the outro chapter's title",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "明天见"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "明天見"
           }
         }
       }
@@ -13749,6 +14606,23 @@
         }
       }
     },
+    "That’s all for today." : {
+      "comment" : "Podcast outro, spoken by the first host",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今天就到这里。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今天就到這裡。"
+          }
+        }
+      }
+    },
     "The AI provider returned an empty response." : {
       "localizations" : {
         "zh-Hans" : {
@@ -13830,6 +14704,23 @@
         }
       }
     },
+    "The details are in the topic." : {
+      "comment" : "Podcast: fallback line when a topic has nothing speakable",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "详细内容请看话题。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "詳細內容請看話題。"
+          }
+        }
+      }
+    },
     "The digest continues from here when you’re back online." : {
       "localizations" : {
         "zh-Hans" : {
@@ -13858,6 +14749,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "每日摘要使用你的 AI 供應商或 Apple Intelligence 產生。"
+          }
+        }
+      }
+    },
+    "The first host guides the episode; the second asks what you might ask. Google’s voice names are used with Google’s voices; this device picks two of its own voices otherwise." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第一位主持人负责串场讲解，第二位会问出你可能想问的问题。Google 的声音名称仅用于 Google 的声音；否则本设备会自选两个自带的声音。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第一位主持人負責串場講解，第二位會問出你可能想問的問題。Google 的聲音名稱僅用於 Google 的聲音；否則本裝置會自選兩個內建的聲音。"
           }
         }
       }
@@ -13895,18 +14802,18 @@
         }
       }
     },
-    "The last 7 digests are kept on this device only; they aren’t synced with iCloud." : {
+    "The last 7 digests and their podcasts are kept on this device only; they aren’t synced with iCloud." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "最近 7 份摘要只保存在这台设备上，不会通过 iCloud 同步。"
+            "value" : "最近 7 份摘要及其播客只保存在本设备上，不会通过 iCloud 同步。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "最近 7 份摘要只儲存在這台裝置上，不會透過 iCloud 同步。"
+            "value" : "最近 7 份摘要及其 Podcast 只儲存在本裝置上，不會透過 iCloud 同步。"
           }
         }
       }
@@ -14026,6 +14933,73 @@
         }
       }
     },
+    "The podcast can be made once the digest is ready." : {
+      "comment" : "Today page: the podcast waits for the digest",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "摘要做好后即可制作播客。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "摘要做好後即可製作 Podcast。"
+          }
+        }
+      }
+    },
+    "The podcast script couldn’t be written." : {
+      "comment" : "Podcast error: the AI's script was rejected",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法写出播客脚本。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法寫出 Podcast 腳本。"
+          }
+        }
+      }
+    },
+    "The podcast uses Google’s voices" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "播客使用 Google 的声音"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcast 使用 Google 的聲音"
+          }
+        }
+      }
+    },
+    "The podcast’s script (text written from your digest: topic titles, summaries and what the posts say) is sent to Google (%@) with your own API key to be read aloud. No audio is recorded, and nothing goes through a Forumind server." : {
+      "comment" : "Podcast consent; the placeholder is Google AI Studio or Google Vertex AI",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "播客脚本（根据你的摘要写成的文字：话题标题、摘要和帖子内容）会使用你自己的 API 密钥发送给 Google（%@）进行朗读。不会录制任何音频，也不经过任何 Forumind 服务器。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcast 腳本（根據你的摘要寫成的文字：話題標題、摘要和貼文內容）會使用你自己的 API 金鑰傳送給 Google（%@）進行朗讀。不會錄製任何音訊，也不經過任何 Forumind 伺服器。"
+          }
+        }
+      }
+    },
     "The server returned an invalid response." : {
       "localizations" : {
         "zh-Hans" : {
@@ -14105,6 +15079,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "語音連線已中斷。"
+          }
+        }
+      }
+    },
+    "The voices couldn’t read this chapter (%@)." : {
+      "comment" : "Podcast error; the placeholder is the system's reason, in English",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法朗读这一章（%@）。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法朗讀這一章（%@）。"
           }
         }
       }
@@ -14203,6 +15194,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在思考…"
+          }
+        }
+      }
+    },
+    "This device’s voices read it, free and offline." : {
+      "comment" : "Today page: the podcast is spoken by the built-in voices",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由本设备的声音朗读，免费且可离线。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由本裝置的聲音朗讀，免費且可離線。"
           }
         }
       }
@@ -14411,6 +15419,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "今日"
+          }
+        }
+      }
+    },
+    "Today on Forumind – %@" : {
+      "comment" : "Podcast episode title (Now Playing, the lock screen); the placeholder is the date",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Forumind 今日 – %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Forumind 今日 – %@"
           }
         }
       }
@@ -14794,6 +15819,22 @@
         }
       }
     },
+    "Two hosts talk through today’s topics, one chapter per card. Play starts as soon as the first chapter is ready." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "两位主持人聊聊今天的话题，每张卡片一章。第一章做好就能开始播放。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "兩位主持人聊聊今天的話題，每張卡片一章。第一章做好就能開始播放。"
+          }
+        }
+      }
+    },
     "Unable to save app data: %@" : {
       "comment" : "Error; the placeholder is the system's reason",
       "localizations" : {
@@ -15151,6 +16192,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "兩者都使用 %@"
+          }
+        }
+      }
+    },
+    "Use This Device’s Voices" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用本设备的声音"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用本裝置的聲音"
           }
         }
       }
@@ -15647,6 +16704,22 @@
         }
       }
     },
+    "Voices" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "声音"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "聲音"
+          }
+        }
+      }
+    },
     "Wait for the current answer or cancel it in Manage." : {
       "localizations" : {
         "zh-Hans" : {
@@ -15659,6 +16732,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "請等待目前的回答完成，或在「管理」中取消。"
+          }
+        }
+      }
+    },
+    "Waiting" : {
+      "comment" : "Podcast chapter: queued behind other chapters",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待中"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待中"
           }
         }
       }
@@ -15693,6 +16783,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在排隊等待處理…"
+          }
+        }
+      }
+    },
+    "Waiting for the next chapter…" : {
+      "comment" : "Podcast: playback waits for the next chapter to be recorded",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在等待下一章…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在等待下一章…"
           }
         }
       }
@@ -15928,6 +17035,7 @@
       }
     },
     "Welcome" : {
+      "comment" : "Podcast: the intro chapter's title",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -15955,6 +17063,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "歡迎使用 Forumind"
+          }
+        }
+      }
+    },
+    "Welcome to Today on Forumind for %@. I’m %@." : {
+      "comment" : "Podcast intro, spoken by the first host; the placeholders are the date and the host's name",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Welcome to Today on Forumind for %1$@. I’m %2$@."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "欢迎收听 Forumind 今日，%@。我是%@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "歡迎收聽 Forumind 今日，%@。我是%@。"
           }
         }
       }
@@ -16219,6 +17350,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在撰寫摘要…"
+          }
+        }
+      }
+    },
+    "Writing “%@”…" : {
+      "comment" : "Podcast: a chapter's dialogue is being written; the placeholder is its title",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在撰写“%@”…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在撰寫「%@」…"
           }
         }
       }
@@ -16847,6 +17995,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "尚未檢查"
+          }
+        }
+      }
+    },
+    "the first topic" : {
+      "comment" : "Podcast intro: said when a topic title has nothing speakable",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第一个话题"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第一個話題"
           }
         }
       }
