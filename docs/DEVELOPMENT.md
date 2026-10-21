@@ -245,6 +245,7 @@ They never overwrite real saved data, and Release builds ignore them.
 | `-dc-summary-running`, `-dc-chat-streaming`, `-dc-agent-running` | Work in progress. |
 | `-dc-chat-typing` | With `-dc-chat-streaming`: typing dots, no text yet. |
 | `-dc-stale-summary` | The `makers` sample topic's summary is behind the topic (stale notice). |
+| `-dc-digest-sample` | Today's daily digest with two finished cards (a watched topic and a solved trending one) and one waiting; nothing is generated or saved. Use with `-dc-forums-home`. |
 | `-dc-scroll-sources` | Ask the forum: scrolls to the answer's sources. |
 | `-dc-focus-chat` | Raises the keyboard in the chat composer. |
 | `-dc-script <action>-after:<seconds>` | Changes state mid-use: `switch-provider` (the current mode's model), `delete-key` (of the current mode's provider), `remove-forum`, `unpin-forum`, `clear-all`, `reset-settings`. |
@@ -277,6 +278,9 @@ runs are labeled as Apple Intelligence runs and it is the selected provider.
 | `-dc-bar top\|bottom` | Browser bar position for this launch. |
 | `-dc-content-blocking off` | Turns ad and tracker blocking off for this launch (settings unchanged). Blocking is off by default; turn it on in Settings › Browser or from the address-bar shield. |
 | `-dc-scroll-page <points>` | Scrolls each loaded page down. |
+| `-dc-browse-post <n>` | Once the first topic shows, opens it at post n (highlighted), as `openTopic(at: .post(n))` does. |
+| `-dc-browse-find <query>` | Then searches the forum and shows the result cards. |
+| `-dc-browse-debug` | Exposes the page position and current list as the `browseDebugState` accessibility element (`post=… highlighted=… cards=… current=…`). |
 | `-dc-force-width <points>` | iPad: letterboxes the app to that width, with the size class a Split View window of that width gets. |
 | `-dc-resize-demo [w1,w2,…]` | iPad: animates the window width through the list (default 1032, 800, 1032, 700, full), 6 s per step. |
 
@@ -288,7 +292,7 @@ runs are labeled as Apple Intelligence runs and it is the selected provider.
 | `-dc-onboarding-step <n\|name>` | Opens the walkthrough on a step: 1-based number, or `welcome`, `features`, `provider`, `forums`, `sync`, `share`, `privacy`, `done`. |
 | `-dc-scroll-bottom`, `-dc-focus` | Walkthrough: scroll to the bottom / focus the key field. |
 | `-dc-skip-onboarding` | Marks the walkthrough done. |
-| `-dc-show-settings <page>` | Presents Settings: `root`, or a page: `provider` (AI models), `sync`, `forums`, `summaries`, `agent`, `watched`, `browser`, `data`, `help`, `sharing`, `about`, `acknowledgements`. |
+| `-dc-show-settings <page>` | Presents Settings: `root`, or a page: `provider` (AI models), `sync`, `forums`, `summaries`, `agent`, `watched`, `digest`, `browser`, `data`, `help`, `sharing`, `about`, `acknowledgements`. |
 | `-dc-panel-settings [page]` | Opens Settings inside the Assistant panel. |
 
 ### Sync
@@ -538,6 +542,16 @@ Settings › General › Social preview.
   on the next launch, but a network stream can't be guaranteed to keep running
   while another app is in front. Browsing inside the app never interrupts a
   running summary or chat.
+- Background tasks: the watched-topic refresh (`<prefix>.watchRefresh`, a
+  `BGAppRefreshTask`) and the daily digest's prefetch
+  (`<prefix>.digestPrefetch`, a `BGProcessingTask` scheduled only while the
+  daily digest is on) are listed in `BGTaskSchedulerPermittedIdentifiers` in
+  `Forumind/Info.plist`, which is edited by hand (the generator only points
+  at it); `UIBackgroundModes` has `fetch`, `processing` and
+  `remote-notification`. To run one on a device, pause in the debugger after
+  the app went to the background (so the request was submitted) and run
+  `e -l objc -- (void)[[BGTaskScheduler sharedScheduler] _simulateLaunchForTaskWithIdentifier:@"<prefix>.digestPrefetch"]`,
+  then continue.
 - Local models: Ollama and LM Studio are reached over the local network
   (`NSAllowsLocalNetworking`); iOS asks for local-network access the first
   time.

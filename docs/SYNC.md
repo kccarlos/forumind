@@ -64,7 +64,10 @@ setup card in that mode); the other role keeps working.
 **Sync API keys**, whether sync is on, the work queue and activity log,
 fetched topic text and cached forum pages, each device's last watch check,
 the browser bar position, whether the walkthrough was completed, panel width,
-and browser state.
+browser state, and the daily digest's on/off switch and notification (each
+device spends AI credits and schedules its background fetch on its own),
+its history of the last 7 digests and its prefetched forum data. What goes
+in the digest and how many cards sync with the other settings.
 
 ## Encryption and privacy
 

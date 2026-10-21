@@ -27,6 +27,13 @@ struct KnownForumSite: Equatable {
 ///   maybe       a `/t/…/{id}` URL the probe has not confirmed yet
 ///   forumHome   a Discourse page that is not a topic
 ///   topic       a Discourse topic
+///
+/// On a topic it also says where the reader is: the post in the URL
+/// (Discourse rewrites `/t/slug/id/N` with `replaceState` while scrolling),
+/// the posts on screen and the highlighted ones (from the browser bridge,
+/// BrowseBridge.swift), and, once AppModel has the topic's facts, the post
+/// count and the accepted answer. Those position fields change while the
+/// reader scrolls; `sameDocument(as:)` ignores them.
 struct PageContext: Equatable {
     enum State: String, Equatable {
         case loading
@@ -45,10 +52,55 @@ struct PageContext: Equatable {
     var iconURL: URL?
     var topic: ForumTopic?
     var state: State = .loading
+    /// The post number in the topic URL (`/t/slug/id/N`); nil at the top of
+    /// a topic Discourse hasn't rewritten yet, and off topics.
+    var postNumber: Int?
+    /// Rendered posts in the viewport, top to bottom (not hidden ones).
+    var visiblePosts: [Int] = []
+    /// Posts the bridge has highlighted on the page now.
+    var highlightedPosts: [Int] = []
+    /// From the topic's facts (`ForumTopicFacts`), when AppModel has them.
+    var postsCount: Int?
+    var acceptedAnswerPost: Int?
 
     static let empty = PageContext()
 
     var isForum: Bool { state == .forumHome || state == .topic }
+
+    /// The post the reader is at: the URL's, else the first one on screen.
+    var currentPost: Int? { postNumber ?? visiblePosts.first }
+
+    /// Same page apart from the position fields (visible and highlighted
+    /// posts, post count, accepted answer), which change while scrolling.
+    func sameDocument(as other: PageContext) -> Bool {
+        var lhs = self, rhs = other
+        lhs.clearPosition()
+        rhs.clearPosition()
+        return lhs == rhs
+    }
+
+    private mutating func clearPosition() {
+        visiblePosts = []
+        highlightedPosts = []
+        postsCount = nil
+        acceptedAnswerPost = nil
+    }
+
+    /// Adds the bridge's report and the topic's facts, when they are about
+    /// this page's topic.
+    func merging(report: BrowseBridgeReport?, facts: ForumTopicFacts?) -> PageContext {
+        guard state == .topic, let topic else { return self }
+        var merged = self
+        if let report, ForumSite.looseTopicID(from: report.url) == topic.topicID {
+            merged.visiblePosts = report.visible
+            merged.highlightedPosts = report.highlighted
+        }
+        if let facts {
+            merged.postsCount = facts.postsCount ?? facts.highestPostNumber
+            merged.acceptedAnswerPost = facts.acceptedAnswer?.postNumber
+        }
+        return merged
+    }
 
     /// Derives the page context (pure).
     /// - Parameters:
@@ -123,7 +175,8 @@ struct PageContext: Equatable {
             forumName: name,
             iconURL: iconURL,
             topic: topic,
-            state: topic == nil ? .forumHome : .topic
+            state: topic == nil ? .forumHome : .topic,
+            postNumber: topic == nil ? nil : ForumSite.postNumber(from: url)
         )
     }
 

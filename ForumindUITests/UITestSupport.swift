@@ -74,8 +74,9 @@ class DCUITestCase: XCTestCase {
         }
     }
 
-    /// A current topic on meta.discourse.org (skips when offline).
-    func liveTopic() throws -> (url: URL, title: String, id: Int) {
+    /// A current topic on meta.discourse.org with at least `minimumPosts`
+    /// posts (skips when offline).
+    func liveTopic(minimumPosts: Int = 1) throws -> (url: URL, title: String, id: Int) {
         guard let listURL = URL(string: "https://\(Self.forumHost)/latest.json"),
               let data = fetch(listURL),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -89,11 +90,28 @@ class DCUITestCase: XCTestCase {
                   let slug = topic["slug"] as? String,
                   let title = topic["title"] as? String,
                   topic["pinned"] as? Bool != true,
+                  topic["posts_count"] as? Int ?? 1 >= minimumPosts,
                   let url = URL(string: "https://\(Self.forumHost)/t/\(slug)/\(id)")
             else { continue }
             return (url, title, id)
         }
         throw XCTSkip("No topic found on \(Self.forumHost).")
+    }
+
+    /// The post numbers of a live topic's first regular posts (deleted
+    /// posts leave gaps in the numbering; small actions are skipped).
+    func livePostNumbers(topicID: Int) throws -> [Int] {
+        guard let url = URL(string: "https://\(Self.forumHost)/t/\(topicID).json"),
+              let data = fetch(url),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let stream = json["post_stream"] as? [String: Any],
+              let posts = stream["posts"] as? [[String: Any]]
+        else {
+            throw XCTSkip("\(Self.forumHost) is unreachable; this test needs the network.")
+        }
+        return posts.compactMap { post in
+            post["post_type"] as? Int == 1 ? post["post_number"] as? Int : nil
+        }
     }
 
     private func fetch(_ url: URL, timeout: TimeInterval = 10) -> Data? {

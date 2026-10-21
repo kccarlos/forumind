@@ -122,11 +122,11 @@ final class ModerationTests: XCTestCase {
     func testPostURLKeepsTheTopicPathOnly() {
         let url = { (string: String) in URL(string: string)! }
         XCTAssertEqual(
-            ModerationReport.postURL(topicURL: url("https://f.example/t/slug/42"), number: 5).absoluteString,
+            ForumSite.postURL(topicURL: url("https://f.example/t/slug/42"), number: 5).absoluteString,
             "https://f.example/t/slug/42/5"
         )
         XCTAssertEqual(
-            ModerationReport.postURL(topicURL: url("https://f.example/forum/t/slug/42/17/"), number: 5).absoluteString,
+            ForumSite.postURL(topicURL: url("https://f.example/forum/t/slug/42/17/"), number: 5).absoluteString,
             "https://f.example/forum/t/slug/42/5"
         )
     }

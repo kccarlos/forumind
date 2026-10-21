@@ -7,8 +7,9 @@
 import SwiftUI
 import UserNotifications
 
-/// Registers the watched-topic background refresh and receives notification
-/// taps; both must be wired before launch finishes. In CloudKit builds it
+/// Registers the watched-topic background refresh and the daily digest's
+/// background prefetch, and receives notification taps; all must be wired
+/// before launch finishes. In CloudKit builds it
 /// also registers for the silent pushes that announce iCloud changes.
 final class AppDelegate: NSObject, UIApplicationDelegate {
     /// Called for each remote (CloudKit) notification. The sync engine sets
@@ -21,6 +22,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     ) -> Bool {
         UNUserNotificationCenter.current().delegate = WatchNotifier.shared
         WatchBackgroundRefresh.register()
+        DigestBackgroundPrefetch.register()
         #if CLOUDKIT_ENABLED
         // Silent pushes only: no permission prompt.
         application.registerForRemoteNotifications()

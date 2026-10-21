@@ -9,7 +9,7 @@ import SwiftUI
 // - `forumInfo(siteURL:)`          directory entry for a site URL, or a placeholder built from it
 // - `manageForums`                 forums that own saved data, pinned first (Manage grouping)
 // - `recentSessions(siteURL:limit:)` saved topics on one forum, newest first
-// - `AgentSources.extract(run:sessions:)` numbered [S1]… sources of an agent answer
+// - `AgentSources.extract(run:sessions:)` numbered [S1]… sources (topics and posts) of an agent answer
 
 extension AppModel {
     /// What the Assistant body shows. A selected topic wins (UI-test seeds keep
@@ -69,17 +69,28 @@ extension AppModel {
 
 // MARK: - Agent sources
 
-/// The topics an agent answer relies on, numbered in order of first citation.
-/// The agent cites as `[title](url)`; topics it read but did not cite follow.
+/// The topics and posts an agent answer relies on, numbered in order of first
+/// citation. The agent cites as `[title](url)`, a post as `/t/slug/id/N`;
+/// topics it read but did not cite follow.
+///
+/// Folding rule: a link to a post is its own source, so different posts of
+/// one topic are different sources and the same post cited twice is one. A
+/// link to the topic itself (no post number) means the whole topic: it reuses
+/// that topic's first source, whatever its level, and only a topic not cited
+/// yet becomes a new topic-level source. A topic read but not cited is added
+/// at topic level unless it is already a source.
 enum AgentSources {
     struct Source: Identifiable, Equatable {
         var number: Int
         var title: String
         var url: URL
+        /// The cited post; nil when the source is the whole topic.
+        var postNumber: Int?
         var cited: Bool
 
         var id: Int { number }
         var label: String { "S\(number)" }
+        var topicID: String? { ForumSite.looseTopicID(from: url) }
     }
 
     private static let linkPattern = try? NSRegularExpression(
@@ -87,29 +98,37 @@ enum AgentSources {
     )
 
     /// Same topic regardless of slug, post number, or query.
-    static func identity(of url: URL) -> String {
+    static func topicIdentity(of url: URL) -> String {
         let host = url.host?.lowercased() ?? ""
         if let topicID = ForumSite.looseTopicID(from: url) { return "\(host)/t/\(topicID)" }
         return url.absoluteString
     }
 
+    /// The source a link folds into, by the rule above.
+    static func source(for url: URL, in sources: [Source]) -> Source? {
+        let topic = topicIdentity(of: url)
+        if let post = ForumSite.postNumber(from: url) {
+            return sources.first { topicIdentity(of: $0.url) == topic && $0.postNumber == post }
+        }
+        return sources.first { topicIdentity(of: $0.url) == topic }
+    }
+
     static func extract(from answer: String, run: AgentRun?, sessions: [String: TopicSession]) -> [Source] {
         var sources: [Source] = []
-        var seen: [String: Int] = [:]
-        for (title, url) in links(in: answer) {
-            let key = identity(of: url)
-            guard seen[key] == nil else { continue }
-            let number = sources.count + 1
-            seen[key] = number
-            sources.append(Source(number: number, title: title, url: url, cited: true))
+        for (title, url) in links(in: answer) where source(for: url, in: sources) == nil {
+            sources.append(Source(
+                number: sources.count + 1,
+                title: title,
+                url: url,
+                postNumber: ForumSite.postNumber(from: url),
+                cited: true
+            ))
         }
         for step in run?.steps ?? [] {
             guard let topicKey = step.topicKey, let session = sessions[topicKey] else { continue }
-            let key = identity(of: session.url)
-            guard seen[key] == nil else { continue }
-            let number = sources.count + 1
-            seen[key] = number
-            sources.append(Source(number: number, title: session.title, url: session.url, cited: false))
+            let topic = topicIdentity(of: session.url)
+            guard !sources.contains(where: { topicIdentity(of: $0.url) == topic }) else { continue }
+            sources.append(Source(number: sources.count + 1, title: session.title, url: session.url, cited: false))
         }
         return sources
     }
@@ -118,17 +137,13 @@ enum AgentSources {
     /// Markdown view renders the number as a tappable chip.
     static func annotate(_ answer: String, sources: [Source]) -> String {
         guard let linkPattern, !sources.isEmpty else { return answer }
-        let numbers = Dictionary(
-            sources.map { (identity(of: $0.url), $0.number) },
-            uniquingKeysWith: { first, _ in first }
-        )
         let nsAnswer = answer as NSString
         var result = ""
         var cursor = 0
         for match in linkPattern.matches(in: answer, range: NSRange(location: 0, length: nsAnswer.length)) {
             let title = nsAnswer.substring(with: match.range(at: 1))
             let urlText = nsAnswer.substring(with: match.range(at: 2))
-            guard let url = URL(string: urlText), let number = numbers[identity(of: url)] else { continue }
+            guard let url = URL(string: urlText), let number = source(for: url, in: sources)?.number else { continue }
             result += nsAnswer.substring(with: NSRange(location: cursor, length: match.range.location - cursor))
             // A bare "[S1](url)" or a title that is just the URL keeps only the chip.
             let trimmed = title.trimmingCharacters(in: .whitespaces)

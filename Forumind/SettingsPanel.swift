@@ -92,6 +92,7 @@ struct SettingsRootView: View {
                 row(.summaries)
                 row(.agent)
                 row(.watched, value: app.watchedTopics.isEmpty ? nil : "\(app.watchedTopics.count)")
+                row(.digest, value: app.settings.dailyDigestEnabled ? String(localized: "On") : String(localized: "Off"))
             }
 
             Section("App") {
@@ -205,6 +206,7 @@ struct SettingsDestination: View {
             case .summaries: SettingsSummariesPage(app: app)
             case .agent: SettingsAgentPage(app: app)
             case .watched: SettingsWatchedPage(app: app)
+            case .digest: SettingsDigestPage(app: app)
             case .browser: SettingsBrowserPage(app: app)
             case .data: SettingsDataPage(app: app)
             case .help: SettingsHelpPage(app: app)

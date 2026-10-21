@@ -502,6 +502,149 @@ final class MultiForumTests: XCTestCase {
         XCTAssertTrue(app.activities.isEmpty)
     }
 
+    // MARK: Post-level agent runs
+
+    /// A run started from code reports its answer with post-level sources,
+    /// and leaves the panel, the selected run and the goal draft alone. The
+    /// model sees each search hit's post number and author.
+    @MainActor
+    func testAgentRunFromCodeReturnsPostLevelSources() async throws {
+        let session = stubbedSession { request in
+            let url = try XCTUnwrap(request.url)
+            switch url.path {
+            case "/search.json":
+                return Self.response(request, 200, DiscourseFixtures.search)
+            default:
+                return Self.response(request, 404, "missing")
+            }
+        }
+        let answer = "Hide it with CSS ([fix](https://meta.discourse.org/t/how-can-i-hide-the-badges-link-in-the-sidebar/240488/5)), "
+            + "still working in [post 10](https://meta.discourse.org/t/how-can-i-hide-the-badges-link-in-the-sidebar/240488/10)."
+        let planner = RecordingPlanner(actions: [
+            AgentAction(thought: "", tool: "search_forum", arguments: ["query": "hide badges"]),
+            AgentAction(thought: "", tool: AgentPrompt.finalAnswerTool, arguments: ["answer": answer])
+        ])
+        let app = AppModel(
+            store: temporaryStore(),
+            forumService: ForumService(session: session, pacer: ForumRequestPacer(clock: InstantPacingClock())),
+            aiService: AIService(session: session),
+            planner: planner
+        )
+        app.usesDirectForumRequests = true
+        useLocalProvider(app)
+        app.agentGoalDraft = "half-typed goal"
+        let mode = app.assistantMode
+        let route = app.panelRoute
+
+        let outcome = try await app.performAgentRun(goal: "How do I hide the badges link?", siteURL: meta)
+        XCTAssertEqual(outcome.status, .completed)
+        XCTAssertEqual(outcome.answer, answer)
+        XCTAssertEqual(outcome.sources.map(\.postNumber), [5, 10])
+        XCTAssertEqual(outcome.sources.map(\.topicID), ["240488", "240488"])
+        XCTAssertEqual(outcome.runID, app.agentRuns.first?.id)
+        XCTAssertNil(app.selectedAgentRunID)
+        XCTAssertEqual(app.agentGoalDraft, "half-typed goal")
+        XCTAssertEqual(app.assistantMode, mode)
+        XCTAssertEqual(app.panelRoute, route)
+        XCTAssertNil(app.presentedError)
+
+        let observation = try XCTUnwrap(planner.transcripts.last?.last?.content)
+        XCTAssertTrue(observation.hasPrefix("OBSERVATION from search_forum"))
+        XCTAssertTrue(observation.contains("\n  #5 @bob: Hello, You can hide it"))
+        XCTAssertTrue(observation.contains("\n  #13 @carol: "))
+    }
+
+    /// Cancelling a run started from code hands back one cancelled outcome.
+    @MainActor
+    func testCancellingAnAgentRunFromCodeReportsItOnce() async throws {
+        let session = stubbedSession { request in
+            Self.response(request, 200, #"{"topic_list":{"topics":[]}}"#)
+        }
+        let planner = GatedPlanner()
+        let app = AppModel(
+            store: temporaryStore(),
+            forumService: ForumService(session: session, pacer: ForumRequestPacer(clock: InstantPacingClock())),
+            aiService: AIService(session: session),
+            planner: planner
+        )
+        app.usesDirectForumRequests = true
+        useLocalProvider(app)
+
+        var outcomes: [AgentRunOutcome] = []
+        let id = try app.startAgentRun(goal: "Anything new?", siteURL: meta) { outcomes.append($0) }
+        let deadline = Date().addingTimeInterval(10)
+        while Date() < deadline, !planner.isWaiting {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertTrue(planner.isWaiting)
+        XCTAssertNotNil(app.activeRecord(forAgentRun: id))
+        app.cancelAgentRun(id: id)
+        XCTAssertNil(app.activeRecord(forAgentRun: id))
+        // The planner ignores cancellation and answers late.
+        planner.release()
+        try await Task.sleep(for: .milliseconds(300))
+
+        XCTAssertEqual(outcomes.count, 1)
+        XCTAssertEqual(outcomes.first?.runID, id)
+        XCTAssertEqual(outcomes.first?.status, .cancelled)
+        XCTAssertEqual(outcomes.first?.answer, "")
+        XCTAssertEqual(app.agentRuns.first?.status, .cancelled)
+        app.cancelAgentRun(id: id)
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(outcomes.count, 1)
+    }
+
+    /// A run that fails (no model ready) hands back the failure.
+    @MainActor
+    func testAgentRunFromCodeReportsAFailure() async throws {
+        let app = AppModel(store: temporaryStore(), planner: RecordingPlanner(actions: []))
+        app.usesDirectForumRequests = true
+        app.selectModel(ModelSelection(provider: .openAI, model: "gpt"), for: .both)
+        let outcome = try await app.performAgentRun(goal: "Anything new?", siteURL: meta)
+        XCTAssertEqual(outcome.status, .failed)
+        XCTAssertFalse(outcome.error.isEmpty)
+        XCTAssertTrue(outcome.sources.isEmpty)
+    }
+
+    /// Starting from code throws instead of showing an alert; cancelling the
+    /// awaiting task cancels the run.
+    @MainActor
+    func testAgentRunFromCodeThrowsAndFollowsTaskCancellation() async throws {
+        let session = stubbedSession { request in
+            Self.response(request, 200, #"{"topic_list":{"topics":[]}}"#)
+        }
+        let planner = GatedPlanner()
+        let app = AppModel(
+            store: temporaryStore(),
+            forumService: ForumService(session: session, pacer: ForumRequestPacer(clock: InstantPacingClock())),
+            aiService: AIService(session: session),
+            planner: planner
+        )
+        app.usesDirectForumRequests = true
+        useLocalProvider(app)
+
+        do {
+            _ = try await app.performAgentRun(goal: "Anything?")
+            XCTFail("There is no forum to run on")
+        } catch {
+            XCTAssertEqual(error.localizedDescription, AssistantError.noForum.localizedDescription)
+        }
+        XCTAssertNil(app.presentedError)
+        XCTAssertTrue(app.agentRuns.isEmpty)
+
+        let task = Task { try await app.performAgentRun(goal: "Anything new?", siteURL: meta) }
+        let deadline = Date().addingTimeInterval(10)
+        while Date() < deadline, !planner.isWaiting {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertTrue(planner.isWaiting)
+        task.cancel()
+        let outcome = try await task.value
+        XCTAssertEqual(outcome.status, .cancelled)
+        XCTAssertEqual(app.agentRuns.first?.status, .cancelled)
+        planner.release()
+    }
+
     // MARK: Helpers
 
     /// Work only starts with a connected provider; a local one needs no key.
@@ -538,6 +681,8 @@ final class MultiForumTests: XCTestCase {
 private final class RecordingPlanner: AgentPlanner, @unchecked Sendable {
     private var actions: [AgentAction]
     private(set) var system = ""
+    /// The transcript of every turn, in order.
+    private(set) var transcripts: [[ChatMessage]] = []
 
     init(actions: [AgentAction]) {
         self.actions = actions
@@ -550,6 +695,7 @@ private final class RecordingPlanner: AgentPlanner, @unchecked Sendable {
         provider: AIProvider
     ) async throws -> AgentAction {
         self.system = system
+        transcripts.append(transcript)
         guard !actions.isEmpty else {
             return AgentAction(thought: "", tool: AgentPrompt.finalAnswerTool, arguments: ["answer": "n/a"])
         }

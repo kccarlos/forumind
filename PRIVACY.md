@@ -40,12 +40,16 @@ question to the AI service **you** choose:
   computer over your local network and nowhere else.
 
 Nothing is sent to an AI service until you start a summary, chat, or search,
-or turn on automatic summary refresh for a watched topic.
+make a daily digest (or turn on the daily digest, which makes it when you
+open the app), or turn on automatic summary refresh for a watched topic.
 
 ### What's stored on your device
 
 - Your summaries, chats, Ask the forum runs, watched topics, forums, and
   settings are stored in the app's private storage on your device.
+- **Daily digests** (the last 7) and the forum data fetched for them stay on
+  your device; they aren't synced. Delete them in **Settings › Daily
+  digest**.
 - Chats and activity you haven't marked **Keep** are cleared after a day;
   summaries are kept up to a limit. You can delete data per forum, or
   everything, in **Settings › Data & privacy**.
@@ -80,8 +84,12 @@ screen.
 
 If you watch a topic and allow notifications, the app checks that topic on
 the forum (including in the background, when iOS allows) and shows a local
-notification about new replies. These notifications are created on your
-device; they don't go through a push notification service.
+notification about new replies. If you turn on the daily digest, the app
+reads your pinned forums' topic lists and your watched topics on the forums
+in the background while the device is charging and online, without any AI
+request, and can show a local notification that the digest is ready to
+make. These notifications are created on your device; they don't go through
+a push notification service.
 
 ### Ad and tracker blocking
 

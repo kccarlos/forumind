@@ -208,9 +208,10 @@ enum AgentPrompt {
     static let tools: [AgentToolSpec] = [
         AgentToolSpec(
             name: "search_forum",
-            description: "Search this forum's topics. Supports Discourse syntax: "
-                + "#category, order:latest, after:YYYY-MM-DD, in:title. Returns up to "
-                + "20 topics with id, title, post count, last activity, and an excerpt.",
+            description: "Search this forum's posts. Supports Discourse syntax: "
+                + "#category, order:latest, after:YYYY-MM-DD, in:title, topic:<id>. Returns up to "
+                + "20 topics with id, title, post count, last activity, and the matching posts "
+                + "as #N @author: excerpt.",
             parameters: [.init(name: "query", description: "Search text", required: true)]
         ),
         AgentToolSpec(
@@ -247,7 +248,9 @@ enum AgentPrompt {
         AgentToolSpec(
             name: finalAnswerTool,
             description: "Finish with the answer to the goal, in Markdown. Cite topics "
-                + "as [title](url) using the urls you were given.",
+                + "as [title](url) using the urls you were given. When a point comes from "
+                + "a specific post, cite that post as [title](url/N): the topic url plus "
+                + "/N, its post number.",
             parameters: [.init(name: "answer", description: "The final answer", required: true)]
         )
     ]
@@ -290,6 +293,9 @@ enum AgentPrompt {
         - \(PromptBuilder.questionLanguageInstruction) Use the language of the user's goal
           (or follow-up), not the forum's. The final answer should be well structured
           Markdown and cite the topics it relies on.
+        - Posts are numbered: read_topic text starts each post with "author | date UTC | #N",
+          and search results list posts as "#N @author". Cite a specific post as
+          /t/slug/id/N (the topic url plus /N), for example the accepted fix or a quote.
 
         Tools:
         \(toolList)
@@ -329,15 +335,39 @@ enum AgentPrompt {
     // MARK: Observation formatting
 
     static func format(listings: [ForumTopicListing], limit: Int = 20) -> String {
+        format(listings: listings, hits: [], limit: limit)
+    }
+
+    /// Topics in the forum's order. A topic with search hits lists them
+    /// (in hit order) as `#N @author: blurb`, so the model can cite the post;
+    /// otherwise its excerpt follows. Each topic shows at most
+    /// `hitsPerTopic` hits, or up to `singleTopicHits` when it is the only
+    /// one (a `topic:<id>` search).
+    static func format(
+        listings: [ForumTopicListing],
+        hits: [ForumSearchHit],
+        limit: Int = 20,
+        hitsPerTopic: Int = 3,
+        singleTopicHits: Int = 30
+    ) -> String {
         guard !listings.isEmpty else { return "No topics found." }
+        let hitsByTopic = Dictionary(grouping: hits, by: \.topic.id)
+        let perTopic = listings.count == 1 ? singleTopicHits : hitsPerTopic
         return listings.prefix(limit).map { listing in
             var line = "- id \(listing.id): \(listing.title) — \(listing.postsCount) posts"
             if let last = listing.lastPostedAt, !last.isEmpty {
                 line += ", last activity \(last.prefix(10))"
             }
             line += " — \(listing.url.absoluteString)"
-            if let excerpt = listing.excerpt?.trimmingCharacters(in: .whitespacesAndNewlines),
-               !excerpt.isEmpty {
+            if let topicHits = hitsByTopic[listing.id], !topicHits.isEmpty {
+                for hit in topicHits.prefix(perTopic) {
+                    line += "\n  #\(hit.postNumber)"
+                    if let username = hit.username, !username.isEmpty { line += " @\(username)" }
+                    let blurb = hit.blurb?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                    if !blurb.isEmpty { line += ": \(blurb.prefix(160))" }
+                }
+            } else if let excerpt = listing.excerpt?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !excerpt.isEmpty {
                 line += "\n  \(excerpt.prefix(200))"
             }
             return line

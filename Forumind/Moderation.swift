@@ -304,7 +304,7 @@ enum ModerationReport {
         case .topic:
             break
         case .post(let number, let username):
-            if let url = target.topicURL { lines.append("Post URL: \(postURL(topicURL: url, number: number).absoluteString)") }
+            if let url = target.topicURL { lines.append("Post URL: \(ForumSite.postURL(topicURL: url, number: number).absoluteString)") }
             lines.append("Post: #\(number) by @\(username)")
         case .user(let username):
             lines.append("User: @\(username)")
@@ -319,26 +319,6 @@ enum ModerationReport {
         lines.append("")
         lines.append("App version: \(appVersion)")
         return lines.joined(separator: "\n")
-    }
-
-    /// `{topic URL without a post number}/{number}`.
-    static func postURL(topicURL: URL, number: Int) -> URL {
-        var components = URLComponents(url: topicURL, resolvingAgainstBaseURL: false)
-        components?.query = nil
-        components?.fragment = nil
-        var path = components?.path ?? topicURL.path
-        while path.hasSuffix("/") { path.removeLast() }
-        // /t/slug/123 or /t/slug/123/45: keep up to the topic ID.
-        let parts = path.split(separator: "/", omittingEmptySubsequences: false)
-        if let t = parts.firstIndex(of: "t") {
-            let afterT = parts[(t + 1)...]
-            let idIndex = afterT.firstIndex { Int($0) != nil }
-            if let idIndex {
-                path = parts[...idIndex].joined(separator: "/")
-            }
-        }
-        components?.path = "\(path)/\(number)"
-        return components?.url ?? topicURL.appendingPathComponent(String(number))
     }
 
     static func mailtoURL(subject: String, body: String) -> URL? {

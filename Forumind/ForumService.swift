@@ -69,13 +69,15 @@ final class ForumService {
         pace: ForumRequestPace = .default,
         progress: @escaping @Sendable (ForumFetchProgress) async -> Void
     ) async throws -> ForumFetchResult {
-        let totalPosts = try await fetchPostCount(
+        let topicJSON = try await fetchTopicJSON(
             siteURL: siteURL,
             topicID: topicID,
             cookieHeader: cookieHeader,
             resourceLoader: resourceLoader,
             pace: pace
         )
+        let totalPosts = try Self.postCount(from: topicJSON)
+        let facts = Self.parseTopicFacts(topicJSON)
         let totalPages = max(1, Int(ceil(Double(totalPosts) / Double(pageSize))))
         let plan = CachePlan.make(
             cachedPages: cachedPages,
@@ -100,7 +102,8 @@ final class ForumService {
                 rawPages: sorted,
                 totalPosts: totalPosts,
                 unchanged: true,
-                newPosts: 0
+                newPosts: 0,
+                facts: facts
             )
 
         case .fetch(let reusablePages, let pageNumbers):
@@ -167,13 +170,15 @@ final class ForumService {
                 rawPages: allPages,
                 totalPosts: totalPosts,
                 unchanged: false,
-                newPosts: max(0, totalPosts - (knownTotalPosts ?? 0))
+                newPosts: max(0, totalPosts - (knownTotalPosts ?? 0)),
+                facts: facts
             )
         }
     }
 
-    /// Discourse search (`/search.json`). The query accepts Discourse search
-    /// syntax such as `#category`, `order:latest`, `after:2026-01-01`.
+    /// Discourse search (`/search.json`), one listing per topic. The query
+    /// accepts Discourse search syntax such as `#category`, `order:latest`,
+    /// `after:2026-01-01`.
     func search(
         siteURL: String,
         query: String,
@@ -181,7 +186,94 @@ final class ForumService {
         resourceLoader: (@MainActor (URL) async throws -> ForumResourceResponse)? = nil,
         pace: ForumRequestPace = .default
     ) async throws -> [ForumTopicListing] {
+        let data = try await searchData(
+            siteURL: siteURL,
+            query: query,
+            cookieHeader: cookieHeader,
+            resourceLoader: resourceLoader,
+            pace: pace
+        )
+        return Self.parseSearchResults(data, siteURL: siteURL)
+    }
+
+    /// The same search, keeping every matching post (`topic:<id>` in the
+    /// query searches one topic). Both come from one request.
+    func searchResults(
+        siteURL: String,
+        query: String,
+        cookieHeader: String?,
+        resourceLoader: (@MainActor (URL) async throws -> ForumResourceResponse)? = nil,
+        pace: ForumRequestPace = .default
+    ) async throws -> (hits: [ForumSearchHit], topics: [ForumTopicListing]) {
+        let data = try await searchData(
+            siteURL: siteURL,
+            query: query,
+            cookieHeader: cookieHeader,
+            resourceLoader: resourceLoader,
+            pace: pace
+        )
+        return Self.parseSearch(data, siteURL: siteURL)
+    }
+
+    private func searchData(
+        siteURL: String,
+        query: String,
+        cookieHeader: String?,
+        resourceLoader: (@MainActor (URL) async throws -> ForumResourceResponse)?,
+        pace: ForumRequestPace
+    ) async throws -> Data {
         guard let url = ForumSite.searchURL(siteURL: siteURL, query: query) else {
+            throw AssistantError.invalidResponse
+        }
+        return try await requestData(
+            url: url,
+            cookieHeader: cookieHeader,
+            resourceLoader: resourceLoader,
+            pace: pace
+        )
+    }
+
+    /// Posts of a topic by post number, in post order. Ids come from the
+    /// facts (`likelyPostID`); a guess that lands on another post is dropped,
+    /// so a number may be missing from the result.
+    func fetchPosts(
+        siteURL: String,
+        topicID: String,
+        numbers: [Int],
+        facts: ForumTopicFacts,
+        cookieHeader: String?,
+        resourceLoader: (@MainActor (URL) async throws -> ForumResourceResponse)? = nil,
+        pace: ForumRequestPace = .default
+    ) async throws -> [ForumPost] {
+        let wanted = Set(numbers)
+        var ids: [Int] = []
+        for number in numbers {
+            if let id = facts.likelyPostID(forNumber: number), !ids.contains(id) { ids.append(id) }
+        }
+        guard !ids.isEmpty else { return [] }
+        return try await fetchPosts(
+            siteURL: siteURL,
+            topicID: topicID,
+            postIDs: ids,
+            cookieHeader: cookieHeader,
+            resourceLoader: resourceLoader,
+            pace: pace
+        )
+        .filter { wanted.contains($0.number) }
+    }
+
+    /// Specific posts of a topic by post id (`/t/{id}/posts.json`), in post
+    /// order. Ids come from `ForumTopicFacts.stream`; each post carries its
+    /// real number.
+    func fetchPosts(
+        siteURL: String,
+        topicID: String,
+        postIDs: [Int],
+        cookieHeader: String?,
+        resourceLoader: (@MainActor (URL) async throws -> ForumResourceResponse)? = nil,
+        pace: ForumRequestPace = .default
+    ) async throws -> [ForumPost] {
+        guard let url = ForumSite.topicPostsJSONURL(siteURL: siteURL, topicID: topicID, postIDs: postIDs) else {
             throw AssistantError.invalidResponse
         }
         let data = try await requestData(
@@ -190,7 +282,7 @@ final class ForumService {
             resourceLoader: resourceLoader,
             pace: pace
         )
-        return Self.parseSearchResults(data, siteURL: siteURL)
+        return Self.parsePosts(data)
     }
 
     /// Recently active topics (`/latest.json`).
@@ -201,6 +293,27 @@ final class ForumService {
         pace: ForumRequestPace = .default
     ) async throws -> [ForumTopicListing] {
         guard let url = ForumSite.latestURL(siteURL: siteURL, json: true) else {
+            throw AssistantError.invalidResponse
+        }
+        let data = try await requestData(
+            url: url,
+            cookieHeader: cookieHeader,
+            resourceLoader: resourceLoader,
+            pace: pace
+        )
+        return Self.parseTopicList(data, siteURL: siteURL)
+    }
+
+    /// The day's (or another period's) top topics (`/top.json?period=`), in
+    /// the forum's order.
+    func topTopics(
+        siteURL: String,
+        period: String = "daily",
+        cookieHeader: String?,
+        resourceLoader: (@MainActor (URL) async throws -> ForumResourceResponse)? = nil,
+        pace: ForumRequestPace = .default
+    ) async throws -> [ForumTopicListing] {
+        guard let url = ForumSite.topURL(siteURL: siteURL, period: period) else {
             throw AssistantError.invalidResponse
         }
         let data = try await requestData(
@@ -279,10 +392,13 @@ final class ForumService {
         return url
     }
 
-    /// Title and post count without pulling the posts (`/t/{id}.json`).
+    /// Title and post count without pulling the posts (`/t/{id}.json`). With
+    /// a filter (top posts, one author) the facts' posts and stream are the
+    /// filtered ones.
     func fetchOverview(
         siteURL: String,
         topicID: String,
+        filter: ForumSite.TopicFilter? = nil,
         cookieHeader: String?,
         resourceLoader: (@MainActor (URL) async throws -> ForumResourceResponse)? = nil,
         pace: ForumRequestPace = .default
@@ -290,6 +406,7 @@ final class ForumService {
         let json = try await fetchTopicJSON(
             siteURL: siteURL,
             topicID: topicID,
+            filter: filter,
             cookieHeader: cookieHeader,
             resourceLoader: resourceLoader,
             pace: pace
@@ -300,30 +417,145 @@ final class ForumService {
             title: (json["title"] as? String ?? json["fancy_title"] as? String ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines),
             slug: json["slug"] as? String ?? topicID,
-            postCount: try Self.postCount(from: json)
+            postCount: try Self.postCount(from: json),
+            facts: Self.parseTopicFacts(json)
         )
     }
 
+    /// One listing per topic, in the `topics` order, with its first hit's
+    /// blurb as the excerpt (topics without a hit are kept).
     nonisolated static func parseSearchResults(_ data: Data, siteURL: String) -> [ForumTopicListing] {
+        parseSearch(data, siteURL: siteURL).topics
+    }
+
+    /// Every hit of `/search.json` in the forum's order (the `posts` array,
+    /// joined to `topics`), and the topic listings with their excerpts. A
+    /// post without a post number, or whose topic is missing from `topics`
+    /// (no title), is not a hit.
+    nonisolated static func parseSearch(
+        _ data: Data,
+        siteURL: String
+    ) -> (hits: [ForumSearchHit], topics: [ForumTopicListing]) {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return []
+            return ([], [])
         }
-        // Blurbs live on the posts array; join them to their topics.
+        let topicObjects = json["topics"] as? [[String: Any]] ?? []
+        var bare: [Int: ForumTopicListing] = [:]
+        for topic in topicObjects {
+            if let listing = listing(from: topic, siteURL: siteURL, excerpt: nil) {
+                bare[listing.id] = listing
+            }
+        }
+        let posts = json["posts"] as? [[String: Any]] ?? []
+        let hits: [ForumSearchHit] = posts.compactMap { post in
+            guard let topicID = post["topic_id"] as? Int,
+                  let topic = bare[topicID],
+                  let number = post["post_number"] as? Int, number >= 1
+            else {
+                return nil
+            }
+            return ForumSearchHit(
+                topic: topic,
+                postNumber: number,
+                username: post["username"] as? String,
+                blurb: post["blurb"] as? String
+            )
+        }
+        // Blurbs live on the posts; a topic's first one is its excerpt (also
+        // from posts too incomplete to be a hit).
         var excerpts: [Int: String] = [:]
-        for post in json["posts"] as? [[String: Any]] ?? [] {
+        for post in posts {
             if let topicID = post["topic_id"] as? Int,
                let blurb = post["blurb"] as? String,
                excerpts[topicID] == nil {
                 excerpts[topicID] = blurb
             }
         }
-        return (json["topics"] as? [[String: Any]] ?? []).compactMap { topic in
+        let topics = topicObjects.compactMap { topic in
             listing(
                 from: topic,
                 siteURL: siteURL,
                 excerpt: (topic["id"] as? Int).flatMap { excerpts[$0] }
             )
         }
+        return (hits, topics)
+    }
+
+    /// Topic facts from `/t/{id}.json`. The accepted answer comes from the
+    /// Solved plugin: `accepted_answer` (older versions), `accepted_answers`
+    /// (current), or the loaded post marked `accepted_answer: true`. Posts'
+    /// `topic_accepted_answer` only says the topic is solved. Likes are
+    /// `like_count`, which is null for visitors, else the like action count
+    /// in `actions_summary` (id 2).
+    nonisolated static func parseTopicFacts(_ json: [String: Any]) -> ForumTopicFacts {
+        let stream = json["post_stream"] as? [String: Any]
+        let posts: [ForumTopicFacts.Post] = (stream?["posts"] as? [[String: Any]] ?? []).compactMap { post in
+            guard let id = post["id"] as? Int,
+                  let number = post["post_number"] as? Int,
+                  let username = post["username"] as? String
+            else {
+                return nil
+            }
+            return ForumTopicFacts.Post(id: id, number: number, username: username, likeCount: likeCount(of: post))
+        }
+
+        func answer(_ object: Any?) -> ForumTopicFacts.AcceptedAnswer? {
+            guard let object = object as? [String: Any],
+                  let number = object["post_number"] as? Int, number >= 1
+            else {
+                return nil
+            }
+            return ForumTopicFacts.AcceptedAnswer(postNumber: number, username: object["username"] as? String)
+        }
+        var accepted = answer(json["accepted_answer"])
+            ?? answer((json["accepted_answers"] as? [Any])?.first)
+        if accepted == nil,
+           let marked = (stream?["posts"] as? [[String: Any]] ?? []).first(where: { $0["accepted_answer"] as? Bool == true }),
+           let number = marked["post_number"] as? Int {
+            accepted = ForumTopicFacts.AcceptedAnswer(postNumber: number, username: marked["username"] as? String)
+        }
+
+        let createdBy = ((json["details"] as? [String: Any])?["created_by"] as? [String: Any])?["username"] as? String
+        return ForumTopicFacts(
+            postsCount: json["posts_count"] as? Int,
+            highestPostNumber: json["highest_post_number"] as? Int,
+            stream: stream?["stream"] as? [Int] ?? [],
+            openingPoster: createdBy ?? posts.first { $0.number == 1 }?.username,
+            acceptedAnswer: accepted,
+            posts: posts
+        )
+    }
+
+    /// Posts of `/t/{id}/posts.json`, sorted by post number.
+    nonisolated static func parsePosts(_ data: Data) -> [ForumPost] {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let posts = (json["post_stream"] as? [String: Any])?["posts"] as? [[String: Any]]
+        else {
+            return []
+        }
+        return posts.compactMap { post -> ForumPost? in
+            guard let id = post["id"] as? Int,
+                  let number = post["post_number"] as? Int,
+                  let username = post["username"] as? String
+            else {
+                return nil
+            }
+            return ForumPost(
+                id: id,
+                number: number,
+                username: username,
+                text: DiscourseHTML.plainText(post["cooked"] as? String ?? ""),
+                likeCount: likeCount(of: post)
+            )
+        }
+        .sorted { $0.number < $1.number }
+    }
+
+    private nonisolated static func likeCount(of post: [String: Any]) -> Int? {
+        if let count = post["like_count"] as? Int { return count }
+        guard let actions = post["actions_summary"] as? [[String: Any]] else { return nil }
+        // An empty summary means no likes.
+        return actions.first { $0["id"] as? Int == 2 }?["count"] as? Int ?? 0
     }
 
     nonisolated static func parseTopicList(_ data: Data, siteURL: String) -> [ForumTopicListing] {
@@ -355,18 +587,22 @@ final class ForumService {
             slug: topic["slug"] as? String ?? String(id),
             postsCount: topic["posts_count"] as? Int ?? 0,
             lastPostedAt: topic["last_posted_at"] as? String ?? topic["bumped_at"] as? String,
-            excerpt: excerpt
+            excerpt: excerpt,
+            isPinned: topic["pinned"] as? Bool,
+            likeCount: topic["like_count"] as? Int,
+            hasAcceptedAnswer: topic["has_accepted_answer"] as? Bool
         )
     }
 
     private func fetchTopicJSON(
         siteURL: String,
         topicID: String,
+        filter: ForumSite.TopicFilter? = nil,
         cookieHeader: String?,
         resourceLoader: (@MainActor (URL) async throws -> ForumResourceResponse)?,
         pace: ForumRequestPace
     ) async throws -> [String: Any] {
-        guard let url = ForumSite.topicJSONURL(siteURL: siteURL, topicID: topicID) else {
+        guard let url = ForumSite.topicJSONURL(siteURL: siteURL, topicID: topicID, filter: filter) else {
             throw AssistantError.invalidResponse
         }
         let data = try await requestData(
@@ -393,24 +629,6 @@ final class ForumService {
             throw AssistantError.invalidResponse
         }
         return totalPosts
-    }
-
-    private func fetchPostCount(
-        siteURL: String,
-        topicID: String,
-        cookieHeader: String?,
-        resourceLoader: (@MainActor (URL) async throws -> ForumResourceResponse)?,
-        pace: ForumRequestPace
-    ) async throws -> Int {
-        try Self.postCount(
-            from: try await fetchTopicJSON(
-                siteURL: siteURL,
-                topicID: topicID,
-                cookieHeader: cookieHeader,
-                resourceLoader: resourceLoader,
-                pace: pace
-            )
-        )
     }
 
     private func fetchRawPage(
@@ -531,5 +749,65 @@ final class ForumService {
                 ?? HTTPURLResponse.localizedString(forStatusCode: http.statusCode),
             retryAfter: http.value(forHTTPHeaderField: "Retry-After")
         )
+    }
+}
+
+/// Plain text from Discourse's cooked HTML: block ends become line breaks,
+/// tags are dropped and common entities decoded. Image captions (lightbox
+/// file name and size) are left out.
+enum DiscourseHTML {
+    nonisolated static func plainText(_ html: String) -> String {
+        var text = html
+        let replacements: [(String, String)] = [
+            (#"(?is)<div class="meta">.*?</div>"#, ""),
+            (#"(?is)<(script|style)[^>]*>.*?</\1>"#, ""),
+            (#"(?i)<br\s*/?>"#, "\n"),
+            (#"(?i)<li[^>]*>"#, "\n- "),
+            (#"(?i)</(p|div|pre|blockquote|aside|h[1-6]|ul|ol|li|tr|table)>"#, "\n"),
+            (#"(?s)<[^>]+>"#, "")
+        ]
+        for (pattern, template) in replacements {
+            text = text.replacingOccurrences(of: pattern, with: template, options: .regularExpression)
+        }
+        text = decodeEntities(text)
+        // Trailing spaces go and blank-line runs collapse; leading spaces
+        // stay (code indentation).
+        text = text.replacingOccurrences(of: #"(?m)[ \t]+$"#, with: "", options: .regularExpression)
+        text = text.replacingOccurrences(of: #"\n{3,}"#, with: "\n\n", options: .regularExpression)
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static let namedEntities: [String: String] = [
+        "amp": "&", "lt": "<", "gt": ">", "quot": "\"", "apos": "'", "nbsp": " ",
+        "hellip": "…", "mdash": "—", "ndash": "–", "lsquo": "‘", "rsquo": "’",
+        "ldquo": "“", "rdquo": "”"
+    ]
+
+    nonisolated static func decodeEntities(_ text: String) -> String {
+        guard text.contains("&"),
+              let regex = try? NSRegularExpression(pattern: "&(#[0-9]+|#[xX][0-9A-Fa-f]+|[A-Za-z]+);")
+        else {
+            return text
+        }
+        let nsText = text as NSString
+        var result = ""
+        var cursor = 0
+        for match in regex.matches(in: text, range: NSRange(location: 0, length: nsText.length)) {
+            let name = nsText.substring(with: match.range(at: 1))
+            let decoded: String?
+            if name.hasPrefix("#x") || name.hasPrefix("#X") {
+                decoded = UInt32(name.dropFirst(2), radix: 16).flatMap(Unicode.Scalar.init).map { String(Character($0)) }
+            } else if name.hasPrefix("#") {
+                decoded = UInt32(name.dropFirst()).flatMap(Unicode.Scalar.init).map { String(Character($0)) }
+            } else {
+                decoded = namedEntities[name]
+            }
+            guard let decoded else { continue }
+            result += nsText.substring(with: NSRange(location: cursor, length: match.range.location - cursor))
+            result += decoded
+            cursor = match.range.location + match.range.length
+        }
+        result += nsText.substring(from: cursor)
+        return result
     }
 }

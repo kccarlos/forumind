@@ -185,7 +185,15 @@ enum SyncSettings {
         "hasCompletedOnboarding",
         "syncAPIKeys",
         // Each device's user accepts the Terms of Use on that device.
-        "acceptedTermsVersion"
+        "acceptedTermsVersion",
+        // The daily digest spends AI credits and schedules a background
+        // task on the device where it was turned on.
+        "dailyDigestEnabled",
+        "dailyDigestNotifies",
+        // Voice spends the user's key on this device, and its consent is
+        // given per device.
+        "voiceEnabled",
+        "voiceConsent"
     ]
 
     /// Each provider configuration is one unit: `configurations.<provider>`.

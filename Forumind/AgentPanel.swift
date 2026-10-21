@@ -604,6 +604,8 @@ struct AgentView: View {
             ForEach(sources) { source in
                 Button {
                     DCHaptics.tap()
+                    // The sources become the current list (result cards, Next).
+                    if let run { app.followSources(sources, selecting: source, siteURL: run.siteURL) }
                     onOpenTopic(source.url)
                 } label: {
                     HStack(alignment: .top, spacing: 10) {
@@ -619,11 +621,7 @@ struct AgentView: View {
                                 .foregroundStyle(.primary)
                                 .multilineTextAlignment(.leading)
                                 .lineLimit(2)
-                            Text(
-                                source.cited
-                                    ? (source.url.host ?? "")
-                                    : String(localized: "Read, not cited · \(source.url.host ?? "")", comment: "Source the agent read but didn't cite; the placeholder is the forum host")
-                            )
+                            Text(sourceDetail(source))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
@@ -639,10 +637,27 @@ struct AgentView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Source \(source.number): \(source.title)")
-                .accessibilityHint("Opens the topic in the browser")
+                .accessibilityValue(source.postNumber.map { String(localized: "Post \($0)", comment: "Accessibility value of an Ask the forum source that is one post of a topic; the number is the post number") } ?? "")
+                .accessibilityHint(
+                    source.postNumber == nil
+                        ? String(localized: "Opens the topic in the browser")
+                        : String(localized: "Opens the topic at this post in the browser", comment: "Accessibility hint of an Ask the forum source that is one post of a topic")
+                )
                 .accessibilityIdentifier("agentSource-\(source.number)")
             }
         }
+    }
+
+    /// The forum host, with the post number for a post-level source.
+    private func sourceDetail(_ source: AgentSources.Source) -> String {
+        let host = source.url.host ?? ""
+        if !source.cited {
+            return String(localized: "Read, not cited · \(host)", comment: "Source the agent read but didn't cite; the placeholder is the forum host")
+        }
+        if let post = source.postNumber {
+            return String(localized: "Post \(post) · \(host)", comment: "Ask the forum source that is one post of a topic; the number is the post number, the placeholder the forum host")
+        }
+        return host
     }
 
     private func followUpRow(_ message: ChatMessage) -> some View {

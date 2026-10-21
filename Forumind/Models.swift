@@ -222,6 +222,21 @@ struct AppSettings: Codable, Equatable {
     var filteredWords: [String] = []
     /// The Terms of Use version accepted on this device (0: none yet).
     var acceptedTermsVersion = 0
+    /// Daily digest (see DailyDigest.swift). Off by default: making it
+    /// spends the user's AI credits. On/off and the notification are per
+    /// device (each device spends and schedules on its own); what goes in
+    /// and how many cards sync.
+    var dailyDigestEnabled = false
+    var dailyDigestNotifies = false
+    var dailyDigestIncludesWatched = true
+    var dailyDigestIncludesTrending = true
+    var dailyDigestMaxCards = DigestLimits.defaultCards
+    /// Live voice (Forumind/Voice). Off until the user turns it on on this
+    /// device; the consent per provider is this device's too (App Review
+    /// 5.1.2: asked before the first session sends audio).
+    var voiceEnabled = false
+    var voiceConsent: [String: Date] = [:]
+    var voice = VoiceSettings()
 
     init() {}
 
@@ -250,6 +265,14 @@ struct AppSettings: Codable, Equatable {
         case blockedUsers
         case filteredWords
         case acceptedTermsVersion
+        case dailyDigestEnabled
+        case dailyDigestNotifies
+        case dailyDigestIncludesWatched
+        case dailyDigestIncludesTrending
+        case dailyDigestMaxCards
+        case voiceEnabled
+        case voiceConsent
+        case voice
     }
 
     // Snapshots written by earlier versions lack the newer keys; a missing key
@@ -321,6 +344,18 @@ struct AppSettings: Codable, Equatable {
         blockedUsers = (try? container.decodeIfPresent([BlockedUser].self, forKey: .blockedUsers)).flatMap { $0 } ?? []
         filteredWords = (try? container.decodeIfPresent([String].self, forKey: .filteredWords)).flatMap { $0 } ?? []
         acceptedTermsVersion = (try? container.decodeIfPresent(Int.self, forKey: .acceptedTermsVersion)).flatMap { $0 } ?? 0
+        dailyDigestEnabled = (try? container.decodeIfPresent(Bool.self, forKey: .dailyDigestEnabled)).flatMap { $0 } ?? false
+        dailyDigestNotifies = (try? container.decodeIfPresent(Bool.self, forKey: .dailyDigestNotifies)).flatMap { $0 } ?? false
+        dailyDigestIncludesWatched = (try? container.decodeIfPresent(Bool.self, forKey: .dailyDigestIncludesWatched))
+            .flatMap { $0 } ?? true
+        dailyDigestIncludesTrending = (try? container.decodeIfPresent(Bool.self, forKey: .dailyDigestIncludesTrending))
+            .flatMap { $0 } ?? true
+        dailyDigestMaxCards = DigestLimits.clampCards(
+            (try? container.decodeIfPresent(Int.self, forKey: .dailyDigestMaxCards)).flatMap { $0 } ?? DigestLimits.defaultCards
+        )
+        voiceEnabled = (try? container.decodeIfPresent(Bool.self, forKey: .voiceEnabled)).flatMap { $0 } ?? false
+        voiceConsent = (try? container.decodeIfPresent([String: Date].self, forKey: .voiceConsent)).flatMap { $0 } ?? [:]
+        voice = (try? container.decodeIfPresent(VoiceSettings.self, forKey: .voice)).flatMap { $0 } ?? VoiceSettings()
     }
 
     func configuration(for provider: AIProvider) -> ProviderConfiguration {
@@ -754,6 +789,10 @@ struct ForumTopicListing: Codable, Equatable, Identifiable {
     var postsCount: Int
     var lastPostedAt: String?
     var excerpt: String?
+    /// From topic lists (`/latest.json`, `/top.json`); nil from search.
+    var isPinned: Bool?
+    var likeCount: Int?
+    var hasAcceptedAnswer: Bool?
 
     var topicID: String { String(id) }
 
@@ -770,11 +809,85 @@ struct ForumTopicOverview: Equatable {
     var title: String
     var slug: String
     var postCount: Int
+    /// Read from the same JSON.
+    var facts: ForumTopicFacts?
 
     var url: URL {
         ForumSite.topicURL(siteURL: siteURL, topicID: topicID, slug: slug)
             ?? URL(string: siteURL) ?? URL(string: "about:blank")!
     }
+}
+
+/// One Discourse search hit: a post in a topic. `/search.json` can return
+/// several posts of one topic; hits keep the forum's order.
+struct ForumSearchHit: Equatable, Identifiable {
+    var topic: ForumTopicListing
+    var postNumber: Int
+    var username: String?
+    var blurb: String?
+
+    var id: String { "\(topic.id)/\(postNumber)" }
+
+    /// The topic opened at this post.
+    var url: URL {
+        ForumSite.topicURL(siteURL: topic.siteURL, topicID: topic.topicID, slug: topic.slug, postNumber: postNumber)
+            ?? topic.url
+    }
+}
+
+/// What `/t/{id}.json` says about a topic beyond its title, without another
+/// request: size, the post-id stream, the opening poster, the accepted answer
+/// (Solved plugin) and the posts the JSON included (about the first 20).
+struct ForumTopicFacts: Equatable {
+    struct Post: Equatable {
+        var id: Int
+        var number: Int
+        var username: String
+        var likeCount: Int?
+    }
+
+    struct AcceptedAnswer: Equatable {
+        var postNumber: Int
+        var username: String?
+    }
+
+    var postsCount: Int?
+    var highestPostNumber: Int?
+    /// Every post id in topic order. Its positions are not post numbers:
+    /// deleted posts leave gaps in the numbering.
+    var stream: [Int] = []
+    var openingPoster: String?
+    var acceptedAnswer: AcceptedAnswer?
+    var posts: [Post] = []
+
+    /// The id of post `number`, when the JSON included that post.
+    func postID(forNumber number: Int) -> Int? {
+        posts.first { $0.number == number }?.id
+    }
+
+    /// The id of post `number` if known, else a guess: counted along the
+    /// stream from the nearest included post before it. Deleted posts after
+    /// that one make the guess land later, so callers check the number of
+    /// the post that comes back.
+    func likelyPostID(forNumber number: Int) -> Int? {
+        if let id = postID(forNumber: number) { return id }
+        guard number >= 1, !stream.isEmpty else { return nil }
+        let anchor = posts
+            .filter { $0.number < number }
+            .max { $0.number < $1.number }
+            .flatMap { post in stream.firstIndex(of: post.id).map { (index: $0, number: post.number) } }
+        let index = anchor.map { $0.index + number - $0.number } ?? number - 1
+        return stream[min(index, stream.count - 1)]
+    }
+}
+
+/// A post fetched by id (`/t/{id}/posts.json`), its cooked HTML as plain text.
+struct ForumPost: Equatable, Identifiable {
+    var id: Int
+    var number: Int
+    var username: String
+    var text: String
+    var likeCount: Int?
 }
 
 enum WorkStatus: String, Codable {
@@ -888,6 +1001,8 @@ struct ForumFetchResult: Equatable {
     var totalPosts: Int
     var unchanged: Bool
     var newPosts: Int
+    /// From the topic JSON fetched for the post count.
+    var facts: ForumTopicFacts?
 }
 
 struct ForumResourceResponse {

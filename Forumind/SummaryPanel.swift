@@ -158,8 +158,9 @@ struct AssistantPanel: View {
         return "\(host)-\(topic.topicID)"
     }
 
+    /// A post link opens the topic at that post and highlights it.
     private func openInBrowser(_ url: URL) {
-        app.browser.load(url)
+        app.openLink(url)
         onOpenURL?(url)
     }
 

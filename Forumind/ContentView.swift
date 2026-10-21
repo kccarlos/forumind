@@ -43,7 +43,7 @@ struct ContentView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            workspace(width: proxy.size.width)
+            workspace(width: proxy.size.width, bottomSafeArea: proxy.safeAreaInsets.bottom)
                 .onChange(of: proxy.size.width, initial: true) { _, width in
                     updateLayout(forWidth: width)
                 }
@@ -107,6 +107,12 @@ struct ContentView: View {
         }
         .sheet(item: $reportTopic) { topic in
             ReportSheet(app: app, topic: topic, forumName: forumName(for: topic))
+        }
+        .sheet(isPresented: $app.showsTodayPage) {
+            TodayPage(app: app) { url, card in
+                app.openDigestLink(url, card: card)
+                showPane(.browser)
+            }
         }
         .sheet(isPresented: $showingAddForum) {
             AddForumSheet(app: app) { forum in
@@ -196,7 +202,7 @@ struct ContentView: View {
 
     // MARK: Workspace
 
-    private func workspace(width: CGFloat) -> some View {
+    private func workspace(width: CGFloat, bottomSafeArea: CGFloat) -> some View {
         let split = isSplit(width: width)
         let panel = panelWidth(containerWidth: width)
         let barPosition = app.settings.browserBarPosition
@@ -225,7 +231,14 @@ struct ContentView: View {
             )
             .opacity(hidesChrome ? 0 : 1)
 
-            BrowserContent(app: app, browser: app.browser, onAddForum: { showingAddForum = true })
+            BrowserContent(
+                app: app,
+                browser: app.browser,
+                // With the bar on top the page runs under the home indicator;
+                // the result cards stay above it.
+                cardsBottomInset: barPosition == .top && showsWebView ? bottomSafeArea : 0,
+                onAddForum: { showingAddForum = true }
+            )
                 // With the bar on top the page runs under the home indicator;
                 // WKWebView insets its own scroll view for the safe area and
                 // the keyboard, so only the bar moves when the keyboard
@@ -338,10 +351,14 @@ struct BrowserActions {
 
 /// The web view, with the Forums home over it when no page is loaded or the
 /// user asked for it. The web view stays mounted so its page and scroll
-/// position survive a trip to the Forums home.
+/// position survive a trip to the Forums home. The result cards
+/// (ResultCards.swift) sit at the bottom of the page, the crash banner at
+/// the top; neither covers the browser bar, which is outside this view.
 private struct BrowserContent: View {
     @ObservedObject var app: AppModel
     @ObservedObject var browser: ForumBrowserModel
+    /// Room the cards leave at the bottom (the home indicator).
+    var cardsBottomInset: CGFloat = 0
     let onAddForum: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -367,10 +384,65 @@ private struct BrowserContent: View {
                     .transition(DCMotion.slide(.top, reduceMotion: reduceMotion))
             }
         }
+        .overlay(alignment: .bottom) {
+            if !showsHome {
+                ResultCardsOverlay(app: app, browser: browser)
+                    .padding(.horizontal, DCTheme.spacingM)
+                    .padding(.bottom, DCTheme.spacingS + cardsBottomInset)
+                    .background(alignment: .bottom) {
+                        // The page height the cards cover, so the bridge's
+                        // "posts on screen" leaves those out.
+                        GeometryReader { proxy in
+                            Color.clear.preference(key: CoveredHeightKey.self, value: proxy.size.height)
+                        }
+                    }
+            }
+        }
+        .onPreferenceChange(CoveredHeightKey.self) { height in
+            let covered = app.browseCursor.cards == .hidden || app.browseCursor.isEmpty ? 0 : height
+            browser.setCoveredBottomInset(covered)
+        }
+        #if DEBUG
+        .overlay(alignment: .topLeading) {
+            if AssistantDebug.has("-dc-browse-debug") { BrowseDebugState(app: app) }
+        }
+        #endif
         .animation(DCMotion.respecting(reduceMotion), value: showsHome)
         .animation(DCMotion.respecting(reduceMotion, DCMotion.spring), value: browser.showsCrashNotice)
     }
 }
+
+private struct CoveredHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
+#if DEBUG
+/// `-dc-browse-debug`: the page position and the current list as an
+/// accessibility element for UI tests (`browseDebugState`). The highlighted
+/// posts are the ones the bridge reports marked on the page.
+private struct BrowseDebugState: View {
+    @ObservedObject var app: AppModel
+
+    private var state: String {
+        let context = app.pageContext
+        let highlighted = context.highlightedPosts.map(String.init).joined(separator: ",")
+        let current = app.browseCursor.index.map { String($0 + 1) } ?? "-"
+        return "post=\(context.postNumber.map(String.init) ?? "-") highlighted=\(highlighted) "
+            + "cards=\(app.browseCursor.items.count) current=\(current)"
+    }
+
+    var body: some View {
+        Text(verbatim: state)
+            .font(.system(size: 2))
+            .frame(width: 4, height: 4)
+            .opacity(0.02)
+            .allowsHitTesting(false)
+            .accessibilityLabel(Text(verbatim: state))
+            .accessibilityIdentifier("browseDebugState")
+    }
+}
+#endif
 
 /// Non-blocking notice after the page's web process quit more than once in a
 /// short time (auto-reload is paused so it can't loop).

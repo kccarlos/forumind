@@ -50,11 +50,11 @@ All app code is in `Forumind/`; files are grouped here by role.
 | File | Role |
 | --- | --- |
 | `ForumBrowser.swift` | `ForumBrowserModel` owns the `WKWebView`: navigation, the address bar, in-page probing, cookie handling, and attaching content-blocking rules. |
-| `PageContext.swift` | What the Assistant knows about the current page. After each navigation (and Discourse SPA route change) an in-page probe checks `meta[name=generator]`, `discourse-base-uri`, and `#data-discourse-setup`; the page settles into `loading`, `notForum`, `maybe`, `forumHome`, or `topic`. |
-| `ForumSite.swift` | Forum identity. A forum is its site URL: origin plus an optional base path for subfolder installs; https only (http for localhost). A topic key is `host[/basePath]/t/{id}`, unique across forums. URL builders and per-host cookie filtering live here. |
+| `PageContext.swift` | What the Assistant knows about the current page. After each navigation (and Discourse SPA route change) an in-page probe checks `meta[name=generator]`, `discourse-base-uri`, and `#data-discourse-setup`; the page settles into `loading`, `notForum`, `maybe`, `forumHome`, or `topic`. On a topic it also says where the reader is: the post in the URL, the posts on screen and highlighted, and (once fetched) the post count and accepted answer. |
+| `ForumSite.swift` | Forum identity. A forum is its site URL: origin plus an optional base path for subfolder installs; https only (http for localhost). A topic key is `host[/basePath]/t/{id}`, unique across forums. URL builders (including a post, `/t/slug/id/N`, and the `?filter=summary` and `?username_filters=` views) and per-host cookie filtering live here. |
 | `ForumDirectory.swift` | Pinned and recent forums, suggested forums, and "Add forum" address parsing and validation. |
 | `ForumsHome.swift` | The Forums home screen and the forum switcher. |
-| `ForumService.swift` | Discourse JSON and `/raw` endpoints for one forum per call, with incremental page caching and `Retry-After` handling. |
+| `ForumService.swift` | Discourse JSON and `/raw` endpoints for one forum per call, with incremental page caching and `Retry-After` handling. Post level: search hits with post number and author (`ForumSearchHit`), topic facts from the topic JSON already fetched (`ForumTopicFacts`: post-id stream, opening poster, accepted answer, likes), and specific posts by id (`/t/{id}/posts.json`). |
 | `ForumRequestPacing.swift` | `ForumRequestPace` (the setting) and `ForumRequestPacer`, which spaces out every forum request per host; its clock is injectable for tests. |
 
 **Forum requests.** When the web view is showing the same forum, JSON and raw
@@ -94,7 +94,8 @@ and after every page, so the bar and status keep moving during long reads.
 | `AppModel+Models.swift` | Model roles: `ModelRole`, `ModelScope`, per-role readiness and selection, favorites, and the rule that keeps `selectedProvider` on the assistant role for older builds. |
 | `AppModel+Assistant.swift`, `+Browse.swift`, `+Onboarding.swift`, `+ContentBlocking.swift`, `+CloudSync.swift`, `+StateDebug.swift` | Feature slices of `AppModel` (and their DEBUG launch arguments). |
 | `Models.swift` | Codable models: `AppSettings`, `TopicSession`, `AgentRun`, `WatchedTopic`, `WorkRecord`, provider configuration, `ModelSelection`. |
-| `WatchSupport.swift` | Local notifications and the Background App Refresh task for watched topics. |
+| `WatchSupport.swift` | Local notifications (watched topics, the daily digest) and the Background App Refresh task for watched topics. |
+| `DailyDigest.swift`, `AppModel+Digest.swift`, `DigestViews.swift` | The daily digest: cards, planning, the prefetch and its background task, storage; making the cards; the Today page, its Forums home row, and Settings › Daily digest. |
 
 **Work queue.** Summaries, chats, and agent runs are `WorkRecord`s. Two run at
 once (`TaskLimiter`), with per-topic ordering, up to 50 queued, progress and
@@ -148,6 +149,45 @@ optionally queue a refresh. Each topic is one paced request; topics checked
 longest ago go first, and a background check stops after about 20 seconds
 (`backgroundWatchCheckBudget`), so the rest go first next time.
 
+**Daily digest.** A Today page with one card per topic: watched topics with
+new replies since the last digest (most new replies first), then the day's
+top topics of the pinned forums (`/top.json?period=daily`, else
+`/latest.json`; the forums take turns, pinned announcements are skipped).
+A topic appears once, and the digest has at most 8 cards (3–20 in
+Settings). Each card shows the forum, why it is there ("5 new replies",
+"Trending"), a two-to-three sentence summary, and links that open the topic
+at the first new reply, the accepted answer, or the most liked reply
+(`?filter=summary` for long topics when that isn't known).
+
+| Step | When | What runs |
+| --- | --- | --- |
+| Prefetch | A `BGProcessingTask` (`<prefix>.digestPrefetch`, needs network and external power, from 4:00), only while the daily digest is on; or on open when no fresh prefetch exists | Forum JSON only: each pinned forum's list (up to 8 forums), then the topic JSON of the planned cards, watched topics first. At most 24 requests, at the gentle pace in the background, saved after each request. No AI. |
+| Notification | After a background prefetch that found topics, if turned on, once a day | "Today's digest is ready to make"; tapping it opens the Today page. |
+| Cards | Opening the Today page, or the app coming to the foreground with the daily digest on, while today's digest is missing or unfinished | One card at a time with the assistant model (`RunSettings` taken when the run starts), through the summary pipeline (`generateSummary` with the digest's instructions, so batching and the Apple Intelligence budgets apply). |
+
+A card's text comes from the cheapest source: an earlier digest's card for
+the same post count (no AI), the saved summary condensed when it covers every
+post (the topic isn't read again), or the topic read (cached pages reused;
+the beginning and newest replies kept within the context limit) and
+summarized. Every card's state (waiting, working, done, failed) is saved, so
+going to the background (the run pauses) or a kill continues from the same
+card. Offline, the card goes back to waiting and the page says so; a card
+that fails shows its error and can be retried, and nothing raises an alert.
+Without a ready assistant model nothing starts and the page offers setup.
+
+The digest is off by default, because making it spends the user's credits;
+the Today page always offers **Make Today's Digest**. On/off and the
+notification are device-local settings (each device spends and schedules
+on its own); what goes in and the card cap sync. The last 7 digests and the
+prefetch live in `digests.json` next to the snapshot, on the device only
+(not in iCloud sync); they can be deleted in Settings › Daily digest or from
+the Today page, and a forum's cards go with its data.
+
+The Today row sits at the top of the Forums home, and the Today page is a
+sheet owned by `ContentView`, so it works the same in the single-pane
+(iPhone) and side-by-side (iPad) layouts; opening a link closes it and shows
+the browser.
+
 ### AI providers
 
 | File | Role |
@@ -167,8 +207,9 @@ see [APPLE_INTELLIGENCE.md](APPLE_INTELLIGENCE.md).
 | `AgentPanel.swift` | The Ask the forum UI: goal, steps, answer with numbered sources, follow-ups. |
 
 The agent is read-only. Its tools are `search_forum` (Discourse search
-syntax), `list_latest`, `read_topic`, `summarize_topic`, `saved_summaries`,
-`watch_topic`, and `final_answer`. The planner asks the model for one JSON
+syntax; results list each matching post as `#N @author`), `list_latest`,
+`read_topic` (the `/raw` text starts each post with `author | date UTC | #N`),
+`summarize_topic`, `saved_summaries`, `watch_topic`, and `final_answer`. The planner asks the model for one JSON
 action per turn, so it works with every provider, including ones without
 native tool calling. Each run belongs to one forum (`AgentRun.siteURL`): every
 tool call and follow-up stays on it, topic ids from the model are reduced to
@@ -177,6 +218,18 @@ steps, 8 topic reads, 30k characters per read) are in Settings. Tools carry a
 `requiresApproval` flag so a tool that writes to the forum would need the
 user's confirmation. Topics the agent summarizes become ordinary saved
 summaries.
+
+**Sources.** The answer cites topics as `[title](url)` and single posts as
+`/t/slug/id/N` (`AgentSources`). Links to different posts of one topic are
+separate sources; a link to the whole topic reuses that topic's first source;
+topics read but not cited follow at topic level. Tapping a post-level source
+opens the topic at that post.
+
+**Runs from code.** `startAgentRun(goal:siteURL:completion:)` and
+`performAgentRun(goal:siteURL:)` queue a run like the panel does, without
+changing the panel, the selected run or the draft, and hand back an
+`AgentRunOutcome` (answer, sources, status) when it ends; `cancelAgentRun(id:)`
+stops one. The voice agent's `research` tool is meant to use them.
 
 ```mermaid
 sequenceDiagram
@@ -194,8 +247,166 @@ sequenceDiagram
     M->>F: run tool on the run's forum
     F-->>M: result (trimmed to budget)
   end
-  M-->>U: answer with [S1] [S2] sources
+  M-->>U: answer with [S1] [S2] sources (topics or posts)
 ```
+
+### Post-level browsing
+
+| File | Role |
+| --- | --- |
+| `BrowseBridge.swift` | The in-page bridge and its typed async calls on `ForumBrowserModel`. |
+| `BrowseCursor.swift` | `BrowseItem`, `BrowseCursor` (the current list), `BrowseLanding`, `BrowseFocus`, `BrowseResult`, and text trimming. |
+| `AppModel+Navigation.swift` | The navigation API: open, focus, find, next/previous, read, research, and the typed paths. |
+| `ResultCards.swift` | The current list as numbered cards over the page. |
+
+This layer moves the page to a single post. The voice agent's tools (`find`,
+`open`, `move`, `focus`, `read`, `research`) are meant to call it, and it
+works without voice through the cards and post links.
+
+**Bridge.** A third user script, next to the route observer and the
+moderation script, runs in its own `WKContentWorld`, main frame only, and is
+called with `callAsyncJavaScript` (2 s timeout; nil when the page is not a
+topic). It uses the moderation script's selectors
+(`article[id^="post_"]` in its `[data-post-number]` wrapper, `a[data-user-card]`,
+`.cooked`) and its MutationObserver + `requestAnimationFrame` pattern:
+
+- `scrollToPost(n)` puts a rendered post under Discourse's fixed header. A
+  post that isn't rendered (Discourse cloaks far-off posts) makes the app
+  load `/t/slug/id/N` instead, and Discourse lands on it.
+- `highlight([n])` / `clearHighlight()` add a class with an injected style
+  (a brand-blue bar and tint that read on light and dark themes). The
+  observer puts it back when Discourse re-renders a post.
+- `visible()` lists the posts actually in the viewport
+  (`getBoundingClientRect`, minus the header and the cards).
+- `postText(n)` returns a rendered post's plain text. Otherwise the app reads
+  the post from `/t/{id}/posts.json`.
+
+A post the moderation script hid (`data-forumind-hidden`; the DOM is shared
+between worlds) is never scrolled to, highlighted or returned. The Swift side
+checks the user's blocks and filters again on every hit, source and post text
+it gets from the forum's JSON.
+
+**Page position.** Discourse rewrites the URL to `/t/slug/id/N` while the
+reader scrolls, so `PageContext.postNumber` comes from the route observer.
+After scrolling settles (250 ms), the bridge posts the visible and
+highlighted posts to a message handler registered in its own world, so page
+scripts can't fake them. These position fields take a cheap path: AppModel
+updates `pageContext` without selecting or saving the topic. Every change
+also reaches `pageChanges`, debounced (400 ms), which the voice layer will
+turn into silent notes. The topic's facts (post count, accepted answer) are
+fetched once per topic when a navigation action needs them, or for every
+topic when `prefetchesTopicFacts` is on (left for voice, so plain reading
+costs no extra request).
+
+**Navigation model.** AppModel and `browseCursor` own the state; nothing else
+keeps a copy.
+
+- `openTopic(_:at:)` lands on `.post(n)`, `.solution`, `.last`, `.top` (the
+  top posts, `?filter=summary`) or `.firstNew`. `.firstNew` goes after a
+  watched topic's known replies; otherwise it uses the plain topic URL,
+  where Discourse puts a signed-in reader at their last-read post.
+- The landing post stays highlighted until the next navigation (or until the
+  reader leaves the topic). It is not timed: someone glancing back at an
+  iPad on a stand should still see where they are. A full page load
+  re-applies it.
+- `focus(_:)` narrows the topic with Discourse's own `?username_filters=`
+  (one author, or the opening poster) and `?filter=summary` views, or
+  highlights a set of posts (a tour). The focused posts become the current
+  list.
+- The current list (`BrowseCursor`) holds search hits from `find(_:scope:)`
+  (`topic:<id>` for the topic scope), research sources, or focused posts.
+  `next()` and `previous()` move along it and stop at either end.
+- `read(post:)` reads from the page first, then from `posts.json`.
+- `back()` and `forward()` use the browser's history.
+- `research(_:)` runs Ask the forum through `performAgentRun`, one at a time.
+  A new request cancels the old one, and `cancelResearch()` stops it. When
+  the answer comes back, the sources become the current list and the first
+  one opens at its post. The agent itself never moves the page.
+- Every action returns a Codable `BrowseResult`: a status, `shown` (for
+  example "Post 37 of 120 by alice (accepted answer)"), `content` (the
+  landing post's text, cut at a sentence near 3,000 characters, about 800
+  tokens) and `hits`. The text is English because the model reads it.
+
+**Cards.** `ResultCardsOverlay` sits in `BrowserContent`, where the crash
+banner is, so it works the same on iPhone and iPad and can't cover the
+browser bar, which is outside that view. It is a horizontal strip at the
+bottom of the page, above the bottom bar, or above the home indicator when
+the bar is on top. That keeps it clear of the post a jump lands on, which
+sits at the top. Each numbered card shows the title, post number, author and
+one line of text, and the current card is marked. The strip has
+previous/next buttons and a close button, can be swiped down to dismiss, and
+collapses to an "N results" chip. It also collapses while the bar is
+minimized, because the reader is scrolling.
+
+**Typed paths.** Without voice, links tapped in the assistant panel (answers
+and sources) and on the Today page go through `openLink(_:)`. A post link
+opens the topic at that post and highlights it. Tapping an Ask the forum
+source also makes that run's sources the current list, so the cards and Next
+follow them. Search keeps its own UI.
+
+### Voice agent (in progress: no audio yet)
+
+| File | Role |
+| --- | --- |
+| `Voice/LiveProtocol.swift` | The Gemini Live wire format (setup, client frames, server messages) and the AI Studio and Vertex AI endpoints. |
+| `Voice/LiveTransport.swift` | `LiveTransport`, and its WebSocket implementation (ordered sends, receive loop, ping, close codes). |
+| `Voice/VoiceSession.swift` | The session: states, tool-response hold, scheduling, briefings, silent notes, resumption and refresh, stalls, watchdogs, idle close, minutes used. |
+| `Voice/VoiceTools.swift` | The seven tools, defined once, with the Gemini adapter. |
+| `Voice/VoiceToolBridge.swift` | `VoiceNavigator`, the tools run on the navigation layer, research briefings, and routing in code. |
+| `Voice/VoiceContext.swift` | The silent context: topic brief, position deltas, full post text, screen references. |
+| `Voice/VoiceInstructions.swift` | The system instruction, in named parts. |
+| `Voice/VoiceAudio.swift` | The audio boundary (`VoiceAudioIO`), the clock, comfort noise. |
+| `Voice/VoiceSettings.swift` | Voice settings, consent, minutes per day. |
+| `AppModel+Voice.swift` | AppModel as the navigator; the session's configuration and the consent gate. |
+
+The voice agent talks to Gemini Live (`gemini-3.8-live`) directly from the
+device with the user's own key: AI Studio with the Google Gemini key, or
+Vertex AI with the Vertex key (`us-central1`, the full
+`projects/…/publishers/google/models/…` model name; the project comes from
+the Vertex address in Settings or from the voice settings). The key goes in
+the `x-goog-api-key` header. The session and tool layer is built and tested
+offline; the audio engine (capture, echo cancellation, playback) and the
+voice UI are not. No live call has been made yet.
+
+**Tools.** `find`, `open`, `move`, `focus`, `read`, `research` and `end`, all
+NON_BLOCKING (a BLOCKING call pauses the whole server stream). They call the
+navigation layer above and turn its `BrowseResult` into a function
+response: `status`, `shown`, `content`, `hits` and a `message` that tells
+the model what to say next, for example to give the gist and not read the
+post out, or, in eyes-free mode, that it may read it. Refusals say to tell
+the user instead of retrying. A `research` request that is only a browser
+command ("next", "post 37", "the solution") is done directly. Research
+answers `started` at once, sends progress as silent briefings and the answer
+as a WHEN_IDLE briefing; a new research replaces the old one.
+
+**Session.** `VoiceSession` holds each function response until the
+`turnComplete` after its call (at most 1.5 s), and downgrades INTERRUPT to
+WHEN_IDLE while the model speaks or playback still has audio. Updates that
+answer no call are function responses named `briefing` with made-up ids.
+Silent notes (`clientContent`, `turnComplete: false`) go out only while both
+sides are quiet. The whole context goes out again after every reconnect,
+because what was sent after the last resumption handle is lost. AI Studio
+gets one connection per session (close before resume) and a fresh,
+re-seeded session at about 54 minutes. Vertex never resumes a resumed
+session. A turn with no server message for 10 s recycles the connection.
+Watchdogs nudge an unacknowledged research after 1.5 s, re-send a
+result unspoken for 6 s, and cut off tool markup spoken as text. The session
+closes after the idle timeout (60 s by default), and counts connected
+minutes per session and per day for a cost guard whose limits are still open.
+
+**Silent context.** `VoiceContext` builds bracketed `[Screen: …]` and
+`[Forumind: …]` notes: a topic brief when a topic opens (title, forum and its
+language, the opening question, post count, solution, top posts, the saved
+summary or a quick one made in the background), then position deltas from
+`pageChanges` (current post, visible posts as author and first sentence, the
+current list). When the user's words point at the screen ("this post",
+"他说的"), or the reader stops on a post for about 2 s, the focused post's
+full text is sent (both switchable). Posts are capped at about 800 tokens.
+
+**Consent.** Before the first session with a provider, the user must agree
+that audio and the page content they ask about go to Google (App Review
+5.1.2). The consent, like "voice on", is kept per device; the voice
+preferences sync. The session refuses to start without it.
 
 ### Share extension and incoming links
 
@@ -295,7 +506,7 @@ the 50 most recent agent runs are kept.
 
 | Target | What it covers |
 | --- | --- |
-| `ForumindTests` | Unit tests: forum identity and URL building, forum request pacing (fake clock), the work queue and state transitions, incoming links, onboarding, agent sources, content blocking (compiles every bundled chunk in WebKit), CloudKit sync against a fake transport (two simulated devices), Keychain sync, iPad layout math, String Catalog completeness (every key translated, matching format specifiers, plural variations). |
-| `ForumindUITests` | UI tests on simulators (Forums home, onboarding, settings navigation, share hand-off, iPad layouts) and smoke tests for physical devices. |
+| `ForumindTests` | Unit tests: forum identity and URL building, forum request pacing (fake clock), the daily digest (card plan, prefetch cap, scheduling, resumable cards), the work queue and state transitions, incoming links, onboarding, agent sources (topic and post level), post-level browsing (the current list, landing URLs, page position and its debounce, find/read with moderation, research single-flight, result trimming), the voice agent offline (Gemini Live message fixtures, the session against a fake transport, fake audio and a manual clock, tool mapping, context notes, consent), post-level Discourse parsing (trimmed JSON fixtures in `DiscourseFixtures.swift`), content blocking (compiles every bundled chunk in WebKit), CloudKit sync against a fake transport (two simulated devices), Keychain sync, iPad layout math, String Catalog completeness (every key translated, matching format specifiers, plural variations). |
+| `ForumindUITests` | UI tests on simulators (Forums home, the Today page, landing on a post and the result cards on a live topic, onboarding, settings navigation, share hand-off, iPad layouts) and smoke tests for physical devices. |
 
 See [DEVELOPMENT.md](DEVELOPMENT.md) for how to run them.

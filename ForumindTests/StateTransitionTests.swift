@@ -1158,8 +1158,9 @@ final class StateTransitionTests: XCTestCase {
 
 /// Stands in for the AI provider: records what each call ran with, streams
 /// one delta, then (while `gated`) waits until the test releases it —
-/// ignoring task cancellation, like a provider that answers anyway.
-private final class StateAIStub: AIService {
+/// ignoring task cancellation, like a provider that answers anyway. Also
+/// used by DailyDigestTests.
+final class StateAIStub: AIService {
     struct Call {
         var kind: String
         var provider: AIProvider
@@ -1167,6 +1168,7 @@ private final class StateAIStub: AIService {
         var batchLimit: Int?
         var contextLimit: Int?
         var customPrompt = ""
+        var content = ""
 
         var label: String { "\(provider.rawValue)/\(configuration.model)" }
     }
@@ -1205,7 +1207,7 @@ private final class StateAIStub: AIService {
     ) async throws -> String {
         await onProgress(.batchStarted(level: 1, index: 0, count: 2))
         let call = Call(kind: "summary", provider: provider, configuration: configuration,
-                        batchLimit: batchLimit, customPrompt: customPrompt)
+                        batchLimit: batchLimit, customPrompt: customPrompt, content: content)
         await arrive(call, delta: "[\(call.label)]", onDelta: onDelta)
         return "Summary by \(call.label)"
     }
@@ -1324,13 +1326,31 @@ private final class RolePlanner: AgentPlanner, @unchecked Sendable {
 }
 
 /// Forum endpoints for any `/t/{id}.json`, `/raw/{id}`, and
-/// `/site/basic-info.json`. One path at a time can be held until released.
-private final class StateForumStub: URLProtocol {
+/// `/site/basic-info.json`, plus topic lists set per host (`lists`). One
+/// path at a time can be held until released; `offline` fails every request
+/// like a device without a connection. Also used by DailyDigestTests.
+final class StateForumStub: URLProtocol {
     private static let lock = NSLock()
     nonisolated(unsafe) private static var gatedPath: String?
     nonisolated(unsafe) private static var held: (() -> Void)?
     nonisolated(unsafe) private static var seen: [String] = []
     nonisolated(unsafe) private static var counts: [String: Int] = [:]
+    nonisolated(unsafe) private static var listBodies: [String: String] = [:]
+    nonisolated(unsafe) private static var isOffline = false
+
+    /// Topic list bodies by "host/path", e.g. "forum.example.com/top.json".
+    static var lists: [String: String] {
+        get { lock.withLock { listBodies } }
+        set { lock.withLock { listBodies = newValue } }
+    }
+
+    static var offline: Bool {
+        get { lock.withLock { isOffline } }
+        set { lock.withLock { isOffline = newValue } }
+    }
+
+    /// Every request so far, as its path.
+    static var requests: [String] { lock.withLock { seen } }
 
     static var postCounts: [String: Int] {
         get { lock.withLock { counts } }
@@ -1345,6 +1365,8 @@ private final class StateForumStub: URLProtocol {
             held = nil
             seen = []
             counts = [:]
+            listBodies = [:]
+            isOffline = false
         }
     }
 
@@ -1371,8 +1393,14 @@ private final class StateForumStub: URLProtocol {
 
     override func startLoading() {
         let path = request.url?.path ?? ""
+        if Self.offline {
+            Self.lock.withLock { Self.seen.append(path) }
+            client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet))
+            return
+        }
+        let listKey = "\(request.url?.host ?? "")\(path)"
         let respond = { [self] in
-            let (status, body) = Self.body(for: path)
+            let (status, body) = Self.lists[listKey].map { (200, $0) } ?? Self.body(for: path)
             let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: "HTTP/1.1", headerFields: nil)!
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             client?.urlProtocol(self, didLoad: Data(body.utf8))

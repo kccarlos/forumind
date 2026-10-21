@@ -27,6 +27,10 @@ import UserNotifications
 //                                   roles and model selection: AppModel+Models.swift
 // - `agentSiteURL`                  forum the next agent run targets (nil → current forum)
 // - `startAgentRun(goal:siteURL:)`  runs are scoped to one forum (`AgentRun.siteURL`)
+// - `startAgentRun(goal:siteURL:completion:)` / `performAgentRun(goal:siteURL:)`
+//                                   a run started from code (no panel, selection or draft
+//                                   change) that hands back `AgentRunOutcome`
+// - `cancelAgentRun(id:)`           stops a queued or running run
 // - `sessions` is keyed by topic key (`host[/basePath]/t/{id}`); per-topic calls take
 //   `topicKey:` (`setKept`, `deleteSession`, `setInstructions`, `isWatched`, `unwatch`,
 //   `markWatchedSeen`)
@@ -41,6 +45,11 @@ import UserNotifications
 // - `handleDeepLink(_:)`            forumind://open?url=…&action=…
 //
 // Ad and tracker blocking: see AppModel+ContentBlocking.swift.
+//
+// Post-level browsing (AppModel+Navigation.swift): `openTopic(_:at:)`,
+// `focus(_:)`, `find(_:scope:)`, `next()` / `previous()`, `read(post:)`,
+// `research(_:)` / `cancelResearch()`, `openLink(_:)`; the current list is
+// `browseCursor`, page changes for the voice layer arrive on `pageChanges`.
 
 enum PanelRoute: String, CaseIterable {
     case topic = "Topic"
@@ -56,11 +65,23 @@ enum AssistantMode: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+/// What an agent run started from code hands back once it ends: the answer
+/// and its sources (topics, or single posts with `postNumber`), or why there
+/// is none (`status` cancelled or failed, `error`).
+struct AgentRunOutcome: Equatable {
+    var runID: UUID
+    var status: WorkStatus
+    var answer: String
+    var sources: [AgentSources.Source]
+    var error: String
+}
+
 enum AgentError: LocalizedError {
     case missingArgument(String)
     case topicBudgetExhausted(Int)
     case unknownTool(String)
     case runNotFound
+    case queueFull
 
     /// Shown in the step list (localized).
     var errorDescription: String? {
@@ -73,6 +94,8 @@ enum AgentError: LocalizedError {
             String(localized: "Unknown tool \"\(name)\". Available: \(Self.toolNames)", comment: "Ask the forum step error; placeholders are technical tool names")
         case .runNotFound:
             String(localized: "The agent run no longer exists.")
+        case .queueFull:
+            String(localized: "The task queue is full. Cancel or wait for an existing task.")
         }
     }
 
@@ -85,6 +108,7 @@ enum AgentError: LocalizedError {
             "The topic-read budget (\(limit)) is used up; answer with what you have."
         case .unknownTool(let name): "Unknown tool \"\(name)\". Available: \(Self.toolNames)"
         case .runNotFound: "The agent run no longer exists."
+        case .queueFull: "The task queue is full."
         }
     }
 
@@ -145,7 +169,9 @@ final class AppModel: ObservableObject {
     @Published var settingsStatus = ""
     /// Models each provider offers, from the last successful load.
     @Published var discoveredModels: [AIProvider: [String]] = [:]
-    @Published private(set) var agentRuns: [AgentRun]
+    @Published private(set) var agentRuns: [AgentRun] {
+        didSet { deliverAgentRunOutcomes() }
+    }
     @Published private(set) var watchedTopics: [WatchedTopic]
     @Published var selectedAgentRunID: UUID?
     @Published var agentGoalDraft = ""
@@ -165,6 +191,15 @@ final class AppModel: ObservableObject {
     @Published var presentAssistant = false
     /// A hand-off needed this role's model, which is not ready yet.
     @Published var needsProviderSetup: ModelRole?
+    /// Recent daily digests, newest first (AppModel+Digest.swift; device-local).
+    @Published var digests: [DailyDigest] = []
+    /// What making today's digest is doing (preparing, a card, an error).
+    @Published var digestActivity: DigestActivity = .idle
+    /// The Today page is shown (Forums home, digest notification).
+    @Published var showsTodayPage = false
+    /// The current list (search hits, research sources, focused posts) and
+    /// the result cards' state (AppModel+Navigation.swift).
+    @Published var browseCursor = BrowseCursor()
 
     nonisolated static var suggestedForums: [SuggestedForum] {
         #if DEBUG
@@ -178,10 +213,21 @@ final class AppModel: ObservableObject {
     let cloudSync: CloudSyncController
 
     private let store: PersistentStore
-    private let forumService: ForumService
-    private let aiService: AIService
+    // Also used by the feature slices in other files (AppModel+Digest.swift).
+    let forumService: ForumService
+    let aiService: AIService
     private let planner: AgentPlanner
-    private let notifier: WatchNotifier
+    let notifier: WatchNotifier
+    /// The daily digest's files and background task (AppModel+Digest.swift).
+    let digestStore: DigestStore
+    let backgroundScheduler: BackgroundTaskScheduling
+    var digestPrefetch: DigestPrefetch?
+    var digestNotifiedDay: String?
+    var digestTask: Task<Void, Never>?
+    /// The run `digestTask` belongs to; a paused (cancelled) run that is
+    /// still unwinding never writes over a newer one.
+    var digestRunID: UUID?
+    private var openTodayObserver: NSObjectProtocol?
     private let limiter = TaskLimiter(limit: 2)
     private var runningTasks: [UUID: Task<Void, Never>] = [:]
     private var didRestoreTasks = false
@@ -207,12 +253,30 @@ final class AppModel: ObservableObject {
     var settingsSaveDelay: Duration = .milliseconds(400)
     private static let watchInterval: TimeInterval = 30 * 60
     private static let agentTopicPrefix = "agent:"
+    /// Runs started from code that wait for their outcome (in memory only).
+    private var agentRunCompletions: [UUID: (AgentRunOutcome) -> Void] = [:]
     /// When true, agent tools and watch checks call the forum through
     /// ForumService's URLSession instead of the embedded web view (tests).
     var usesDirectForumRequests = false
+    /// Topic overviews (title, slug, facts) by topic key, fetched once per
+    /// topic for navigation (AppModel+Navigation.swift).
+    var topicOverviews: [String: ForumTopicOverview] = [:]
+    /// The running `research(_:)` and its generation; a newer one wins.
+    var researchTask: Task<AgentRunOutcome, Error>?
+    var researchGeneration = 0
+    /// Feeds the voice session's silent context (AppModel+Voice.swift).
+    var voicePageSubscription: AnyCancellable?
+    /// Every page context change (both kinds); `pageChanges` debounces it.
+    let pageUpdates = PassthroughSubject<PageContext, Never>()
+    /// How long the page must settle before `pageChanges` reports it.
+    var pageChangeDelay: DispatchQueue.SchedulerTimeType.Stride = .milliseconds(400)
+    /// Fetch every opened topic's facts (post count, accepted answer) into
+    /// the page context. Off by default (one more request per topic); the
+    /// voice layer turns it on. Navigation actions fetch them either way.
+    var prefetchesTopicFacts = false
 
     /// Loader that runs forum requests in the authenticated web view context.
-    private var webViewResourceLoader: (@MainActor (URL) async throws -> ForumResourceResponse)? {
+    var webViewResourceLoader: (@MainActor (URL) async throws -> ForumResourceResponse)? {
         guard !usesDirectForumRequests else { return nil }
         return { [browser] url in try await browser.fetchForumResource(url) }
     }
@@ -224,9 +288,12 @@ final class AppModel: ObservableObject {
         browser: ForumBrowserModel? = nil,
         planner: AgentPlanner? = nil,
         notifier: WatchNotifier = .shared,
-        cloudSync: CloudSyncController? = nil
+        cloudSync: CloudSyncController? = nil,
+        backgroundScheduler: BackgroundTaskScheduling = BGTaskScheduler.shared
     ) {
         self.store = store
+        self.backgroundScheduler = backgroundScheduler
+        digestStore = DigestStore(directory: store.directoryURL)
         self.keyStore = store.keys
         self.cloudSync = cloudSync ?? CloudSyncController.makeDefault(for: store)
         self.forumService = forumService
@@ -308,6 +375,12 @@ final class AppModel: ObservableObject {
         self.browser.onPageContextChanged = { [weak self] context in
             self?.handlePageContext(context)
         }
+        self.browser.onPagePositionChanged = { [weak self] context in
+            self?.handlePagePosition(context)
+        }
+        self.browser.topicFactsLookup = { [weak self] topic in
+            self?.topicOverviews[topic.topicKey]?.facts
+        }
         // Start on the most recently visited forum (or the first pinned one);
         // with none, the browser stays empty and the UI shows the Forums home.
         currentForum = Self.startForum(in: forums)
@@ -332,6 +405,18 @@ final class AppModel: ObservableObject {
         WatchBackgroundRefresh.perform = { [weak self] in
             await self?.checkWatchedTopics(reason: .background)
         }
+        loadDigests()
+        openTodayObserver = NotificationCenter.default.addObserver(
+            forName: WatchNotifier.openTodayNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.openTodayFromNotification() }
+        }
+        DigestBackgroundPrefetch.perform = { [weak self] in
+            await self?.performBackgroundDigestPrefetch()
+        }
+        if settings.dailyDigestEnabled { scheduleDigestPrefetch() }
         Task { [weak self] in
             await self?.refreshNotificationAuthorization()
         }
@@ -348,6 +433,8 @@ final class AppModel: ObservableObject {
         } else if ProcessInfo.processInfo.arguments.contains("-ui-test-sample-session") {
             seedUITestSession()
         }
+        // Sample only: never over the real digests or with a real key.
+        if AssistantDebug.isActive, AssistantDebug.has("-dc-digest-sample") { seedDigestSample() }
         applyStateDebugScript()
         #endif
         self.cloudSync.attach(self)
@@ -442,6 +529,25 @@ final class AppModel: ObservableObject {
         }
         select(topic: context.topic)
         completePendingShare(with: context)
+        pageUpdates.send(context)
+        if prefetchesTopicFacts, let topic = context.topic, context.state == .topic,
+           topicOverviews[topic.topicKey] == nil {
+            Task { [weak self] in _ = await self?.topicOverview(siteURL: topic.siteURL, topicID: topic.topicID) }
+        }
+    }
+
+    /// Only the page's position changed (posts on screen, highlights, the
+    /// topic's facts): no topic selection or save.
+    func handlePagePosition(_ context: PageContext) {
+        pageContext = context
+        pageUpdates.send(context)
+    }
+
+    /// The forum a URL is on: a directory forum, else the page's forum.
+    func siteURL(containing url: URL) -> String? {
+        if let forum = directory.forum(containing: url) { return forum.siteURL }
+        if let siteURL = pageContext.siteURL, ForumSite.isSameForum(url: url, siteURL: siteURL) { return siteURL }
+        return nil
     }
 
     private func completePendingShare(with context: PageContext) {
@@ -788,6 +894,7 @@ final class AppModel: ObservableObject {
             agentRuns.removeAll { $0.siteURL == siteURL }
             watchedTopics.removeAll { $0.siteURL == siteURL }
             reconcileAgentSelection()
+            removeDigestCards(siteURL: siteURL)
         }
         if pageContext.siteURL == siteURL { suppressedAutoAddSiteURL = siteURL }
         var directory = self.directory
@@ -824,18 +931,79 @@ final class AppModel: ObservableObject {
     /// Starts an agent run on `siteURL` (default: `agentSiteURL`, else the
     /// current forum). Every tool call and follow-up stays on that forum.
     func startAgentRun(goal rawGoal: String, siteURL: String? = nil) {
+        guard !rawGoal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        do {
+            selectedAgentRunID = try enqueueAgentRun(goal: rawGoal, siteURL: siteURL)
+            agentGoalDraft = ""
+        } catch {
+            presentedError = error.localizedDescription
+        }
+    }
+
+    /// Starts an agent run from code (the voice `research` tool): it goes
+    /// through the same work queue and loop, shows up in Ask the forum and
+    /// Manage, but leaves the panel, the selected run and the drafts alone.
+    /// `completion` gets the outcome once, on the main actor, when the run
+    /// completes, fails, is cancelled or is deleted. Throws instead of
+    /// showing an alert when it cannot start.
+    @discardableResult
+    func startAgentRun(
+        goal: String,
+        siteURL: String? = nil,
+        completion: @escaping (AgentRunOutcome) -> Void
+    ) throws -> UUID {
+        let id = try enqueueAgentRun(goal: goal, siteURL: siteURL)
+        agentRunCompletions[id] = completion
+        return id
+    }
+
+    /// `startAgentRun(goal:siteURL:completion:)` as an async call. Cancelling
+    /// the calling task cancels the run.
+    func performAgentRun(goal: String, siteURL: String? = nil) async throws -> AgentRunOutcome {
+        let started = StartedRun()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                do {
+                    let id = try startAgentRun(goal: goal, siteURL: siteURL) { continuation.resume(returning: $0) }
+                    started.id = id
+                    // Cancelled before the run existed: the handler saw no id.
+                    if Task.isCancelled { cancelAgentRun(id: id) }
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                if let id = started.id { self?.cancelAgentRun(id: id) }
+            }
+        }
+    }
+
+    /// The run id `performAgentRun` shares with its cancellation handler.
+    private final class StartedRun: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value: UUID?
+        var id: UUID? {
+            get { lock.withLock { value } }
+            set { lock.withLock { value = newValue } }
+        }
+    }
+
+    /// Cancels a queued or running agent run (its work record).
+    func cancelAgentRun(id: UUID) {
+        guard let record = activeRecord(forAgentRun: id) else { return }
+        cancel(record: record)
+    }
+
+    private func enqueueAgentRun(goal rawGoal: String, siteURL: String?) throws -> UUID {
         let goal = rawGoal.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !goal.isEmpty else { return }
+        guard !goal.isEmpty else { throw AgentError.missingArgument("goal") }
         guard let forumSiteURL = (siteURL ?? agentSiteURL ?? currentForum?.siteURL)
             .flatMap(ForumSite.normalizeSiteURL)
         else {
-            presentedError = AssistantError.noForum.localizedDescription
-            return
+            throw AssistantError.noForum
         }
-        guard activeTaskCount < 50 else {
-            presentedError = String(localized: "The task queue is full. Cancel or wait for an existing task.")
-            return
-        }
+        guard activeTaskCount < 50 else { throw AgentError.queueFull }
         let selection = settings.agentModel
         var run = AgentRun(
             siteURL: forumSiteURL,
@@ -847,9 +1015,37 @@ final class AppModel: ObservableObject {
         agentRuns.insert(run, at: 0)
         cloudSync.notePruned(kind: .run, ids: agentRuns.dropFirst(50).map(\.id.uuidString))
         agentRuns = Array(agentRuns.prefix(50))
-        selectedAgentRunID = run.id
-        agentGoalDraft = ""
         launchAgentRecord(for: run, title: goal)
+        return run.id
+    }
+
+    /// Hands each waiting run that has ended (or is gone) its outcome, once.
+    /// Called on every change to `agentRuns`; delivered on the next main-actor
+    /// turn so a completion never runs inside that change.
+    private func deliverAgentRunOutcomes() {
+        guard !agentRunCompletions.isEmpty else { return }
+        for (id, completion) in agentRunCompletions {
+            let outcome: AgentRunOutcome
+            if let run = agentRuns.first(where: { $0.id == id }) {
+                guard run.status.isTerminal else { continue }
+                outcome = AgentRunOutcome(
+                    runID: id,
+                    status: run.status,
+                    answer: run.status == .completed ? run.answer : "",
+                    sources: run.status == .completed
+                        ? AgentSources.extract(from: run.answer, run: run, sessions: sessions)
+                        : [],
+                    error: run.error
+                )
+            } else {
+                outcome = AgentRunOutcome(
+                    runID: id, status: .cancelled, answer: "", sources: [],
+                    error: AgentError.runNotFound.localizedDescription
+                )
+            }
+            agentRunCompletions.removeValue(forKey: id)
+            Task { @MainActor in completion(outcome) }
+        }
     }
 
     /// Continues a finished run with a follow-up question; the agent keeps the
@@ -1115,6 +1311,8 @@ final class AppModel: ObservableObject {
                 Task { [weak self] in await self?.checkWatchedTopics(reason: .foreground) }
             }
             Task { [weak self] in await self?.refreshNotificationAuthorization() }
+            openTodayFromNotification()
+            resumeDigestIfNeeded()
         case .inactive:
             // Coalesced edits must not be lost if the app is closed next.
             flushPendingSaves()
@@ -1123,6 +1321,10 @@ final class AppModel: ObservableObject {
             watchTimer?.cancel()
             watchTimer = nil
             if !watchedTopics.isEmpty { WatchBackgroundRefresh.schedule() }
+            // Summaries are made in the foreground only; the run continues
+            // from the same card next time.
+            pauseDigest()
+            if settings.dailyDigestEnabled { scheduleDigestPrefetch() }
         @unknown default:
             break
         }
@@ -1390,6 +1592,7 @@ final class AppModel: ObservableObject {
         }
         if let role = needsProviderSetup, isProviderReady(for: role) { needsProviderSetup = nil }
         contentBlockingSettingsDidChange(from: old)
+        digestSettingsDidChange(from: old)
         if old.blockedUsers != settings.blockedUsers || old.filteredWords != settings.filteredWords {
             applyModerationRules()
         }
@@ -1670,7 +1873,15 @@ final class AppModel: ObservableObject {
     /// assistant model; the agent's `summarize_topic` tool also uses the
     /// assistant model (`summarizer`).
     private func runSettings(for record: WorkRecord) -> RunSettings {
-        let role: ModelRole = record.type == .agent ? .agent : .assistant
+        runSettings(
+            role: record.type == .agent ? .agent : .assistant,
+            topicKey: record.topicKey,
+            batchLimit: record.batchLimit
+        )
+    }
+
+    /// The same snapshot for work outside the queue (the daily digest).
+    func runSettings(role: ModelRole, topicKey: String, batchLimit: Int? = nil) -> RunSettings {
         let resolved = { (role: ModelRole) -> RunSettings.Model in
             let provider = self.settings.model(for: role).provider
             return RunSettings.Model(
@@ -1687,9 +1898,9 @@ final class AppModel: ObservableObject {
             provider: main.provider,
             configuration: main.configuration,
             summarizer: role == .assistant ? main : resolved(.assistant),
-            batchLimit: record.batchLimit ?? settings.summaryBatchLimit,
+            batchLimit: batchLimit ?? settings.summaryBatchLimit,
             contextLimit: settings.forumContextLimit,
-            topicInstructions: effectiveInstructions(for: record.topicKey),
+            topicInstructions: effectiveInstructions(for: topicKey),
             globalInstructions: settings.systemPrompt,
             agentMaxSteps: settings.agentMaxSteps,
             agentMaxTopicReads: settings.agentMaxTopicReads,
@@ -1849,6 +2060,18 @@ final class AppModel: ObservableObject {
         session.lastCheckedAt = Date()
         session.updatedAt = Date()
         sessions[record.topicKey] = session
+        save()
+    }
+
+    /// Keeps a topic's freshly read pages in its existing session (the
+    /// daily digest); a topic without one gets none.
+    func storeFetchedPages(_ fetch: ForumFetchResult, topicKey: String) {
+        guard var session = sessions[topicKey] else { return }
+        session.source = fetch.content
+        session.rawPages = fetch.rawPages
+        session.totalPosts = fetch.totalPosts
+        session.lastCheckedAt = Date()
+        sessions[topicKey] = session
         save()
     }
 
@@ -2192,14 +2415,17 @@ final class AppModel: ObservableObject {
             else {
                 throw AgentError.missingArgument("query")
             }
-            let listings = try await forumService.search(
+            let results = try await forumService.searchResults(
                 siteURL: siteURL,
                 query: query,
                 cookieHeader: cookies,
                 resourceLoader: loader,
                 pace: context.forumRequestPace
             )
-            return (String(localized: "\(listings.count) topics", comment: "Ask the forum step outcome: number of topics found"), AgentPrompt.format(listings: listings))
+            return (
+                String(localized: "\(results.topics.count) topics", comment: "Ask the forum step outcome: number of topics found"),
+                AgentPrompt.format(listings: results.topics, hits: results.hits)
+            )
 
         case "list_latest":
             let listings = try await forumService.latestTopics(
@@ -2221,7 +2447,8 @@ final class AppModel: ObservableObject {
             )
             return (
                 String(localized: "Read \(session.totalPosts ?? 0) posts", comment: "Ask the forum step outcome: number of posts read in a topic"),
-                "Topic: \(session.title)\nURL: \(session.url.absoluteString)\n\n\(bounded)"
+                "Topic: \(session.title)\nURL: \(session.url.absoluteString)"
+                    + " (post N: \(ForumSite.topicPageURL(session.url).absoluteString)/N)\n\n\(bounded)"
             )
 
         case "summarize_topic":
@@ -2447,7 +2674,7 @@ final class AppModel: ObservableObject {
 
     /// Writes the snapshot (and any changed API keys) now. Data changes save
     /// at once; settings edits are coalesced through `saveSettings()`.
-    private func save() {
+    func save() {
         settingsSaveTask?.cancel()
         settingsSaveTask = nil
         cloudSync.localDataDidChange()

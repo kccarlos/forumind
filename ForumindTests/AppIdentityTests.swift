@@ -15,8 +15,9 @@ final class AppIdentityTests: XCTestCase {
         let permitted = Bundle.main.object(
             forInfoDictionaryKey: "BGTaskSchedulerPermittedIdentifiers"
         ) as? [String]
-        XCTAssertEqual(permitted, [WatchBackgroundRefresh.identifier])
+        XCTAssertEqual(permitted, [WatchBackgroundRefresh.identifier, DigestBackgroundPrefetch.identifier])
         XCTAssertEqual(WatchBackgroundRefresh.identifier, "\(AppIdentity.identifierPrefix).watchRefresh")
+        XCTAssertEqual(DigestBackgroundPrefetch.identifier, "\(AppIdentity.identifierPrefix).digestPrefetch")
     }
 
     func testOnlyTheForumindURLSchemeIsRegistered() {

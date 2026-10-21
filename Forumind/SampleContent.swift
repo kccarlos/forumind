@@ -70,6 +70,10 @@ struct SampleContent {
     var chatStreamingQuestion: String
     var chatStreamingAnswer: String
 
+    // Daily digest (`-dc-digest-sample`): the unified-view, layer-shift and
+    // stepper cards.
+    var digestBlurbs: [String]
+
     /// The set for the app's language.
     static var current: SampleContent {
         switch AppLanguage.current {
@@ -195,7 +199,11 @@ extension SampleContent {
         - **Most like it**: one place to catch up
         """,
         chatStreamingQuestion: "Does it change the keyboard shortcuts?",
-        chatStreamingAnswer: "Only one: `g n` now opens the unified view, and"
+        chatStreamingAnswer: "Only one: `g n` now opens the unified view, and",
+        digestBlurbs: [
+            "Since you last looked, the team confirmed the unified view becomes the default next month. Most new replies ask how to keep the old Unread list; a staff reply explains the per-user setting.",
+            "Owners of long prints traced the shifts to a lower stepper current in the 2.4 firmware. The accepted answer restores the old value in the config, and three people confirm it fixes their prints."
+        ]
     )
 }
 
@@ -312,7 +320,11 @@ extension SampleContent {
         - **多数人喜欢**：一个地方就能跟上
         """,
         chatStreamingQuestion: "这会改变键盘快捷键吗？",
-        chatStreamingAnswer: "只改了一个：`g n` 现在会打开统一视图，而且"
+        chatStreamingAnswer: "只改了一个：`g n` 现在会打开统一视图，而且",
+        digestBlurbs: [
+            "自你上次查看以来，团队确认统一视图将在下个月成为默认。新回复大多在问如何保留原来的未读列表，工作人员回复说明了每个用户的设置。",
+            "长时间打印的用户把错层追查到 2.4 固件降低了步进电机电流。采纳的答案在配置中恢复了原来的数值，已有三人确认解决了问题。"
+        ]
     )
 }
 
@@ -429,7 +441,11 @@ extension SampleContent {
         - **多數人喜歡**：一個地方就能掌握
         """,
         chatStreamingQuestion: "這會改變鍵盤快速鍵嗎？",
-        chatStreamingAnswer: "只改了一個：`g n` 現在會打開統一檢視，而且"
+        chatStreamingAnswer: "只改了一個：`g n` 現在會打開統一檢視，而且",
+        digestBlurbs: [
+            "自你上次查看以來，團隊確認統一檢視將在下個月成為預設。新回覆大多在問如何保留原本的未讀列表，工作人員的回覆說明了每位使用者的設定。",
+            "長時間列印的使用者把層偏移追查到 2.4 韌體降低了步進馬達電流。被採納的答案在設定中恢復了原本的數值，已有三人確認解決了問題。"
+        ]
     )
 }
 #endif

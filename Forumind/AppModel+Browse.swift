@@ -72,7 +72,10 @@ extension AppModel {
     /// - `-dc-forums-home`   starts on the Forums home even when a forum was restored
     /// - `-dc-open <url>`    opens a page on launch
     /// - `-dc-show-switcher` opens the forum switcher after launch (ContentView)
+    /// - `-dc-browse-post`, `-dc-browse-find`, `-dc-browse-debug` post-level
+    ///                       browsing (AppModel+Navigation.swift)
     func applyDebugLaunchArguments() {
+        applyBrowseDebugArguments()
         let arguments = ProcessInfo.processInfo.arguments
         if arguments.contains("-dc-seed-forums"), forums.isEmpty {
             // Discourse Meta plus fictional communities on reserved example

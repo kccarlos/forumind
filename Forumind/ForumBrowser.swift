@@ -15,6 +15,9 @@ import WebKit
 ///   `loadLogin()`, back/forward/reload/stop.
 /// - `contentBlocker` — built-in ad/tracker blocking (ContentBlocker.swift);
 ///   its lists follow each main-frame navigation.
+/// - The browser bridge (BrowseBridge.swift): `scrollToPost`, `highlight`,
+///   `clearHighlight`, `postsOnScreen`, `postText`; the posts on screen
+///   arrive in `pageContext` (`visiblePosts`, `highlightedPosts`).
 @MainActor
 final class ForumBrowserModel: NSObject, ObservableObject {
     private static let routeMessageName = "dcRouteChanged"
@@ -170,8 +173,20 @@ final class ForumBrowserModel: NSObject, ObservableObject {
     private var deferredLoad: URL?
     /// The longest a load waits for rule-list lookups (never for compiling).
     static let ruleLookupWait: Duration = .milliseconds(300)
-    /// Called whenever `pageContext` changes.
+    /// Called whenever `pageContext` changes, apart from its position fields.
     var onPageContextChanged: ((PageContext) -> Void)?
+    /// Called when only the position fields of `pageContext` change (posts on
+    /// screen, highlights, the topic's facts): cheap, and often while scrolling.
+    var onPagePositionChanged: ((PageContext) -> Void)?
+    /// The topic's facts when AppModel has them (post count, accepted answer).
+    var topicFactsLookup: ((ForumTopic) -> ForumTopicFacts?)?
+    /// The bridge's latest scroll report (visible and highlighted posts).
+    private var lastBridgeReport: BrowseBridgeReport?
+    private let browseMessageHandler = BrowseMessageHandler()
+    /// A highlight to re-apply once its topic is on screen (BrowseBridge.swift).
+    var pendingHighlight: PendingHighlight?
+    /// The page height the app's result cards cover at the bottom.
+    var coveredBottomInset: CGFloat = 0
     /// Directory lookup: pages on a known forum count as Discourse before the
     /// probe reports.
     var knownForumLookup: ((URL) -> KnownForumSite?)?
@@ -210,6 +225,15 @@ final class ForumBrowserModel: NSObject, ObservableObject {
                 forMainFrameOnly: true
             )
         )
+        // Scrolls to, highlights and reads posts, in its own content world.
+        configuration.userContentController.addUserScript(
+            WKUserScript(
+                source: BrowseScript.installer,
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true,
+                in: BrowseScript.world
+            )
+        )
 
         webView = WKWebView(frame: .zero, configuration: configuration)
         contentBlocker = ContentBlocker(
@@ -221,6 +245,12 @@ final class ForumBrowserModel: NSObject, ObservableObject {
         configuration.userContentController.add(
             routeMessageHandler,
             name: Self.routeMessageName
+        )
+        browseMessageHandler.browser = self
+        configuration.userContentController.add(
+            browseMessageHandler,
+            contentWorld: BrowseScript.world,
+            name: BrowseScript.messageName
         )
         webView.navigationDelegate = self
         webView.uiDelegate = self
@@ -663,20 +693,47 @@ final class ForumBrowserModel: NSObject, ObservableObject {
         canGoForward = webView.canGoForward
         isLoading = webView.isLoading
 
-        let context = PageContext.make(
+        let made = PageContext.make(
             url: resolvedURL,
             title: resolvedTitle,
             probe: lastProbe,
             knownForum: resolvedURL.flatMap { knownForumLookup?($0) }
         )
+        let context = made.merging(report: lastBridgeReport, facts: made.topic.flatMap { topicFactsLookup?($0) })
         if let siteURL = context.siteURL, homeSiteURL != siteURL {
             homeSiteURL = siteURL
         }
+        publish(context)
+    }
+
+    /// Publishes a new page context: the full callback for a new page or
+    /// route, the cheap one when only the position fields changed.
+    private func publish(_ context: PageContext) {
         guard context != pageContext else { return }
         let siteChanged = context.siteURL != pageContext.siteURL
+        let topicChanged = context.topic?.topicKey != pageContext.topic?.topicKey
+            || context.state != pageContext.state
+        let positionOnly = context.sameDocument(as: pageContext)
         pageContext = context
-        onPageContextChanged?(context)
+        if positionOnly {
+            onPagePositionChanged?(context)
+        } else {
+            onPageContextChanged?(context)
+        }
         if siteChanged { applyModerationToPage() }
+        if topicChanged { applyPendingHighlight() }
+    }
+
+    /// The bridge reported the posts on screen (debounced in the page).
+    func handleBridgeReport(_ report: BrowseBridgeReport) {
+        guard let url = webView.url, Self.isRouteMessage(from: report.url, forPageAt: url) else { return }
+        lastBridgeReport = report
+        publish(pageContext.merging(report: report, facts: pageContext.topic.flatMap { topicFactsLookup?($0) }))
+    }
+
+    /// AppModel has new facts for the page's topic.
+    func refreshTopicFacts() {
+        publish(pageContext.merging(report: lastBridgeReport, facts: pageContext.topic.flatMap { topicFactsLookup?($0) }))
     }
 
     /// Blocked users, filtered words and the developer's list (AppModel
@@ -803,6 +860,8 @@ extension ForumBrowserModel: WKNavigationDelegate {
             if self.showsCrashNotice { self.showsCrashNotice = false }
             self.updateNavigationState()
             self.applyModerationToPage()
+            // A full load starts a fresh bridge: mark the landing post again.
+            self.applyPendingHighlight()
             await self.probeCurrentPage()
             #if DEBUG
             // `-dc-scroll-page <points>`: scrolls each loaded page (screenshots).

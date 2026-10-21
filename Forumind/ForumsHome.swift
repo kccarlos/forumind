@@ -38,6 +38,7 @@ struct ForumsHome: View {
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
             } else {
+                TodayEntry(app: app)
                 pinnedSection
                 recentSection
             }

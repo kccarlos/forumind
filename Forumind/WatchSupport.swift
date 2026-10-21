@@ -2,12 +2,20 @@ import BackgroundTasks
 import Foundation
 import UserNotifications
 
-/// Local notifications for watched topics. Tapping one opens the topic in the
-/// embedded browser via `openURLNotification`.
+/// Local notifications for watched topics and the daily digest. Tapping a
+/// watched topic's opens it in the embedded browser via
+/// `openURLNotification`; the digest's opens the Today page
+/// (`openTodayNotification`).
 final class WatchNotifier: NSObject, UNUserNotificationCenterDelegate {
     static let shared = WatchNotifier()
     static let openURLNotification = Notification.Name(AppIdentity.identifier("openURL"))
+    static let openTodayNotification = Notification.Name(AppIdentity.identifier("openToday"))
     private static let urlKey = "url"
+    private static let routeKey = "route"
+    private static let todayRoute = "today"
+    /// A digest notification was tapped before the app model observed it
+    /// (cold launch); the model opens the Today page when it's ready.
+    @MainActor static var pendingTodayOpen = false
 
     func isAuthorized() async -> Bool {
         let settings = await UNUserNotificationCenter.current().notificationSettings()
@@ -43,6 +51,23 @@ final class WatchNotifier: NSObject, UNUserNotificationCenterDelegate {
         try? await UNUserNotificationCenter.current().add(request)
     }
 
+    /// "Today's digest is ready to make": the forum data is fetched, the
+    /// summaries are made when the app opens (never claims they are ready).
+    func notifyDigestReady(topicCount: Int) async {
+        guard await isAuthorized() else { return }
+        let content = UNMutableNotificationContent()
+        content.title = String(localized: "Today’s digest is ready to make", comment: "Notification title after the daily digest's forum data was fetched in the background; the AI summaries are made when the app opens")
+        content.body = String(
+            localized: "\(topicCount) topics are waiting. Open Forumind to summarize them.",
+            comment: "Digest notification body; the number is how many topics the digest will have"
+        )
+        content.sound = .default
+        content.userInfo = [Self.routeKey: Self.todayRoute]
+        content.threadIdentifier = "digest"
+        let request = UNNotificationRequest(identifier: "digest-ready", content: content, trigger: nil)
+        try? await UNUserNotificationCenter.current().add(request)
+    }
+
     // MARK: UNUserNotificationCenterDelegate
 
     func userNotificationCenter(
@@ -56,6 +81,11 @@ final class WatchNotifier: NSObject, UNUserNotificationCenterDelegate {
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
     ) async {
+        if response.notification.request.content.userInfo[Self.routeKey] as? String == Self.todayRoute {
+            await MainActor.run { Self.pendingTodayOpen = true }
+            NotificationCenter.default.post(name: Self.openTodayNotification, object: nil)
+            return
+        }
         guard let urlString = response.notification.request.content.userInfo[Self.urlKey] as? String,
               let url = URL(string: urlString)
         else {
