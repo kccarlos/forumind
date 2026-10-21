@@ -114,6 +114,7 @@ struct ContentView: View {
                 showPane(.browser)
             }
         }
+        .modifier(VoiceConsentPresenter(app: app, voice: app.voice))
         .sheet(isPresented: $showingAddForum) {
             AddForumSheet(app: app) { forum in
                 app.openForum(forum)
@@ -234,6 +235,7 @@ struct ContentView: View {
             BrowserContent(
                 app: app,
                 browser: app.browser,
+                voice: app.voice,
                 // With the bar on top the page runs under the home indicator;
                 // the result cards stay above it.
                 cardsBottomInset: barPosition == .top && showsWebView ? bottomSafeArea : 0,
@@ -357,6 +359,7 @@ struct BrowserActions {
 private struct BrowserContent: View {
     @ObservedObject var app: AppModel
     @ObservedObject var browser: ForumBrowserModel
+    @ObservedObject var voice: VoiceController
     /// Room the cards leave at the bottom (the home indicator).
     var cardsBottomInset: CGFloat = 0
     let onAddForum: () -> Void
@@ -385,22 +388,28 @@ private struct BrowserContent: View {
             }
         }
         .overlay(alignment: .bottom) {
-            if !showsHome {
-                ResultCardsOverlay(app: app, browser: browser)
-                    .padding(.horizontal, DCTheme.spacingM)
-                    .padding(.bottom, DCTheme.spacingS + cardsBottomInset)
-                    .background(alignment: .bottom) {
-                        // The page height the cards cover, so the bridge's
-                        // "posts on screen" leaves those out.
-                        GeometryReader { proxy in
-                            Color.clear.preference(key: CoveredHeightKey.self, value: proxy.size.height)
-                        }
-                    }
+            // The voice bar sits under the cards, and stays over the Forums
+            // home (a session can start there).
+            VStack(spacing: DCTheme.spacingS) {
+                if !showsHome { ResultCardsOverlay(app: app, browser: browser) }
+                if voice.showsBar {
+                    VoiceBar(voice: voice)
+                        .transition(DCMotion.slide(.bottom, reduceMotion: reduceMotion))
+                }
+            }
+            .padding(.horizontal, DCTheme.spacingM)
+            .padding(.bottom, DCTheme.spacingS + cardsBottomInset)
+            .background(alignment: .bottom) {
+                // The page height the cards and the voice bar cover, so the
+                // bridge's "posts on screen" leaves those out.
+                GeometryReader { proxy in
+                    Color.clear.preference(key: CoveredHeightKey.self, value: proxy.size.height)
+                }
             }
         }
         .onPreferenceChange(CoveredHeightKey.self) { height in
-            let covered = app.browseCursor.cards == .hidden || app.browseCursor.isEmpty ? 0 : height
-            browser.setCoveredBottomInset(covered)
+            let noCards = app.browseCursor.cards == .hidden || app.browseCursor.isEmpty
+            browser.setCoveredBottomInset(noCards && !voice.showsBar ? 0 : height)
         }
         #if DEBUG
         .overlay(alignment: .topLeading) {
@@ -409,6 +418,7 @@ private struct BrowserContent: View {
         #endif
         .animation(DCMotion.respecting(reduceMotion), value: showsHome)
         .animation(DCMotion.respecting(reduceMotion, DCMotion.spring), value: browser.showsCrashNotice)
+        .animation(DCMotion.respecting(reduceMotion, DCMotion.spring), value: voice.showsBar)
     }
 }
 
@@ -650,6 +660,7 @@ private struct BrowserChrome: View {
             if horizontalSizeClass == .compact {
                 pageIdentity
                 reloadButton
+                voiceButton
                 overflowMenu
             } else {
                 // All forums lives in the switcher and the menu, so the
@@ -657,6 +668,7 @@ private struct BrowserChrome: View {
                 homeButton
                 reloadButton
                 pageIdentity
+                voiceButton
                 accountButton
                 overflowMenu
             }
@@ -731,6 +743,15 @@ private struct BrowserChrome: View {
     private var homeButton: some View {
         browserButton("house", label: homeLabel, action: goHome)
             .accessibilityIdentifier("browserHome")
+    }
+
+    /// Live voice (VoiceViews.swift), when a Gemini or Vertex key is there
+    /// or voice is on.
+    @ViewBuilder
+    private var voiceButton: some View {
+        if app.showsVoiceButton {
+            VoiceBarButton(voice: app.voice, onTap: actions.noteInteraction)
+        }
     }
 
     private var reloadButton: some View {

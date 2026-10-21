@@ -344,7 +344,7 @@ opens the topic at that post and highlights it. Tapping an Ask the forum
 source also makes that run's sources the current list, so the cards and Next
 follow them. Search keeps its own UI.
 
-### Voice agent (in progress: no audio yet)
+### Voice agent
 
 | File | Role |
 | --- | --- |
@@ -356,7 +356,15 @@ follow them. Search keeps its own UI.
 | `Voice/VoiceContext.swift` | The silent context: topic brief, position deltas, full post text, screen references. |
 | `Voice/VoiceInstructions.swift` | The system instruction, in named parts. |
 | `Voice/VoiceAudio.swift` | The audio boundary (`VoiceAudioIO`), the clock, comfort noise. |
-| `Voice/VoiceSettings.swift` | Voice settings, consent, minutes per day. |
+| `Voice/VoiceAudioEngine.swift` | `VoiceAudioEngine`: capture with echo cancellation, playback, interruptions and route changes, the health snapshot. |
+| `Voice/VoiceAudioFormat.swift` | The audio formats, `PCMConverter`, `FrameChunker`, `PCMLevel`. |
+| `Voice/VoiceActivityDetector.swift` | `VADTuning`, `VoiceActivityDetector`, `CaptureGate`. |
+| `Voice/PlaybackQueue.swift` | `PlaybackQueue` (jitter buffer), `PlaybackProfile`, `PlaybackRatePolicy` (time-stretch). |
+| `Voice/VoiceAudioHealth.swift` | `VoiceAudioHealth`, `VoiceProcessingStatus`, `MicSignalWatchdog`, `SpeakingHold`. |
+| `Voice/VoiceSettings.swift` | Voice settings, the voice list, consent, minutes per day. |
+| `Voice/VoiceController.swift` | Starts and ends sessions for the UI: the microphone, the consent sheet, the bar. |
+| `Voice/VoiceDebug.swift` | The typed-input switch and the scripted session for UI tests (`-dc-voice-fake`). |
+| `VoiceViews.swift` | The browser-bar microphone, the consent sheet, the voice bar with its Health row, Settings › Voice. |
 | `AppModel+Voice.swift` | AppModel as the navigator; the session's configuration and the consent gate. |
 
 The voice agent talks to Gemini Live (`gemini-3.8-live`) directly from the
@@ -364,9 +372,8 @@ device with the user's own key: AI Studio with the Google Gemini key, or
 Vertex AI with the Vertex key (`us-central1`, the full
 `projects/…/publishers/google/models/…` model name; the project comes from
 the Vertex address in Settings or from the voice settings). The key goes in
-the `x-goog-api-key` header. The session and tool layer is built and tested
-offline; the audio engine (capture, echo cancellation, playback) and the
-voice UI are not. No live call has been made yet.
+the `x-goog-api-key` header. Everything below is tested offline; the first
+live sessions are run on a device by the owner.
 
 **Tools.** `find`, `open`, `move`, `focus`, `read`, `research` and `end`, all
 NON_BLOCKING (a BLOCKING call pauses the whole server stream). They call the
@@ -392,7 +399,57 @@ session. A turn with no server message for 10 s recycles the connection.
 Watchdogs nudge an unacknowledged research after 1.5 s, re-send a
 result unspoken for 6 s, and cut off tool markup spoken as text. The session
 closes after the idle timeout (60 s by default), and counts connected
-minutes per session and per day for a cost guard whose limits are still open.
+minutes per session and per day on the device.
+
+**Cost guard.** A per-session limit (15 minutes by default) and a daily
+limit (30), each adjustable or off. At a limit the session ends at the next
+quiet moment, after the current answer (at most a minute later), and the
+bar says why; once today's minutes are used, a new session ends at once.
+
+**Audio.** `VoiceAudioEngine` runs an `AVAudioEngine` with the session in
+`.playAndRecord` / `.voiceChat` (Bluetooth HFP and A2DP, default to the
+speaker, 40 ms IO buffer). Voice processing is turned on on the input node
+before the engine starts, which makes the engine's I/O one voice-processing
+unit; the player → `AVAudioUnitTimePitch` → main mixer chain is connected
+in `start()` and plays through it, so the echo canceller hears what the
+voice says. Both input mutes (the unit's and `AVAudioApplication`'s) are
+cleared at start.
+
+- Capture: the tap buffer (hardware format, usually 48 kHz Float32) is
+  copied on the render thread and converted on the main actor to 16 kHz
+  PCM16, cut into 40 ms frames and passed through `CaptureGate`. Its
+  voice-activity detector measures the speech band against an adaptive
+  noise floor and starts closed, so nothing is sent until the user speaks;
+  the transition reaches the session before the frames (with 100 ms of
+  pre-roll). `MicSignalWatchdog` flags a microphone that delivers digital
+  zero for 3 s and rebuilds capture once.
+- Playback: the model's 24 kHz chunks go through `PlaybackQueue`, an
+  adaptive jitter buffer (150–500 ms for Gemini) that schedules them back to
+  back on one player node. Every 20 ms it steers the time-pitch rate
+  (0.85–1.05, pitch kept) from the buffered audio, and counts underruns.
+  `isPlaying` covers buffering and a short hold across gaps (`SpeakingHold`),
+  since it decides when INTERRUPT is downgraded.
+- A route change, `AVAudioEngineConfigurationChange` or a media-services
+  reset rebuilds the chain, restoring `.voiceChat` and voice processing (the
+  reset also replaces the engine and its nodes). A call or Siri pauses and
+  flushes; when iOS doesn't offer to resume, the bar shows "Tap to resume".
+- With `audio` in `UIBackgroundModes` the audio and the connection keep
+  going with the screen locked. Not yet tried on a device: the page position
+  and, by default, forum requests come from the web view, which iOS suspends
+  in the background, so tools that need the page may stall until the app is
+  back.
+
+**UI.** The microphone in the browser bar (both positions) shows while voice
+is on, or while a Gemini or Vertex key is there and voice was never agreed
+to. The first tap per provider opens the consent sheet. The voice bar sits
+over the bottom of the page under the result cards, also over the Forums
+home, and counts as covered page for the bridge. It shows the state, the
+last transcript line, mute and end; tapping the state opens the Health row
+(echo cancellation and what is missing, underruns and the buffer target,
+the route, the microphone rate and level). The typed-input field ("type
+instead of speak") sends `realtimeInput.text`; it is always there in DEBUG
+builds and behind a developer switch (seven taps on Build in Settings ›
+Help › About) otherwise.
 
 **Silent context.** `VoiceContext` builds bracketed `[Screen: …]` and
 `[Forumind: …]` notes: a topic brief when a topic opens (title, forum and its
@@ -506,7 +563,7 @@ the 50 most recent agent runs are kept.
 
 | Target | What it covers |
 | --- | --- |
-| `ForumindTests` | Unit tests: forum identity and URL building, forum request pacing (fake clock), the daily digest (card plan, prefetch cap, scheduling, resumable cards), the work queue and state transitions, incoming links, onboarding, agent sources (topic and post level), post-level browsing (the current list, landing URLs, page position and its debounce, find/read with moderation, research single-flight, result trimming), the voice agent offline (Gemini Live message fixtures, the session against a fake transport, fake audio and a manual clock, tool mapping, context notes, consent), post-level Discourse parsing (trimmed JSON fixtures in `DiscourseFixtures.swift`), content blocking (compiles every bundled chunk in WebKit), CloudKit sync against a fake transport (two simulated devices), Keychain sync, iPad layout math, String Catalog completeness (every key translated, matching format specifiers, plural variations). |
-| `ForumindUITests` | UI tests on simulators (Forums home, the Today page, landing on a post and the result cards on a live topic, onboarding, settings navigation, share hand-off, iPad layouts) and smoke tests for physical devices. |
+| `ForumindTests` | Unit tests: forum identity and URL building, forum request pacing (fake clock), the daily digest (card plan, prefetch cap, scheduling, resumable cards), the work queue and state transitions, incoming links, onboarding, agent sources (topic and post level), post-level browsing (the current list, landing URLs, page position and its debounce, find/read with moderation, research single-flight, result trimming), the voice agent offline (Gemini Live message fixtures, the session against a fake transport, fake audio and a manual clock, tool mapping, context notes, consent, typed input, the cost guard), the audio pipeline without hardware (sample-rate conversion, framing, the voice-activity detector on four short speech fixtures in `ForumindTests/Audio` mixed with generated noise, the jitter buffer and time-stretch replays, the time-pitch graph rendered offline, the microphone watchdog), post-level Discourse parsing (trimmed JSON fixtures in `DiscourseFixtures.swift`), content blocking (compiles every bundled chunk in WebKit), CloudKit sync against a fake transport (two simulated devices), Keychain sync, iPad layout math, String Catalog completeness (every key translated, matching format specifiers, plural variations). |
+| `ForumindUITests` | UI tests on simulators (Forums home, the Today page, landing on a post and the result cards on a live topic, the voice consent sheet and bar on a scripted session, onboarding, settings navigation, share hand-off, iPad layouts) and smoke tests for physical devices. |
 
 See [DEVELOPMENT.md](DEVELOPMENT.md) for how to run them.

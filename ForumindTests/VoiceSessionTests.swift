@@ -3,7 +3,8 @@ import XCTest
 
 /// The voice session with a fake transport, fake audio and a manual clock:
 /// the tool-response hold, scheduling, briefings, silent notes, grounding,
-/// resumption and refresh, stalls, idle, consent, mute and comfort noise.
+/// resumption and refresh, stalls, idle, consent, mute and comfort noise,
+/// typed input and the cost guard.
 @MainActor
 final class VoiceSessionTests: XCTestCase {
     private var transports: [FakeLiveTransport] = []
@@ -467,6 +468,96 @@ final class VoiceSessionTests: XCTestCase {
         XCTAssertEqual(store.seconds(on: clock.now.addingTimeInterval(-86_400 * 2)), 0)
     }
 
+    // MARK: Cost guard
+
+    func testTheSessionLimitEndsAfterTheCurrentAnswer() async throws {
+        var settings = VoiceSettings()
+        settings.idleTimeout = 100_000
+        settings.sessionLimitMinutes = 5
+        let session = try await started(settings: settings)
+        for _ in 0..<149 {
+            clock.advance(2)
+            session.tick()
+        }
+        XCTAssertEqual(session.state, .listening, "Just under five minutes")
+        session.receive(audioFrame())
+        audio.isPlaying = true
+        clock.advance(2)
+        session.tick()
+        XCTAssertEqual(session.limitReached, .sessionLimit)
+        XCTAssertFalse(session.state.isOver, "The answer that is playing finishes")
+        audio.isPlaying = false
+        session.receive(frame(#"{"serverContent":{"turnComplete":true}}"#))
+        clock.advance(1.1)
+        session.tick()
+        XCTAssertEqual(session.state, .ended(.sessionLimit))
+        XCTAssertTrue(transports[0].closed)
+    }
+
+    func testTheDailyLimitRefusesANewSessionAndEndsARunningOne() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "voice-usage-\(UUID().uuidString)"))
+        let store = VoiceUsageStore(defaults: defaults)
+        var settings = VoiceSettings()
+        settings.idleTimeout = 100_000
+        settings.dailyLimitMinutes = 30
+        settings.sessionLimitMinutes = 0
+        store.add(seconds: 29 * 60, at: clock.now, sessionTotal: 0)
+        let session = try await started(settings: settings, usage: store)
+        for _ in 0..<35 {
+            clock.advance(2)
+            session.tick()
+        }
+        XCTAssertEqual(session.state, .ended(.dailyLimit))
+
+        let next = makeSession(settings: settings, usage: store)
+        await next.start()
+        XCTAssertEqual(next.state, .ended(.dailyLimit))
+        XCTAssertEqual(transports.count, 1, "Nothing connects once today's minutes are used")
+
+        settings.dailyLimitMinutes = 0
+        let unlimited = makeSession(settings: settings, usage: store)
+        await unlimited.start()
+        XCTAssertEqual(unlimited.state, .connecting)
+    }
+
+    func testLimitsDecodeAndZeroMeansNone() throws {
+        XCTAssertEqual(VoiceSettings().sessionLimitMinutes, 15)
+        XCTAssertEqual(VoiceSettings().dailyLimitMinutes, 30)
+        XCTAssertEqual(VoiceSettings().voiceName, VoiceCatalog.defaultVoice)
+        XCTAssertTrue(VoiceCatalog.voices.contains { $0.name == VoiceCatalog.defaultVoice })
+        XCTAssertEqual(Set(VoiceCatalog.voices.map(\.name)).count, VoiceCatalog.voices.count)
+        let decoded = try JSONDecoder().decode(VoiceSettings.self, from: Data(#"{"sessionLimitMinutes":0,"dailyLimitMinutes":-4}"#.utf8))
+        XCTAssertEqual(decoded.sessionLimitMinutes, 0)
+        XCTAssertEqual(decoded.dailyLimitMinutes, 0)
+        XCTAssertNil(VoiceSettings.limit(0))
+        XCTAssertEqual(VoiceSettings.limit(15), 900)
+    }
+
+    // MARK: Typed input
+
+    func testTypedTextGoesAsRealtimeTextAndAReplyIsOwed() async throws {
+        let session = try await started()
+        session.sendText("  take me to the solution ")
+        let last = try XCTUnwrap(transports[0].sent.last)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(last.utf8)) as? [String: Any])
+        XCTAssertEqual((object["realtimeInput"] as? [String: Any])?["text"] as? String, "take me to the solution")
+        XCTAssertEqual(session.lastUserText, "take me to the solution", "No input transcription comes back for text")
+        XCTAssertEqual(session.state, .thinking)
+        session.receive(frame(#"{"serverContent":{"outputTranscription":{"text":"Opening it."}}}"#))
+        XCTAssertEqual(session.lastModelText, "Opening it.")
+        session.sendText("   ")
+        XCTAssertEqual(transports[0].sent.last, last, "Blank text is not sent")
+    }
+
+    func testATypedScreenReferenceReadsTheFocusedPost() async throws {
+        navigator.pageContext = FakeVoiceNavigator.topicPage(post: 3, visible: [3])
+        let session = try await started()
+        await settle()
+        session.sendText("is this post right?")
+        await settle()
+        XCTAssertTrue(navigator.calls.contains("read 3"), "\(navigator.calls)")
+    }
+
     // MARK: Audio
 
     func testMuteSendsNothing() async throws {
@@ -527,6 +618,8 @@ final class VoiceSessionTests: XCTestCase {
     private var longIdle: VoiceSettings {
         var settings = VoiceSettings()
         settings.idleTimeout = 100_000
+        settings.sessionLimitMinutes = 0
+        settings.dailyLimitMinutes = 0
         return settings
     }
 

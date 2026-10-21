@@ -274,6 +274,7 @@ runs are labeled as Apple Intelligence runs and it is the selected provider.
 | `-dc-forums-home` | Starts on the Forums home. |
 | `-dc-open <url>` | Opens a page on launch. |
 | `-dc-show-switcher` | Opens the forum switcher. |
+| `-dc-voice-fake` | Voice without a key, microphone or network: a scripted Gemini Live session (`Voice/VoiceDebug.swift`) and silent audio. Voice consent starts cleared, so the first tap shows the consent sheet. |
 | `-dc-add-forum` | Opens the Add forum sheet. |
 | `-dc-bar top\|bottom` | Browser bar position for this launch. |
 | `-dc-content-blocking off` | Turns ad and tracker blocking off for this launch (settings unchanged). Blocking is off by default; turn it on in Settings › Browser or from the address-bar shield. |

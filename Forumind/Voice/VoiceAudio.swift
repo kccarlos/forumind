@@ -1,8 +1,8 @@
 import Foundation
 
-/// The audio boundary of a voice session. The engine behind it (capture
-/// with echo cancellation, voice activity gate, playback queue) is plan B6
-/// and not built yet; tests use a fake.
+/// The audio boundary of a voice session: `VoiceAudioEngine` on a device
+/// (capture with echo cancellation, the voice-activity gate, the playback
+/// queue); tests use a fake.
 ///
 /// - Microphone frames come in as 16 kHz PCM16 mono, only while the
 ///   capture gate is open (the user is speaking).
@@ -21,6 +21,12 @@ protocol VoiceAudioIO: AnyObject {
     var isPlaying: Bool { get }
     /// Headphones are the output: eyes-free mode on `auto`.
     var headphonesConnected: Bool { get }
+    /// Mute: the capture gate closes and stays closed until unmuted.
+    func setMuted(_ muted: Bool)
+}
+
+extension VoiceAudioIO {
+    func setMuted(_ muted: Bool) {}
 }
 
 /// Wall time for the session's timers (an injectable clock for tests).
@@ -39,10 +45,10 @@ final class SystemVoiceClock: VoiceClock {
 /// the turn and transcribes the last words; streaming zeros instead stalled
 /// turns by up to 35 s.
 enum ComfortNoise {
-    static let frameDuration: TimeInterval = 0.04
+    static let frameDuration = TimeInterval(VoiceAudioFormat.frameMilliseconds) / 1000
     static let duration: TimeInterval = 1.0
     /// 40 ms of 16 kHz PCM16.
-    static let samplesPerFrame = 640
+    static let samplesPerFrame = VoiceAudioFormat.frameSamples
 
     static func frame(seed: inout UInt64) -> Data {
         var data = Data(capacity: samplesPerFrame * 2)

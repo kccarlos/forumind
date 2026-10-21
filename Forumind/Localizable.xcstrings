@@ -1177,6 +1177,62 @@
         }
       }
     },
+    "A microphone in the browser bar starts a live conversation that can find, open and read posts for you." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "浏览器栏中的麦克风会开始实时对话，帮你查找、打开和朗读帖子。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "瀏覽器列中的麥克風會開始即時對話，幫你尋找、開啟和朗讀貼文。"
+          }
+        }
+      }
+    },
+    "A session ends after %lld minutes, and voice stops for the day after %lld minutes. You can change this in Settings › Voice." : {
+      "comment" : "Voice cost guard; the placeholders are minutes",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "A session ends after %1$lld minutes, and voice stops for the day after %2$lld minutes. You can change this in Settings › Voice."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每次对话 %1$lld 分钟后结束，当天累计 %2$lld 分钟后语音停用。可在“设置 › 语音”中更改。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每次對話 %1$lld 分鐘後結束，當天累計 %2$lld 分鐘後語音停用。可在「設定 › 語音」中更改。"
+          }
+        }
+      }
+    },
+    "A session ends after %lld minutes. You can change this in Settings › Voice." : {
+      "comment" : "Voice cost guard; the placeholder is minutes",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每次对话 %lld 分钟后结束。可在“设置 › 语音”中更改。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每次對話 %lld 分鐘後結束。可在「設定 › 語音」中更改。"
+          }
+        }
+      }
+    },
     "AI models" : {
       "comment" : "Settings page: the AI models for summaries & chat and for Ask the forum, and the providers' keys",
       "localizations" : {
@@ -1481,6 +1537,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "加入論壇"
+          }
+        }
+      }
+    },
+    "Add a Google Gemini or Vertex AI key" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加 Google Gemini 或 Vertex AI 密钥"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "加入 Google Gemini 或 Vertex AI 金鑰"
           }
         }
       }
@@ -1841,6 +1913,22 @@
         }
       }
     },
+    "Agree and Start" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "同意并开始"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "同意並開始"
+          }
+        }
+      }
+    },
     "All" : {
       "comment" : "Manage filter chip: show everything",
       "localizations" : {
@@ -2063,6 +2151,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "回答動作"
+          }
+        }
+      }
+    },
+    "Answer length" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "回答长度"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "回答長度"
           }
         }
       }
@@ -2806,6 +2910,23 @@
         }
       }
     },
+    "Audio moved to %@." : {
+      "comment" : "Voice notice; the placeholder is an audio output such as Speaker or AirPods",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音频已切换到 %@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音訊已切換到 %@。"
+          }
+        }
+      }
+    },
     "Automatic" : {
       "localizations" : {
         "zh-Hans" : {
@@ -2818,6 +2939,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "自動"
+          }
+        }
+      }
+    },
+    "Automatic reads posts aloud while headphones are connected; otherwise the voice points at the screen. Voice names and styles are Google’s." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“自动”会在连接耳机时朗读帖子；否则语音会请你看屏幕。声音名称和风格来自 Google。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「自動」會在連接耳機時朗讀貼文；否則語音會請你看螢幕。聲音名稱和風格來自 Google。"
           }
         }
       }
@@ -4022,6 +4159,22 @@
         }
       }
     },
+    "Close when quiet" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安静后关闭"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安靜後關閉"
+          }
+        }
+      }
+    },
     "Collapsed" : {
       "localizations" : {
         "zh-Hans" : {
@@ -4157,6 +4310,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已連線，可以開始使用了。"
+          }
+        }
+      }
+    },
+    "Connecting…" : {
+      "comment" : "Voice bar state",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在连接…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在連線…"
           }
         }
       }
@@ -4304,6 +4474,22 @@
         }
       }
     },
+    "Conversation" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "对话"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "對話"
+          }
+        }
+      }
+    },
     "Copied" : {
       "localizations" : {
         "zh-Hans" : {
@@ -4396,6 +4582,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "拷貝、分享和匯出會使用完整的貼文和回覆。"
+          }
+        }
+      }
+    },
+    "Couldn't resume the audio. Try again, or end the session." : {
+      "comment" : "Voice notice",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法恢复音频。请重试，或结束对话。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法恢復音訊。請再試一次，或結束對話。"
           }
         }
       }
@@ -5140,6 +5343,23 @@
         }
       }
     },
+    "Echo cancellation" : {
+      "comment" : "Voice Health row",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "回声消除"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "回音消除"
+          }
+        }
+      }
+    },
     "Edit" : {
       "localizations" : {
         "zh-Hans" : {
@@ -5168,6 +5388,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "編輯釘選的論壇"
+          }
+        }
+      }
+    },
+    "End voice" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "结束语音"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "結束語音"
           }
         }
       }
@@ -5314,6 +5550,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "錯誤"
+          }
+        }
+      }
+    },
+    "Every connected minute is billed to your key, or counts against its free quota. %@" : {
+      "comment" : "Voice consent; the placeholder is the cost-guard sentence",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每一分钟的连接都会计入你的密钥费用或其免费额度。%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每一分鐘的連線都會計入你的金鑰費用或其免費額度。%@"
+          }
+        }
+      }
+    },
+    "Every connected minute is billed to your key. At a limit, voice finishes its answer and ends. Minutes are counted on this device." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每一分钟的连接都会计入你的密钥费用。达到限制时，语音会说完当前回答后结束。分钟数在本设备上计算。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每一分鐘的連線都會計入你的金鑰費用。達到限制時，語音會說完目前的回答後結束。分鐘數在本裝置上計算。"
           }
         }
       }
@@ -5878,6 +6147,23 @@
         }
       }
     },
+    "Forumind needs the microphone to hear you. Turn it on in Settings › Privacy & Security › Microphone." : {
+      "comment" : "Voice error. The path names the iOS Settings app's pages.",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Forumind 需要麦克风才能听到你。请在“设置 › 隐私与安全性 › 麦克风”中打开。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Forumind 需要麥克風才能聽到你。請在「設定 › 隱私權與安全性 › 麥克風」中開啟。"
+          }
+        }
+      }
+    },
     "Forumind uses an AI provider you choose to summarize and answer. Connect one to continue." : {
       "localizations" : {
         "zh-Hans" : {
@@ -6282,6 +6568,22 @@
         }
       }
     },
+    "Google Cloud project ID" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Google Cloud 项目 ID"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Google Cloud 專案 ID"
+          }
+        }
+      }
+    },
     "Google refused the voice session: %@" : {
       "comment" : "Voice session error; the placeholder is Google's reason, in English",
       "localizations" : {
@@ -6295,6 +6597,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Google 拒絕了語音工作階段：%@"
+          }
+        }
+      }
+    },
+    "Google’s terms for this service" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Google 对此服务的条款"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Google 對此服務的條款"
           }
         }
       }
@@ -7006,6 +7324,22 @@
         }
       }
     },
+    "Last session" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上次对话"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上次對話"
+          }
+        }
+      }
+    },
     "Last synced" : {
       "localizations" : {
         "zh-Hans" : {
@@ -7100,6 +7434,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "列出了最新話題"
+          }
+        }
+      }
+    },
+    "Listening" : {
+      "comment" : "Voice bar state",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在听"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在聆聽"
           }
         }
       }
@@ -7445,6 +7796,23 @@
         }
       }
     },
+    "Microphone" : {
+      "comment" : "Voice Health row",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "麦克风"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "麥克風"
+          }
+        }
+      }
+    },
     "Minimize results" : {
       "comment" : "Result cards over the page: shrink them to a small chip",
       "localizations" : {
@@ -7622,6 +7990,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "關於入門最有幫助的回答"
+          }
+        }
+      }
+    },
+    "Mute" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "静音"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "靜音"
+          }
+        }
+      }
+    },
+    "Muted" : {
+      "comment" : "Voice bar state: the microphone is muted",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已静音"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已靜音"
           }
         }
       }
@@ -7849,6 +8250,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "還沒有論壇。加入一個，或在論壇首頁中選擇推薦的論壇。"
+          }
+        }
+      }
+    },
+    "No limit" : {
+      "comment" : "Settings › Voice: no time limit",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不限制"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不限制"
+          }
+        }
+      }
+    },
+    "No microphone is available right now. Check that no other app is using it." : {
+      "comment" : "Voice error",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "目前没有可用的麦克风。请确认没有其他 App 正在使用它。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "目前沒有可用的麥克風。請確認沒有其他 App 正在使用它。"
           }
         }
       }
@@ -8506,6 +8941,23 @@
         }
       }
     },
+    "On Vertex AI, your Google Cloud agreement decides how Google may use what you send." : {
+      "comment" : "Voice consent: data use on Vertex AI",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Vertex AI 上，Google 如何使用你发送的内容由你的 Google Cloud 协议决定。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Vertex AI 上，Google 如何使用你傳送的內容由你的 Google Cloud 合約決定。"
+          }
+        }
+      }
+    },
     "On any topic, open ⋯ › Report or block to report a post or user, or to hide everything a user posts. Reports are reviewed within 24 hours and offending content is removed from the app." : {
       "comment" : "Terms of Use summary row; ⋯ is the browser's More menu",
       "localizations" : {
@@ -8519,6 +8971,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在任何話題中，打開 ⋯ › 檢舉或封鎖，即可檢舉貼文或使用者，或隱藏某位使用者發佈的全部內容。檢舉會在 24 小時內處理，違規內容會從 App 中移除。"
+          }
+        }
+      }
+    },
+    "On the free tier of Google AI Studio, Google may use what you send to improve its products, and people may review it. Don’t say or open anything you want to keep private." : {
+      "comment" : "Voice consent: Google's free-tier data use",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Google AI Studio 免费层级中，Google 可能会使用你发送的内容来改进其产品，并可能由人工审阅。请不要说出或打开任何你想保密的内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Google AI Studio 免費方案中，Google 可能會使用你傳送的內容來改進其產品，並可能由人工審閱。請不要說出或開啟任何你想保密的內容。"
           }
         }
       }
@@ -9214,6 +9683,55 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "貼上你的 API 金鑰"
+          }
+        }
+      }
+    },
+    "Paused for a call or Siri." : {
+      "comment" : "Voice notice: iOS interrupted the audio",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "因通话或 Siri 已暂停。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "因通話或 Siri 已暫停。"
+          }
+        }
+      }
+    },
+    "Per day" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每天"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每天"
+          }
+        }
+      }
+    },
+    "Per session" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每次对话"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每次對話"
           }
         }
       }
@@ -9979,6 +10497,22 @@
         }
       }
     },
+    "Read posts aloud" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "朗读帖子"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "朗讀貼文"
+          }
+        }
+      }
+    },
     "Read response page %lld of %lld" : {
       "comment" : "Progress while downloading a forum topic's replies, page by page",
       "localizations" : {
@@ -10344,6 +10878,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ 最近"
+          }
+        }
+      }
+    },
+    "Reconnecting…" : {
+      "comment" : "Voice bar state",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在重新连接…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在重新連線…"
           }
         }
       }
@@ -10972,6 +11523,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在恢復中斷的任務…"
+          }
+        }
+      }
+    },
+    "Route" : {
+      "comment" : "Voice Health row: the audio output and input",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "线路"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "路徑"
           }
         }
       }
@@ -11706,6 +12274,23 @@
         }
       }
     },
+    "Shows the audio health" : {
+      "comment" : "Accessibility hint of the voice bar's state",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示音频状态"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示音訊狀態"
+          }
+        }
+      }
+    },
     "Shows the result cards" : {
       "comment" : "Accessibility hint of the collapsed result cards chip",
       "localizations" : {
@@ -11968,6 +12553,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "垃圾訊息或詐騙"
+          }
+        }
+      }
+    },
+    "Speaking" : {
+      "comment" : "Voice bar state",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在说话"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在說話"
           }
         }
       }
@@ -12953,6 +13555,23 @@
         }
       }
     },
+    "Talk to Forumind" : {
+      "comment" : "Browser bar button: start a live voice session",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与 Forumind 对话"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "與 Forumind 對話"
+          }
+        }
+      }
+    },
     "Tap **Edit**, turn on **Forumind**, and add it to Favorites so it’s always near the front." : {
       "localizations" : {
         "zh-Hans" : {
@@ -13029,6 +13648,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "點一下以輸入論壇網址"
+          }
+        }
+      }
+    },
+    "Tap to resume" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "轻点以继续"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "點一下以繼續"
           }
         }
       }
@@ -13162,6 +13797,23 @@
         }
       }
     },
+    "The audio engine wouldn't start (%@)." : {
+      "comment" : "Voice error; the placeholder is the system's reason, in English",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音频引擎无法启动（%@）。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音訊引擎無法啟動（%@）。"
+          }
+        }
+      }
+    },
     "The bar shrinks while you scroll down a forum page and comes back when you scroll up or tap it. Bottom keeps it within reach of your thumb." : {
       "localizations" : {
         "zh-Hans" : {
@@ -13206,6 +13858,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "每日摘要使用你的 AI 供應商或 Apple Intelligence 產生。"
+          }
+        }
+      }
+    },
+    "The free tier of Google AI Studio includes live voice." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Google AI Studio 免费层级包含实时语音。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Google AI Studio 免費方案包含即時語音。"
           }
         }
       }
@@ -13272,6 +13940,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "麥克風無法使用。"
+          }
+        }
+      }
+    },
+    "The microphone sends silence. Check that no other app is using it." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "麦克风只传来静音。请确认没有其他 App 正在使用它。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "麥克風只傳來靜音。請確認沒有其他 App 正在使用它。"
           }
         }
       }
@@ -13473,6 +14157,23 @@
         }
       }
     },
+    "There is no time limit. You can set one in Settings › Voice." : {
+      "comment" : "Voice cost guard is off",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有时间限制。可在“设置 › 语音”中设置。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有時間限制。可在「設定 › 語音」中設定。"
+          }
+        }
+      }
+    },
     "There’s nothing to sign up for, and nothing about how you use the app is collected." : {
       "localizations" : {
         "zh-Hans" : {
@@ -13485,6 +14186,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "不需要註冊任何帳號，也不會收集你使用 App 的任何資訊。"
+          }
+        }
+      }
+    },
+    "Thinking…" : {
+      "comment" : "Voice bar state",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在思考…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在思考…"
           }
         }
       }
@@ -13569,6 +14287,22 @@
         }
       }
     },
+    "This session" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本次对话"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本次對話"
+          }
+        }
+      }
+    },
     "Three ways to get to the point" : {
       "localizations" : {
         "zh-Hans" : {
@@ -13597,6 +14331,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "透過你的 iCloud 帳號"
+          }
+        }
+      }
+    },
+    "Time limit" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "时间限制"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "時間限制"
           }
         }
       }
@@ -14110,6 +14860,23 @@
         }
       }
     },
+    "Underruns" : {
+      "comment" : "Voice Health row: audible gaps in the voice's playback",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "播放中断"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "播放中斷"
+          }
+        }
+      }
+    },
     "Unkeep" : {
       "localizations" : {
         "zh-Hans" : {
@@ -14161,6 +14928,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "未知的工具「%1$@」。可用的工具：%2$@"
+          }
+        }
+      }
+    },
+    "Unmute" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消静音"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消靜音"
           }
         }
       }
@@ -14582,6 +15365,22 @@
         }
       }
     },
+    "Used today" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今天已用"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今天已用"
+          }
+        }
+      }
+    },
     "User" : {
       "comment" : "Exported chat transcript: label for the user's messages",
       "localizations" : {
@@ -14680,6 +15479,91 @@
         }
       }
     },
+    "Voice" : {
+      "comment" : "Settings page: the live voice conversation with Google Gemini",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "語音"
+          }
+        }
+      }
+    },
+    "Voice ended after a quiet moment. Tap the microphone to talk again." : {
+      "comment" : "Voice bar: the idle timeout closed the session",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安静一段时间后语音已结束。轻点麦克风可再次对话。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安靜一段時間後語音已結束。點一下麥克風可再次對話。"
+          }
+        }
+      }
+    },
+    "Voice ended." : {
+      "comment" : "Voice bar: the session is over",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音已结束。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "語音已結束。"
+          }
+        }
+      }
+    },
+    "Voice ended: this session reached its %lld-minute limit." : {
+      "comment" : "Voice bar: the cost guard ended the session; the placeholder is minutes",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音已结束：本次对话已达 %lld 分钟上限。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "語音已結束：本次對話已達 %lld 分鐘上限。"
+          }
+        }
+      }
+    },
+    "Voice ended: today’s %lld voice minutes are used up. Change the limit in Settings › Voice." : {
+      "comment" : "Voice bar: the daily cost guard; the placeholder is minutes",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音已结束：今天的 %lld 分钟语音已用完。可在“设置 › 语音”中更改限制。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "語音已結束：今天的 %lld 分鐘語音已用完。可在「設定 › 語音」中更改限制。"
+          }
+        }
+      }
+    },
     "Voice needs your permission to send audio to Google first." : {
       "comment" : "Voice session error: the user hasn't agreed to send audio to the provider yet",
       "localizations" : {
@@ -14710,6 +15594,55 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在 Vertex AI 上使用語音需要你的 Google Cloud 專案。請在語音設定中加入。"
+          }
+        }
+      }
+    },
+    "Voice stops for the day after %lld minutes. You can change this in Settings › Voice." : {
+      "comment" : "Voice cost guard; the placeholder is minutes",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当天累计 %lld 分钟后语音停用。可在“设置 › 语音”中更改。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "當天累計 %lld 分鐘後語音停用。可在「設定 › 語音」中更改。"
+          }
+        }
+      }
+    },
+    "Voice uses Google Gemini" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音使用 Google Gemini"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "語音使用 Google Gemini"
+          }
+        }
+      }
+    },
+    "Voice uses Google Gemini Live with your own Google Gemini or Vertex AI key. This setting is kept on this device." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音使用 Google Gemini Live，并使用你自己的 Google Gemini 或 Vertex AI 密钥。此设置只保存在本设备上。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "語音使用 Google Gemini Live，並使用你自己的 Google Gemini 或 Vertex AI 金鑰。此設定只儲存在本裝置上。"
           }
         }
       }
@@ -15174,6 +16107,23 @@
         }
       }
     },
+    "While you talk, your voice and the page content you ask about are sent to Google (%@) with your own API key. There is no Forumind server: nothing goes through us." : {
+      "comment" : "Voice consent; the placeholder is Google AI Studio or Google Vertex AI",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "对话时，你的声音和你询问的网页内容会使用你自己的 API 密钥发送给 Google（%@）。Forumind 没有服务器，任何内容都不会经过我们。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "對話時，你的聲音和你詢問的網頁內容會使用你自己的 API 金鑰傳送給 Google（%@）。Forumind 沒有伺服器，任何內容都不會經過我們。"
+          }
+        }
+      }
+    },
     "Whole topic" : {
       "comment" : "Result card for a source that is a whole topic, not one post",
       "localizations" : {
@@ -15187,6 +16137,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "整個話題"
+          }
+        }
+      }
+    },
+    "Withdraw consent for %@" : {
+      "comment" : "Settings › Voice; the placeholder is Google AI Studio or Google Vertex AI",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "撤回对 %@ 的同意"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "撤回對 %@ 的同意"
           }
         }
       }
@@ -15800,6 +16767,23 @@
         }
       }
     },
+    "iOS kept the audio for something else. Tap to resume." : {
+      "comment" : "Voice notice: after a call or Siri, iOS didn't give the audio back",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS 将音频留给了其他用途。轻点以继续。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS 將音訊留給了其他用途。點一下以繼續。"
+          }
+        }
+      }
+    },
     "iOS manages the app language. Change it in Settings › Forumind › Language." : {
       "localizations" : {
         "zh-Hans" : {
@@ -15812,6 +16796,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "App 語言由 iOS 管理，可在「設定 › Forumind › 語言」中更改。"
+          }
+        }
+      }
+    },
+    "iOS wouldn't start the audio (%@)." : {
+      "comment" : "Voice error; the placeholder is the system's reason, in English",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS 无法启动音频（%@）。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS 無法啟動音訊（%@）。"
+          }
+        }
+      }
+    },
+    "no signal" : {
+      "comment" : "Voice Health row: the microphone delivers only silence",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无信号"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無訊號"
           }
         }
       }

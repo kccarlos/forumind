@@ -76,8 +76,8 @@ enum VoiceEyesFree: String, Codable, CaseIterable, Identifiable {
 /// `voiceConsent`).
 struct VoiceSettings: Codable, Equatable {
     var provider: VoiceProvider = .aiStudio
-    /// A prebuilt Gemini voice ("Puck"); empty keeps Google's default.
-    var voiceName = ""
+    /// A prebuilt Gemini voice (`VoiceCatalog`); empty keeps Google's default.
+    var voiceName = VoiceCatalog.defaultVoice
     var answerLength: VoiceAnswerLength = .normal
     var eyesFree: VoiceEyesFree = .auto
     /// Seconds without speech either way before the session closes (it
@@ -92,8 +92,23 @@ struct VoiceSettings: Codable, Equatable {
     /// The Google Cloud project for Vertex AI, when the Vertex address in
     /// Settings has none (an express-mode key has no project in it).
     var vertexProject = ""
+    /// The cost guard, in connected minutes (0: no limit). At a limit the
+    /// session ends after the current answer. Every connected minute is
+    /// billed to the user's key.
+    var sessionLimitMinutes = VoiceSettings.defaultSessionLimit
+    var dailyLimitMinutes = VoiceSettings.defaultDailyLimit
 
     static let defaultIdleTimeout: Double = 60
+    static let defaultSessionLimit = 15
+    static let defaultDailyLimit = 30
+    /// The choices Settings offers (0 is "No limit").
+    static let sessionLimitChoices = [5, 10, 15, 30, 60, 0]
+    static let dailyLimitChoices = [15, 30, 60, 120, 0]
+
+    /// A limit in seconds, nil for "no limit".
+    static func limit(_ minutes: Int) -> TimeInterval? {
+        minutes > 0 ? TimeInterval(minutes) * 60 : nil
+    }
     static let idleTimeoutRange: ClosedRange<Double> = 15...600
 
     init() {}
@@ -101,6 +116,7 @@ struct VoiceSettings: Codable, Equatable {
     private enum CodingKeys: String, CodingKey {
         case provider, voiceName, answerLength, eyesFree, idleTimeout
         case groundsOnScreenReference, groundsOnDwell, vertexProject
+        case sessionLimitMinutes, dailyLimitMinutes
     }
 
     // Each field falls back on its own: a newer build's value, or a missing
@@ -111,14 +127,47 @@ struct VoiceSettings: Codable, Equatable {
             (try? container.decodeIfPresent(T.self, forKey: key)).flatMap { $0 } ?? fallback
         }
         provider = value(.provider, .aiStudio)
-        voiceName = value(.voiceName, "")
+        // Builds before the voice list saved "" for Google's default.
+        let name = value(.voiceName, VoiceCatalog.defaultVoice)
+        voiceName = name.isEmpty ? VoiceCatalog.defaultVoice : name
         answerLength = value(.answerLength, .normal)
         eyesFree = value(.eyesFree, .auto)
         idleTimeout = min(Self.idleTimeoutRange.upperBound, max(Self.idleTimeoutRange.lowerBound, value(.idleTimeout, Self.defaultIdleTimeout)))
         groundsOnScreenReference = value(.groundsOnScreenReference, true)
         groundsOnDwell = value(.groundsOnDwell, true)
         vertexProject = value(.vertexProject, "")
+        sessionLimitMinutes = max(0, value(.sessionLimitMinutes, Self.defaultSessionLimit))
+        dailyLimitMinutes = max(0, value(.dailyLimitMinutes, Self.defaultDailyLimit))
     }
+}
+
+// MARK: - Voices
+
+/// The prebuilt voices. The Live API docs say native-audio models such as
+/// `gemini-3.8-live` take any of the text-to-speech voices; this is that
+/// list (ai.google.dev, speech generation, checked 2026-10-20), with
+/// Google's one-word style. Add or remove names here.
+enum VoiceCatalog {
+    struct Voice: Identifiable, Equatable {
+        let name: String
+        /// Google's style word, in English.
+        let style: String
+        var id: String { name }
+    }
+
+    /// Warm and unhurried, for reading along with someone.
+    static let defaultVoice = "Sulafat"
+
+    static let voices: [Voice] = [
+        ("Achernar", "Soft"), ("Achird", "Friendly"), ("Algenib", "Gravelly"), ("Algieba", "Smooth"),
+        ("Alnilam", "Firm"), ("Aoede", "Breezy"), ("Autonoe", "Bright"), ("Callirrhoe", "Easy-going"),
+        ("Charon", "Informative"), ("Despina", "Smooth"), ("Enceladus", "Breathy"), ("Erinome", "Clear"),
+        ("Fenrir", "Excitable"), ("Gacrux", "Mature"), ("Iapetus", "Clear"), ("Kore", "Firm"),
+        ("Laomedeia", "Upbeat"), ("Leda", "Youthful"), ("Orus", "Firm"), ("Puck", "Upbeat"),
+        ("Pulcherrima", "Forward"), ("Rasalgethi", "Informative"), ("Sadachbia", "Lively"),
+        ("Sadaltager", "Knowledgeable"), ("Schedar", "Even"), ("Sulafat", "Warm"), ("Umbriel", "Easy-going"),
+        ("Vindemiatrix", "Gentle"), ("Zephyr", "Bright"), ("Zubenelgenubi", "Casual")
+    ].map { Voice(name: $0.0, style: $0.1) }
 }
 
 // MARK: - Consent (App Review 5.1.2)
@@ -138,9 +187,8 @@ enum VoiceConsent {
 
 // MARK: - Minutes used
 
-/// Connected minutes per session and per day, for the cost guard (the
-/// limits are still to be decided). Kept on this device in UserDefaults:
-/// each device spends its own minutes.
+/// Connected minutes per session and per day, for the cost guard. Kept on
+/// this device in UserDefaults: each device spends its own minutes.
 final class VoiceUsageStore {
     private let defaults: UserDefaults
     private let calendar: Calendar

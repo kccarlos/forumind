@@ -76,25 +76,25 @@
       }
     },
     "NSMicrophoneUsageDescription" : {
-      "comment" : "Privacy - Microphone Usage Description: shown when a forum page asks to record a video.",
+      "comment" : "Privacy - Microphone Usage Description: shown before the first voice session, or when a forum page asks to record a video.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "A forum page can ask you to record a video, which includes sound."
+            "value" : "Forumind uses the microphone when you talk to its voice assistant, and when a forum page asks you to record a video with sound."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "论坛网页可能会请求录制视频，其中包含声音。"
+            "value" : "当你与 Forumind 的语音助手对话时，以及论坛网页请求录制带声音的视频时，Forumind 会使用麦克风。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "論壇網頁可能會要求錄製影片，其中包含聲音。"
+            "value" : "當你與 Forumind 的語音助理對話時，以及論壇網頁要求錄製含聲音的影片時，Forumind 會使用麥克風。"
           }
         }
       }

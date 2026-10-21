@@ -62,8 +62,8 @@ extension JSONValue: ExpressibleByStringLiteral, ExpressibleByBooleanLiteral, Ex
 
 enum GeminiLive {
     static let model = "gemini-3.8-live"
-    static let inputSampleRate = 16_000
-    static let outputSampleRate = 24_000
+    static let inputSampleRate = Int(VoiceAudioFormat.captureRate)
+    static let outputSampleRate = Int(VoiceAudioFormat.playbackRate)
     static let inputMimeType = "audio/pcm;rate=16000"
 
     // MARK: Endpoints
@@ -242,6 +242,9 @@ enum GeminiLive {
         case audio(Data)
         /// The user's audio stream paused: the server flushes its turn.
         case audioStreamEnd
+        /// Typed user input (`realtimeInput.text`), answered like speech.
+        /// It gets no input transcription back.
+        case text(String)
         /// A user-role text turn. `turnComplete: false` adds it to the
         /// context without a reply (a silent note); true asks for one.
         case content(String, turnComplete: Bool)
@@ -260,6 +263,8 @@ enum GeminiLive {
             data = try encoder.encode(["realtimeInput": ["audio": audio] as JSONValue])
         case .audioStreamEnd:
             data = try encoder.encode(["realtimeInput": ["audioStreamEnd": true] as JSONValue])
+        case .text(let text):
+            data = try encoder.encode(["realtimeInput": ["text": .string(text)] as JSONValue])
         case .content(let text, let turnComplete):
             let content: JSONValue = [
                 "turns": [["role": "user", "parts": [["text": .string(text)]]]],

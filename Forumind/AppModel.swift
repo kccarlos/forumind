@@ -266,6 +266,8 @@ final class AppModel: ObservableObject {
     var researchGeneration = 0
     /// Feeds the voice session's silent context (AppModel+Voice.swift).
     var voicePageSubscription: AnyCancellable?
+    /// Starts voice sessions for the UI (Voice/VoiceController.swift).
+    private(set) lazy var voice = VoiceController(app: self)
     /// Every page context change (both kinds); `pageChanges` debounces it.
     let pageUpdates = PassthroughSubject<PageContext, Never>()
     /// How long the page must settle before `pageChanges` reports it.
@@ -436,6 +438,8 @@ final class AppModel: ObservableObject {
         // Sample only: never over the real digests or with a real key.
         if AssistantDebug.isActive, AssistantDebug.has("-dc-digest-sample") { seedDigestSample() }
         applyStateDebugScript()
+        // A scripted voice run starts from the consent sheet.
+        if VoiceDebug.isFake { settings.voiceConsent = [:] }
         #endif
         self.cloudSync.attach(self)
     }

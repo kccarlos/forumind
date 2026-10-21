@@ -2,8 +2,8 @@ import Combine
 import Foundation
 
 // The live voice session (plan B5): one Gemini Live conversation over a
-// `LiveTransport`, with the audio behind `VoiceAudioIO` (plan B6, not built
-// yet) and the tools in `VoiceToolBridge`.
+// `LiveTransport`, with the audio behind `VoiceAudioIO` (`VoiceAudioEngine`)
+// and the tools in `VoiceToolBridge`.
 //
 //   idle → connecting → listening ⇄ thinking ⇄ speaking → ended
 //                ↘ failed           ↘ reconnecting ↗
@@ -66,6 +66,10 @@ final class VoiceSession: ObservableObject {
         case idle
         /// The model ended it (`end` tool) after its goodbye.
         case model
+        /// The cost guard: this session's minutes, or today's, are used up.
+        /// It ends after the current answer.
+        case sessionLimit
+        case dailyLimit
     }
 
     enum Failure: Error, Equatable {
@@ -75,6 +79,8 @@ final class VoiceSession: ObservableObject {
         case noKey
         case noVertexProject
         case microphone
+        /// The audio engine couldn't start; its reason, for the user.
+        case audio(String)
         /// Google refused the setup, the key or the model (close 1007/1008).
         case refused(String)
         /// Reconnecting kept failing.
@@ -93,6 +99,8 @@ final class VoiceSession: ObservableObject {
                 String(localized: "Voice on Vertex AI needs your Google Cloud project. Add it in the voice settings.", comment: "Voice session error: Vertex AI needs a project ID")
             case .microphone:
                 String(localized: "The microphone isn't available.", comment: "Voice session error")
+            case .audio(let reason):
+                reason
             case .refused(let reason):
                 String(localized: "Google refused the voice session: \(reason)", comment: "Voice session error; the placeholder is Google's reason, in English")
             case .connectionLost:
@@ -108,6 +116,10 @@ final class VoiceSession: ObservableObject {
         var settings = VoiceSettings()
         /// The user agreed to send audio to this provider (the consent gate).
         var hasConsent: Bool
+
+        /// The cost guard's limits in seconds (nil: no limit).
+        var sessionLimit: TimeInterval? { VoiceSettings.limit(settings.sessionLimitMinutes) }
+        var dailyLimit: TimeInterval? { VoiceSettings.limit(settings.dailyLimitMinutes) }
     }
 
     /// Timers, as named constants so tests and tuning see them.
@@ -196,6 +208,9 @@ final class VoiceSession: ObservableObject {
     private var suppressingModelTurn = false
     private var markupCorrectionDue = false
     private var endRequestedAt: Date?
+    /// A cost-guard limit was reached: end at the next quiet moment.
+    private(set) var limitReached: EndReason?
+    private var limitReachedAt: Date?
 
     // Context.
     private var dwell: (topicKey: String, number: Int, since: Date)?
@@ -249,6 +264,10 @@ final class VoiceSession: ObservableObject {
             state = .failed(.noKey)
             return
         }
+        if let limit = configuration.dailyLimit, todaySeconds >= limit {
+            state = .ended(.dailyLimit)
+            return
+        }
         state = .connecting
         lastActivityAt = clock.now
         if runsLoop {
@@ -258,7 +277,7 @@ final class VoiceSession: ObservableObject {
                     gate: { [weak self] in self?.captureGate(open: $0) }
                 )
             } catch {
-                state = .failed(.microphone)
+                state = .failed((error as? LocalizedError)?.errorDescription.map(Failure.audio) ?? .microphone)
                 return
             }
             loopTask = Task { @MainActor [weak self] in
@@ -274,6 +293,11 @@ final class VoiceSession: ObservableObject {
     /// The user ended the session.
     func stop() {
         end(.user)
+    }
+
+    /// The audio engine stopped and couldn't be rebuilt.
+    func audioFailed() {
+        fail(.microphone)
     }
 
     private func end(_ reason: EndReason) {
@@ -304,6 +328,7 @@ final class VoiceSession: ObservableObject {
     func setMuted(_ muted: Bool) {
         guard muted != isMuted else { return }
         isMuted = muted
+        audio.setMuted(muted)
         guard muted else { return }
         // Mute means send nothing; end the user's turn now if one is open.
         comfortNoise = nil
@@ -774,6 +799,30 @@ final class VoiceSession: ObservableObject {
         configuration.settings.eyesFree.isActive(headphones: audio.headphonesConnected)
     }
 
+    // MARK: Typed input
+
+    /// Typed instead of spoken (the debug text field): `realtimeInput.text`.
+    /// The server sends no input transcription for it, so the transcript
+    /// line and the reply owed are set here.
+    func sendText(_ text: String) {
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, setupDone, state.isActive else { return }
+        let now = clock.now
+        // A typed turn cuts the model off, as speech would.
+        if isSpeaking {
+            audio.flushPlayback()
+            modelSpeaking = false
+        }
+        lastUserText = text
+        lastUserSpeechAt = now
+        lastActivityAt = now
+        heardThisTurn = true
+        groundIfNeeded(text)
+        send(.text(text))
+        awaitingReplySince = now
+        updateState()
+    }
+
     // MARK: Audio in
 
     func microphoneFrame(_ pcm: Data) {
@@ -898,6 +947,23 @@ final class VoiceSession: ObservableObject {
 
         flushNotes()
 
+        // Cost guard: at a limit, end once the current answer is over.
+        if limitReached == nil {
+            if let limit = configuration.sessionLimit, connectedSeconds >= limit {
+                limitReached = .sessionLimit
+            } else if let limit = configuration.dailyLimit, todaySeconds >= limit {
+                limitReached = .dailyLimit
+            }
+        }
+        if let reason = limitReached {
+            if limitReachedAt == nil { limitReachedAt = now }
+            // A reply that never ends still stops a minute later.
+            if isQuiet || limitReachedAt.map({ now.timeIntervalSince($0) >= 60 }) == true {
+                end(reason)
+                return
+            }
+        }
+
         // Idle: nobody spoke for the timeout.
         if let last = lastActivityAt, now.timeIntervalSince(last) >= configuration.settings.idleTimeout, isQuiet,
            navigator?.isResearching != true {
@@ -928,6 +994,12 @@ final class VoiceSession: ObservableObject {
         connectedSeconds += delta
         unflushedSeconds += delta
         if usageFlushedAt.map({ now.timeIntervalSince($0) >= 10 }) ?? true { flushUsage() }
+    }
+
+    /// Seconds connected today, on this device, including this session's
+    /// not yet saved.
+    var todaySeconds: Double {
+        (usage?.seconds(on: clock.now) ?? 0) + unflushedSeconds
     }
 
     private func flushUsage() {

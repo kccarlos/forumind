@@ -243,6 +243,12 @@ Dir.glob(File.join(root, "ForumindTests", "**", "*.swift")).sort.each do |path|
   test_target.source_build_phase.add_file_reference(reference)
 end
 
+# Speech fixtures for the voice-activity detector tests.
+Dir.glob(File.join(root, "ForumindTests", "**", "*.wav")).sort.each do |path|
+  reference = test_group.new_file(path.delete_prefix("#{root}/ForumindTests/"))
+  test_target.resources_build_phase.add_file_reference(reference)
+end
+
 test_target.build_configurations.each do |configuration|
   settings = configuration.build_settings
   settings["BUNDLE_LOADER"] = "$(TEST_HOST)"

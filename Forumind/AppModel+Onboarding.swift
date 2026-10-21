@@ -201,6 +201,7 @@ enum SettingsPage: String, CaseIterable, Identifiable, Hashable {
     case agent
     case watched
     case digest
+    case voice
     case browser
     case data
     case help
@@ -219,6 +220,7 @@ enum SettingsPage: String, CaseIterable, Identifiable, Hashable {
         case .agent: String(localized: "Ask the forum")
         case .watched: String(localized: "Watched topics")
         case .digest: String(localized: "Daily digest", comment: "Settings page: the Today page's daily digest of watched and trending topics")
+        case .voice: String(localized: "Voice", comment: "Settings page: the live voice conversation with Google Gemini")
         case .browser: String(localized: "Browser")
         case .data: String(localized: "Data & privacy")
         case .help: String(localized: "Help")
@@ -237,6 +239,7 @@ enum SettingsPage: String, CaseIterable, Identifiable, Hashable {
         case .agent: "sparkle.magnifyingglass"
         case .watched: "bell.badge.fill"
         case .digest: "sun.max.fill"
+        case .voice: "waveform"
         case .browser: "safari.fill"
         case .data: "hand.raised.fill"
         case .help: "questionmark"
@@ -255,6 +258,7 @@ enum SettingsPage: String, CaseIterable, Identifiable, Hashable {
         case .agent: DCTheme.agentTint
         case .watched: Color(light: 0xD9372B, dark: 0xFF6259)
         case .digest: DigestStyle.tint
+        case .voice: Color(light: 0xD6336C, dark: 0xFF6B9E)
         case .browser: Color(light: 0x1C7CD6, dark: 0x4AA3FF)
         case .data: Color(light: 0x4B5563, dark: 0x8E96A3)
         case .help: DCTheme.chatTint

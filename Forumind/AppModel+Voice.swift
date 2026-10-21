@@ -4,7 +4,8 @@ import Foundation
 //
 // AppModel is the voice layer's navigator: the tools call the navigation
 // layer (AppModel+Navigation.swift) and the silent context reads the page.
-// No voice UI yet (plan B7); `makeVoiceSession` is where it will start one.
+// `VoiceController` (Voice/VoiceController.swift) starts sessions from the
+// browser bar's microphone through `makeVoiceSession`.
 
 extension AppModel: VoiceNavigator {
     /// The text of every post on screen, without hidden ones.
@@ -100,7 +101,20 @@ extension AppModel: VoiceNavigator {
 
     /// Providers the user can talk to: those with a key.
     var availableVoiceProviders: [VoiceProvider] {
-        VoiceProvider.allCases.filter { !settings.configuration(for: $0.keyProvider).apiKey.isEmpty }
+        if VoiceDebug.isFake { return [.aiStudio] }
+        return VoiceProvider.allCases.filter { !settings.configuration(for: $0.keyProvider).apiKey.isEmpty }
+    }
+
+    /// The provider a session would use: the chosen one, else one with a key.
+    var voiceProvider: VoiceProvider? {
+        let available = availableVoiceProviders
+        return available.contains(settings.voice.provider) ? settings.voice.provider : available.first
+    }
+
+    /// The browser bar shows the microphone: voice is on, or a Gemini or
+    /// Vertex key is there and voice was never agreed to and turned off.
+    var showsVoiceButton: Bool {
+        settings.voiceEnabled || (!availableVoiceProviders.isEmpty && settings.voiceConsent.isEmpty)
     }
 
     /// Records the user's consent for `provider` on this device.
@@ -118,11 +132,11 @@ extension AppModel: VoiceNavigator {
     /// back to the one with a key), or why there can't be one.
     func voiceConfiguration() -> Result<VoiceSession.Configuration, VoiceSession.Failure> {
         guard settings.voiceEnabled else { return .failure(.disabled) }
-        let available = availableVoiceProviders
-        guard let provider = available.contains(settings.voice.provider) ? settings.voice.provider : available.first else {
-            return .failure(.noKey)
-        }
+        guard let provider = voiceProvider else { return .failure(.noKey) }
         guard VoiceConsent.isGranted(provider, in: settings) else { return .failure(.noConsent) }
+        if VoiceDebug.isFake {
+            return .success(VoiceSession.Configuration(endpoint: .aiStudio, apiKey: "fake-key", settings: settings.voice, hasConsent: true))
+        }
         let configuration = settings.configuration(for: provider.keyProvider)
         let endpoint: GeminiLive.Endpoint
         switch provider {
@@ -144,12 +158,23 @@ extension AppModel: VoiceNavigator {
 
     /// A session on the current page, wired to the page changes. The caller
     /// starts it (on the user's tap) and keeps it.
-    func makeVoiceSession(audio: VoiceAudioIO) -> Result<VoiceSession, VoiceSession.Failure> {
+    func makeVoiceSession(
+        audio: VoiceAudioIO,
+        transport: @escaping LiveTransportFactory = { WebSocketLiveTransport() }
+    ) -> Result<VoiceSession, VoiceSession.Failure> {
         voiceConfiguration().map { configuration in
-            let session = VoiceSession(configuration: configuration, audio: audio, navigator: self)
+            let session = VoiceSession(configuration: configuration, transport: transport, audio: audio, navigator: self)
             let subscription = pageChanges.sink { [weak session] page in session?.pageChanged(page) }
             voicePageSubscription = subscription
+            // The topic brief wants the post count and the solution.
+            prefetchesTopicFacts = true
             return session
         }
+    }
+
+    /// The session is over: stop feeding it and fetching facts for it.
+    func voiceSessionEnded() {
+        voicePageSubscription = nil
+        prefetchesTopicFacts = false
     }
 }

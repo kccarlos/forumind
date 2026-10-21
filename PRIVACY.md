@@ -39,9 +39,36 @@ question to the AI service **you** choose:
 - **A model on your own computer** (Ollama or LM Studio): requests go to that
   computer over your local network and nowhere else.
 
-Nothing is sent to an AI service until you start a summary, chat, or search,
-make a daily digest (or turn on the daily digest, which makes it when you
-open the app), or turn on automatic summary refresh for a watched topic.
+Nothing is sent to an AI service until you start a summary, chat, search, or
+voice session, make a daily digest (or turn on the daily digest, which makes
+it when you open the app), or turn on automatic summary refresh for a watched
+topic.
+
+### Live voice (optional)
+
+Voice lets you talk to the app about the forum page you're reading. It is off
+until you turn it on or tap the microphone in the browser bar, and the app
+asks for your consent, naming Google, before the first session with each
+provider.
+
+- While a session runs, your voice (the microphone audio) and the page
+  content you ask about (post text, titles, and search results) go straight
+  from your device to **Google** (Gemini Live, through Google AI Studio or
+  Google Vertex AI) with your own API key. There is no Forumind server in
+  between.
+- On the **free tier of Google AI Studio**, Google's terms allow it to use
+  what you send to improve its products, and people may review it. Don't
+  say or open anything you want to keep private. Paid AI Studio use and
+  Vertex AI follow Google's paid-service terms. See the
+  [Gemini API Additional Terms of Service](https://ai.google.dev/gemini-api/terms)
+  and the
+  [Google Cloud Service Specific Terms](https://cloud.google.com/terms/service-terms).
+- The app doesn't record or keep the audio. It keeps only the minutes you
+  were connected, on this device, for the time limits in
+  **Settings › Voice**. You can withdraw consent there.
+- The microphone is used only during a session (and, as before, when a forum
+  page asks to record a video). iOS shows the microphone indicator while it
+  is on, including when the screen is locked during a session.
 
 ### What's stored on your device
 

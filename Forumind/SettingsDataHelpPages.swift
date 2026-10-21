@@ -225,6 +225,10 @@ struct SettingsSharingPage: View {
 }
 
 struct SettingsAboutPage: View {
+    /// The developer switch (VoiceDebug): shown after seven taps on Build.
+    @AppStorage("voice.debug.textInput") private var typesToVoice = false
+    @State private var buildTaps = 0
+
     var body: some View {
         Form {
             Section {
@@ -244,7 +248,23 @@ struct SettingsAboutPage: View {
             Section {
                 LabeledContent("Version", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—")
                 LabeledContent("Build", value: Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—")
+                    .contentShape(Rectangle())
+                    .onTapGesture { buildTaps += 1 }
                     .accessibilityIdentifier("aboutBuild")
+            }
+
+            if buildTaps >= 7 || typesToVoice {
+                // For testing builds; not translated.
+                Section {
+                    Toggle(isOn: $typesToVoice) {
+                        Text(verbatim: "Type instead of speak (voice)")
+                    }
+                    .accessibilityIdentifier("developerVoiceTextInput")
+                } header: {
+                    Text(verbatim: "Developer")
+                } footer: {
+                    Text(verbatim: "Adds a text field to the voice bar. Typed turns go to the model as realtimeInput.text, so tool calls can be checked without the microphone.")
+                }
             }
 
             Section {
