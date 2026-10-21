@@ -81,7 +81,9 @@ app_target.resources_build_phase.add_file_reference(assets)
 
 # String Catalogs: UI strings, and the Info.plist strings (display name,
 # usage descriptions). Kept in sync by scripts/i18n/sync-catalogs.sh.
-%w[Localizable.xcstrings InfoPlist.xcstrings].each do |name|
+# AppShortcuts.xcstrings holds the Siri phrases (Forumind/System/AppIntents.swift);
+# it is edited by hand, since the phrases aren't in the compiler's .stringsdata.
+%w[Localizable.xcstrings InfoPlist.xcstrings AppShortcuts.xcstrings].each do |name|
   app_target.resources_build_phase.add_file_reference(app_group.new_file(name))
 end
 

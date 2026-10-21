@@ -151,7 +151,9 @@ final class AppModel: ObservableObject {
         }
     }
     private var reconcilingSettings = false
-    @Published private(set) var sessions: [String: TopicSession]
+    @Published private(set) var sessions: [String: TopicSession] {
+        didSet { spotlightDataDidChange() }
+    }
     @Published private(set) var activities: [WorkRecord]
     @Published private(set) var currentTopic: ForumTopic?
     @Published var panelRoute: PanelRoute = .topic
@@ -179,7 +181,13 @@ final class AppModel: ObservableObject {
     @Published private(set) var notificationsAuthorized = false
     /// The user's forums (pinned and recent); see the API list above.
     @Published private(set) var forums: [Forum] {
-        didSet { syncCurrentForum() }
+        didSet {
+            syncCurrentForum()
+            spotlightDataDidChange()
+            if forums.map(\.siteURL) != oldValue.map(\.siteURL) || forums.map(\.name) != oldValue.map(\.name) {
+                forumsDidChangeForShortcuts()
+            }
+        }
     }
     /// The forum of the current page, or the last forum shown.
     @Published private(set) var currentForum: Forum?
@@ -200,6 +208,9 @@ final class AppModel: ObservableObject {
     /// The current list (search hits, research sources, focused posts) and
     /// the result cards' state (AppModel+Navigation.swift).
     @Published var browseCursor = BrowseCursor()
+    /// A Settings page an outside request wants shown (Start a Voice Chat
+    /// without voice set up); RootView presents it and resets it.
+    @Published var requestedSettingsPage: SettingsPage?
 
     nonisolated static var suggestedForums: [SuggestedForum] {
         #if DEBUG
@@ -276,6 +287,12 @@ final class AppModel: ObservableObject {
     }()
     /// Where podcast audio is cached (`Caches/Podcasts`; tests pass their own).
     let podcastDirectory: URL
+    /// Read topics and summaries in Spotlight (AppModel+System.swift).
+    let spotlight: SpotlightIndexer
+    /// Siri suggestions for the topics the user reads.
+    let topicActivityDonor: TopicActivityDonating
+    /// The topic last offered to Siri suggestions (one donation per visit).
+    var donatedTopicKey: String?
     /// Every page context change (both kinds); `pageChanges` debounces it.
     let pageUpdates = PassthroughSubject<PageContext, Never>()
     /// How long the page must settle before `pageChanges` reports it.
@@ -300,9 +317,13 @@ final class AppModel: ObservableObject {
         notifier: WatchNotifier = .shared,
         cloudSync: CloudSyncController? = nil,
         backgroundScheduler: BackgroundTaskScheduling = BGTaskScheduler.shared,
-        podcastDirectory: URL? = nil
+        podcastDirectory: URL? = nil,
+        spotlightIndex: SpotlightIndexing? = nil,
+        topicActivityDonor: TopicActivityDonating? = nil
     ) {
         self.store = store
+        spotlight = Self.makeSpotlightIndexer(index: spotlightIndex, store: store)
+        self.topicActivityDonor = topicActivityDonor ?? Self.makeTopicActivityDonor(store: store)
         self.podcastDirectory = podcastDirectory ?? PodcastStore.defaultDirectory
         self.backgroundScheduler = backgroundScheduler
         digestStore = DigestStore(directory: store.directoryURL)
@@ -454,6 +475,9 @@ final class AppModel: ObservableObject {
         if VoiceDebug.isFake { settings.voiceConsent = [:] }
         #endif
         self.cloudSync.attach(self)
+        // Launch: bring Spotlight up to date (only the difference, or
+        // everything once after a new index version).
+        spotlightDataDidChange()
     }
 
     var currentSession: TopicSession? {
@@ -641,6 +665,7 @@ final class AppModel: ObservableObject {
         }
         #endif
         currentTopic = topic
+        topicActivityDidChange(topic)
         guard let topic else { return }
         #if DEBUG
         let resetForPullUITest = ProcessInfo.processInfo.arguments.contains(
@@ -1612,6 +1637,7 @@ final class AppModel: ObservableObject {
         if let role = needsProviderSetup, isProviderReady(for: role) { needsProviderSetup = nil }
         contentBlockingSettingsDidChange(from: old)
         digestSettingsDidChange(from: old)
+        systemSettingsDidChange(from: old)
         if old.blockedUsers != settings.blockedUsers || old.filteredWords != settings.filteredWords {
             applyModerationRules()
         }
@@ -1639,6 +1665,8 @@ final class AppModel: ObservableObject {
         discoveredModels = [:]
         settingsStatus = ""
         save()
+        // A clean start for Spotlight too: rebuilt from the saved topics.
+        resetSpotlightIndex()
     }
 
     /// Ends the walkthrough (first run or replay). Browsing, the Assistant,

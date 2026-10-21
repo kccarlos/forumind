@@ -194,7 +194,9 @@ final class PodcastController: ObservableObject {
             digestID: digest.id,
             day: digest.day,
             title: PodcastScript.episodeTitle(for: digest.createdAt),
-            language: AppLanguage.current,
+            // The reading language (Settings), which is the app's language
+            // unless the user chose another.
+            language: ReadingLanguage.resolved(app.settings.readingLanguage),
             hosts: hosts,
             engine: kind,
             voices: kind.provider != nil ? app.settings.podcast.voices : nil,

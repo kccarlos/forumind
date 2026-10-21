@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CATALOGS = [
     "Forumind/Localizable.xcstrings",
     "Forumind/InfoPlist.xcstrings",
+    "Forumind/AppShortcuts.xcstrings",
     "ForumindShare/Localizable.xcstrings",
     "ForumindShare/InfoPlist.xcstrings",
 ]

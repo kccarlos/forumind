@@ -109,6 +109,27 @@ summaries and digest cards can be read aloud.
   Keychain** so your other devices can use them. Apple end-to-end encrypts
   iCloud Keychain. Keys never go into the CloudKit database.
 
+### Spotlight, Siri and translation
+
+- **Spotlight.** The titles of topics you've read, their forum's name and
+  the start of their saved summary are added to Spotlight on your device,
+  so you can search for them there. This index stays on your device: it is
+  never public, and the app doesn't send it anywhere. Deleting a summary or a
+  forum, or clearing your data, removes its entries. Turning off
+  **Spotlight** in **Settings › Data & privacy** deletes the app's whole
+  index.
+- **Siri suggestions.** When you open a topic, the app tells iOS about it,
+  so Siri can suggest it again on this device. This isn't used for search,
+  Handoff or public indexing. Turn it off with **Siri Suggestions** in
+  **Settings › Data & privacy**, which also deletes what was shared.
+- **Shortcuts and Siri.** The app's actions (Summarize Link, Ask a Forum,
+  and others) run in the app on your device. Summarize Link reads the
+  clipboard only when you run it without a link. A question you ask goes
+  to your AI provider, as it would if you typed it in the app.
+- **Translation** (iOS 18 or later) uses Apple's Translation framework on
+  your device. The text isn't sent to the developer or to your AI provider.
+  iOS may download a language the first time you use it.
+
 ### iCloud sync
 
 When your device is signed in to iCloud, the app syncs your forums,

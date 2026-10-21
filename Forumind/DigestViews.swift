@@ -445,6 +445,9 @@ struct DigestCardView: View {
                                     text: "\(card.title).\n\(card.summary)", compact: true)
                         .font(.subheadline)
                         .buttonStyle(.borderless)
+                    TranslateButton(app: app, title: card.title, text: "## \(card.title)\n\n\(card.summary)", compact: true)
+                        .font(.subheadline)
+                        .buttonStyle(.borderless)
                 }
                 reasonPill
             }

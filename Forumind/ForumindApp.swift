@@ -4,6 +4,7 @@
 //
 //
 
+import CoreSpotlight
 import SwiftUI
 import UserNotifications
 
@@ -126,6 +127,38 @@ private struct RootView: View {
                 presentProviderSetupIfNeeded()
             }
             .onChange(of: app.needsProviderSetup) { presentProviderSetupIfNeeded() }
+            // App Intents (Siri, Shortcuts, the Action button) wait for the
+            // UI, so their sheets and panes can show.
+            .task {
+                SystemEntry.attach(app)
+                // Siri learns the forum names for "Ask … in Forumind".
+                app.forumsDidChangeForShortcuts()
+            }
+            // A Spotlight result or a Siri suggestion: open the topic.
+            .onContinueUserActivity(CSSearchableItemActionType) { activity in
+                if let identifier = activity.userInfo?[CSSearchableItemActivityIdentifier] as? String,
+                   let topicKey = SpotlightCatalog.topicKey(fromIdentifier: identifier) {
+                    app.openTopic(topicKey: topicKey)
+                }
+            }
+            .onContinueUserActivity(TopicActivity.type) { activity in
+                if let topicKey = TopicActivity.topicKey(from: activity) {
+                    app.openTopic(topicKey: topicKey)
+                }
+            }
+            // Start a Voice Chat without voice set up: Settings › Voice.
+            .sheet(item: $app.requestedSettingsPage) { page in
+                NavigationStack {
+                    SettingsRootView(app: app, initialPage: page)
+                        .navigationTitle("Settings")
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button("Done") { app.requestedSettingsPage = nil }
+                            }
+                        }
+                }
+            }
             // A request that arrived during the walkthrough is shown after it.
             .onChange(of: replayingOnboarding) { presentProviderSetupIfNeeded() }
             // "Sync API keys" (Settings › iCloud Sync, reset, or a synced

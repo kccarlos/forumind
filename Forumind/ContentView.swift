@@ -33,6 +33,8 @@ struct ContentView: View {
     @State private var showingAddForum = false
     /// The topic the Report or block sheet is about.
     @State private var reportTopic: ForumTopic?
+    /// Translate Posts on Screen (iOS 18+).
+    @State private var translatingPosts = false
     @State private var keyboardVisible = false
     @State private var addressFocusRequest = 0
     /// Assistant panel width chosen with the handle (0 = default 40%).
@@ -107,6 +109,9 @@ struct ContentView: View {
         }
         .sheet(item: $reportTopic) { topic in
             ReportSheet(app: app, topic: topic, forumName: forumName(for: topic))
+        }
+        .sheet(isPresented: $translatingPosts) {
+            PostsTranslationSheet(app: app)
         }
         .sheet(isPresented: $app.showsTodayPage) {
             TodayPage(app: app) { url, card in
@@ -191,6 +196,7 @@ struct ContentView: View {
             showLoginInfo: { showingLoginInfo = true },
             addForum: { showingAddForum = true },
             report: { topic in reportTopic = topic },
+            translatePosts: { translatingPosts = true },
             openForum: { forum in
                 app.openForum(forum)
                 showPane(.browser)
@@ -348,6 +354,8 @@ struct BrowserActions {
     var addForum: () -> Void
     /// Report or block content in a topic.
     var report: (ForumTopic) -> Void = { _ in }
+    /// Translate the posts on screen into the reading language.
+    var translatePosts: () -> Void = {}
     var openForum: (Forum) -> Void
     var showForumsHome: () -> Void
 }
@@ -859,6 +867,12 @@ private struct BrowserChrome: View {
             }
             if let topic = browser.pageContext.topic, !showsHome {
                 Section {
+                    if ReadingLanguage.isTranslationAvailable {
+                        Button(action: actions.translatePosts) {
+                            Label("Translate Posts on Screen", systemImage: "translate")
+                        }
+                        .accessibilityIdentifier("menuTranslatePosts")
+                    }
                     Button {
                         actions.report(topic)
                     } label: {

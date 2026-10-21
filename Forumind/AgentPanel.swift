@@ -549,6 +549,10 @@ struct AgentView: View {
                     }
                 }
                 Spacer(minLength: 0)
+                if run.status.isTerminal {
+                    TranslateButton(app: app, title: String(localized: "Answer"), text: answer, compact: true)
+                        .buttonStyle(DCIconButtonStyle())
+                }
                 Menu {
                     Button {
                         UIPasteboard.general.string = answer

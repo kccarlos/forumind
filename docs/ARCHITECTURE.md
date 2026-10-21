@@ -96,6 +96,8 @@ and after every page, so the bar and status keep moving during long reads.
 | `Models.swift` | Codable models: `AppSettings`, `TopicSession`, `AgentRun`, `WatchedTopic`, `WorkRecord`, provider configuration, `ModelSelection`. |
 | `WatchSupport.swift` | Local notifications (watched topics, the daily digest) and the Background App Refresh task for watched topics. |
 | `DailyDigest.swift`, `AppModel+Digest.swift`, `DigestViews.swift` | The daily digest: cards, planning, the prefetch and its background task, storage; making the cards; the Today page, its Forums home row, and Settings › Daily digest. |
+| `AppModel+System.swift`, `System/*.swift` | System entry points: App Intents and Siri phrases, Spotlight, Siri suggestions (see below). |
+| `Translation/*.swift` | On-device translation: the reading language, the Translate button and sheet (see below). |
 | `Podcast/*.swift`, `PodcastViews.swift` | The podcast: settings and consent, the script and its checks, Gemini TTS and on-device speech, the episode cache, the player with Now Playing, the controller (making, Ask about this, read aloud); the Today page's mini player and chapter list, the consent sheet, the read-aloud button. |
 
 **Work queue.** Summaries, chats, and agent runs are `WorkRecord`s. Two run at
@@ -489,8 +491,9 @@ backticks and links go).
 user's provider or Apple Intelligence, `AIService.complete`), so Apple
 Intelligence stays within its budget and playback can start after the first
 chapter. The prompt names the hosts and their roles (host A guides, host B
-asks), the language (`AppLanguage`; there is no separate reading language
-yet), the position ("topic 2 of 5", the previous title for a transition),
+asks), the language (the reading language in Settings, which is the app's
+language unless the user picked another; `ReadingLanguage.resolved`), the
+position ("topic 2 of 5", the previous title for a transition),
 the length (about 150 words, or 260 Chinese characters, per minute; 1 minute
 by default, ½–3 in Settings) and the posts the chapter may cite. The input
 is the card's facts, its summary and, when the topic was read, a short
@@ -648,6 +651,103 @@ that did not come through the share sheet only opens the page and the
 Assistant; the user starts the summary. Unsigned simulator builds have no App
 Group container, so the inbox is skipped there.
 
+### Translation
+
+`Translation/ReadingLanguage.swift` and `TranslationViews.swift`. Summaries,
+agent answers and digest cards have a Translate button, and the browser's
+More menu has Translate Posts on Screen. Translation uses Apple's
+Translation framework on the device (iOS 18+): `.translationTask` hands the
+sheet a `TranslationSession`, which is never stored. On iOS 17 there is no
+button; the deployment target stays iOS 17.
+
+- **Target.** The reading language (Settings, below the app language):
+  empty means the app's language, otherwise one of `ReadingLanguage.choices`.
+  It syncs like other preferences. The daily podcast's script is written in
+  it too.
+- **When the button shows.** NaturalLanguage detects the text's language.
+  The button is hidden when that is the reading language: same language
+  code, and the same script when either side implies one, so zh-Hans and
+  zh-Hant differ. Text it can't identify gets the button, and the system
+  detects the language.
+- **Missing languages.** `LanguageAvailability` is checked first, so an
+  unsupported pair gets a clear message. A supported language that isn't
+  downloaded yet is asked for by the system on the first request.
+- **Markdown.** `TranslationText` splits the text by line. List markers,
+  headings, quotes, table pipes and code blocks stay as they are, and each
+  line's text (each table cell) is one request in a batch. The result is
+  shown with the original a tap away.
+- **Posts.** Translate Posts on Screen reads up to eight visible posts
+  through the browser bridge (`visible()` / `postText`, the same moderation
+  filtering as the voice `read` tool). Posts already in the reading
+  language are left out. The sheet shows the rest; the page itself is never
+  rewritten.
+
+### App Intents, Siri and Spotlight
+
+`System/AppIntents.swift`, `System/SystemEntry.swift`,
+`System/Spotlight.swift` and `AppModel+System.swift`. They live in the app
+target. There is no extension, so there are no widgets or Control Center
+control yet: those need a widget extension.
+
+**Intents.** Summarize Link (a URL, or the clipboard's link), Ask a Forum (a
+`ForumEntity` and a question), Open Today's Digest, Play Today's Podcast,
+Start a Voice Chat, and Open Topic (a `TopicEntity`). All of them have
+`openAppWhenRun`.
+
+- `perform()` hands a `SystemEntryAction` to `SystemEntry`. RootView
+  attaches the AppModel in its `.task`, and an action that arrives during
+  launch waits until then.
+- The AppModel reuses the existing paths. Summarize goes through
+  `handle(IncomingLinkRequest)`, the share extension's path, and Ask starts
+  Ask the forum on that forum. Play plays today's episode, or opens Today
+  when there is none. Voice goes through `VoiceController.start()` and its
+  consent gate; without a Gemini or Vertex key it opens Settings › Voice
+  (`requestedSettingsPage`).
+- No AI work starts before the walkthrough and the Terms of Use are done:
+  the app opens, and the question waits as a draft.
+- Siri, Shortcuts and the Action button can launch the app in the
+  background just to list forums. So the forum query reads the AppModel
+  when it is attached, else only the `forums` key of `state.json`. Pinned
+  forums come first, in their order, then the recent ones.
+- `ForumindShortcuts` gives each intent two Siri phrases, which Spotlight
+  and the Shortcuts app show too. The phrases are translated in
+  `AppShortcuts.xcstrings`; the titles are in `Localizable.xcstrings`. Siri
+  learns new forum names through `updateAppShortcutParameters()`.
+
+**Siri suggestions.** Opening a topic donates one `NSUserActivity` per visit
+(type `<prefix>.topic`, listed in `NSUserActivityTypes`).
+
+- It is eligible for prediction only: not for search, Handoff or public
+  indexing.
+- Settings › Data & privacy › Siri Suggestions (on by default, per device)
+  turns it off and deletes the saved activities.
+
+**Spotlight.** Read topics and saved summaries of the forums in the user's
+list are indexed in CoreSpotlight.
+
+- What each item holds:
+  - title, forum name and the start of the summary;
+  - the forum icon, only when it is already in the URL cache;
+  - a stable identifier `topic:<topicKey>`, with the forum's site URL as
+    the domain.
+- On iOS 18+ each item is associated with its `TopicEntity`
+  (`IndexedEntity`), so Apple Intelligence can find topics.
+- Tapping a result arrives as `CSSearchableItemActionType` and opens the
+  topic at its saved URL, which keeps the post it was read at.
+- `SpotlightIndexer` keeps the index equal to the data rather than hooking
+  each delete button. Every change to `sessions` or `forums` schedules one
+  debounced reconcile: deleting a summary, removing a forum, clearing data,
+  or a deletion synced from another device.
+  - The reconcile diffs the wanted items against the fingerprints last
+    indexed (UserDefaults) and sends only the difference, in batches of
+    100. That includes a reconcile on launch.
+  - A new `SpotlightIndexer.version` rebuilds the index once.
+  - Reset settings rebuilds it.
+  - The Data & privacy switch (on by default, per device) deletes the app's
+    whole index.
+- Tests, previews and the screenshot samples never touch the real index or
+  donations.
+
 ### Content blocking
 
 `ContentBlocker.swift` (`ContentRuleLibrary`, `ContentBlocker`,
@@ -717,7 +817,7 @@ the 50 most recent agent runs are kept.
 
 | Target | What it covers |
 | --- | --- |
-| `ForumindTests` | Unit tests: forum identity and URL building, forum request pacing (fake clock), the daily digest (card plan, prefetch cap, scheduling, resumable cards), the work queue and state transitions, incoming links, onboarding, agent sources (topic and post level), post-level browsing (the current list, landing URLs, page position and its debounce, find/read with moderation, research single-flight, result trimming), the podcast (script JSON and its speech checks, chapters from cards, the Gemini TTS request on both endpoints and responses from fixtures, retries, engine and system-voice selection, the player's timeline, chapter navigation and remembered position with fakes, Ask about this pausing and resuming, the opt-in defaults, cache cleanup), the voice agent offline (Gemini Live message fixtures, the session against a fake transport, fake audio and a manual clock, tool mapping, context notes, consent, typed input, the cost guard), the audio pipeline without hardware (sample-rate conversion, framing, the voice-activity detector on four short speech fixtures in `ForumindTests/Audio` mixed with generated noise, the jitter buffer and time-stretch replays, the time-pitch graph rendered offline, the microphone watchdog), post-level Discourse parsing (trimmed JSON fixtures in `DiscourseFixtures.swift`), content blocking (compiles every bundled chunk in WebKit), CloudKit sync against a fake transport (two simulated devices), Keychain sync, iPad layout math, String Catalog completeness (every key translated, matching format specifiers, plural variations). |
+| `ForumindTests` | Unit tests: forum identity and URL building, forum request pacing (fake clock), the daily digest (card plan, prefetch cap, scheduling, resumable cards), the work queue and state transitions, incoming links, onboarding, agent sources (topic and post level), post-level browsing (the current list, landing URLs, page position and its debounce, find/read with moderation, research single-flight, result trimming), the podcast (script JSON and its speech checks, chapters from cards, the Gemini TTS request on both endpoints and responses from fixtures, retries, engine and system-voice selection, the player's timeline, chapter navigation and remembered position with fakes, Ask about this pausing and resuming, the opt-in defaults, cache cleanup), the voice agent offline (Gemini Live message fixtures, the session against a fake transport, fake audio and a manual clock, tool mapping, context notes, consent, typed input, the cost guard), the audio pipeline without hardware (sample-rate conversion, framing, the voice-activity detector on four short speech fixtures in `ForumindTests/Audio` mixed with generated noise, the jitter buffer and time-stretch replays, the time-pitch graph rendered offline, the microphone watchdog), post-level Discourse parsing (trimmed JSON fixtures in `DiscourseFixtures.swift`), content blocking (compiles every bundled chunk in WebKit), CloudKit sync against a fake transport (two simulated devices), Keychain sync, iPad layout math, String Catalog completeness (every key translated, matching format specifiers and intent placeholders, plural variations), App Intents (each intent's action through a fake router, the forum query's order, the AppModel carrying actions out), Spotlight against a fake index (items, identifiers, removal on every delete path and the switch), Siri-suggestion donations, and the reading-language decision and Markdown segmenting for translation. |
 | `ForumindUITests` | UI tests on simulators (Forums home, the Today page and its podcast on a fake engine, landing on a post and the result cards on a live topic, the voice consent sheet and bar on a scripted session, onboarding, settings navigation, share hand-off, iPad layouts) and smoke tests for physical devices. |
 
 See [DEVELOPMENT.md](DEVELOPMENT.md) for how to run them.

@@ -243,6 +243,16 @@ struct AppSettings: Codable, Equatable {
     var podcastDailyEnabled = false
     var podcastConsent: [String: Date] = [:]
     var podcast = PodcastSettings()
+    /// The language summaries, digest cards and posts are translated into
+    /// (Translation/ReadingLanguage.swift), and the podcast's script
+    /// language. Empty: the app's language.
+    var readingLanguage = ""
+    /// Read topics and saved summaries in Spotlight (System/Spotlight.swift).
+    /// On by default; each device keeps its own index.
+    var spotlightEnabled = true
+    /// Topics the user reads are offered to Siri suggestions
+    /// (`NSUserActivity`). On by default; per device.
+    var donatesTopicActivity = true
 
     init() {}
 
@@ -282,6 +292,9 @@ struct AppSettings: Codable, Equatable {
         case podcastDailyEnabled
         case podcastConsent
         case podcast
+        case readingLanguage
+        case spotlightEnabled
+        case donatesTopicActivity
     }
 
     // Snapshots written by earlier versions lack the newer keys; a missing key
@@ -368,6 +381,9 @@ struct AppSettings: Codable, Equatable {
         podcastDailyEnabled = (try? container.decodeIfPresent(Bool.self, forKey: .podcastDailyEnabled)).flatMap { $0 } ?? false
         podcastConsent = (try? container.decodeIfPresent([String: Date].self, forKey: .podcastConsent)).flatMap { $0 } ?? [:]
         podcast = (try? container.decodeIfPresent(PodcastSettings.self, forKey: .podcast)).flatMap { $0 } ?? PodcastSettings()
+        readingLanguage = (try? container.decodeIfPresent(String.self, forKey: .readingLanguage)).flatMap { $0 } ?? ""
+        spotlightEnabled = (try? container.decodeIfPresent(Bool.self, forKey: .spotlightEnabled)).flatMap { $0 } ?? true
+        donatesTopicActivity = (try? container.decodeIfPresent(Bool.self, forKey: .donatesTopicActivity)).flatMap { $0 } ?? true
     }
 
     func configuration(for provider: AIProvider) -> ProviderConfiguration {

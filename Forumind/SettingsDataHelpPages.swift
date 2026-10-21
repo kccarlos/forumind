@@ -27,6 +27,21 @@ struct SettingsDataPage: View {
             }
 
             Section {
+                Toggle(isOn: $app.settings.spotlightEnabled) {
+                    Label("Spotlight", systemImage: "magnifyingglass")
+                }
+                .accessibilityIdentifier("spotlightEnabled")
+                Toggle(isOn: $app.settings.donatesTopicActivity) {
+                    Label("Siri Suggestions", systemImage: "sparkle.magnifyingglass")
+                }
+                .accessibilityIdentifier("donatesTopicActivity")
+            } header: {
+                Text("Search and suggestions")
+            } footer: {
+                Text("Topics you read and their summaries can be found in Spotlight, and Siri can suggest them again. Both stay on this device. Turning Spotlight off removes Forumind’s entries from Spotlight.")
+            }
+
+            Section {
                 if forumsWithData.isEmpty {
                     Text("Nothing saved yet. Summaries, chats, and answers appear here by forum.")
                         .foregroundStyle(.secondary)

@@ -197,7 +197,11 @@ enum SyncSettings {
         // The daily podcast spends credits on this device; sending its
         // script to Google is agreed to per device.
         "podcastDailyEnabled",
-        "podcastConsent"
+        "podcastConsent",
+        // Spotlight and Siri suggestions live on this device: its own index
+        // and its own donated activities.
+        "spotlightEnabled",
+        "donatesTopicActivity"
     ]
 
     /// Each provider configuration is one unit: `configurations.<provider>`.

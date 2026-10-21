@@ -11,6 +11,7 @@ final class LocalizationCatalogTests: XCTestCase {
     private static let catalogPaths = [
         "Forumind/Localizable.xcstrings",
         "Forumind/InfoPlist.xcstrings",
+        "Forumind/AppShortcuts.xcstrings",
         "ForumindShare/Localizable.xcstrings",
         "ForumindShare/InfoPlist.xcstrings"
     ]
@@ -175,6 +176,44 @@ final class LocalizationCatalogTests: XCTestCase {
             let path = try XCTUnwrap(Bundle.main.path(forResource: language, ofType: "lproj"))
             let bundle = try XCTUnwrap(Bundle(path: path))
             XCTAssertEqual(bundle.localizedString(forKey: "Forums", value: nil, table: nil), expected)
+        }
+    }
+
+    // MARK: Siri phrases and intent placeholders
+
+    /// `${applicationName}` / `${forum}`: App Intents placeholders survive
+    /// translation, and every Siri phrase names the app in every language.
+    func testIntentPlaceholdersAreKeptAndPhrasesNameTheApp() throws {
+        func placeholders(_ text: String) -> [String] {
+            let regex = try! NSRegularExpression(pattern: #"\$\{[A-Za-z]+\}"#)
+            return regex.matches(in: text, range: NSRange(text.startIndex..., in: text))
+                .compactMap { Range($0.range, in: text).map { String(text[$0]) } }.sorted()
+        }
+        var phrases = 0
+        for catalog in try catalogs() {
+            for (key, entry) in translatableEntries(catalog) where key.contains("${") {
+                let localizations = entry["localizations"] as? [String: Any] ?? [:]
+                for language in Self.languages {
+                    for unit in units(localizations[language]) {
+                        let value = unit["value"] as? String ?? ""
+                        XCTAssertEqual(placeholders(value), placeholders(key), "\(catalog.path): \(key) [\(language)] = \(value)")
+                    }
+                }
+                if catalog.path.hasSuffix("AppShortcuts.xcstrings") {
+                    phrases += 1
+                    XCTAssertTrue(key.contains("${applicationName}"), key)
+                }
+            }
+        }
+        XCTAssertEqual(phrases, 10)
+    }
+
+    func testSiriPhrasesResolveInChineseFromTheBundle() throws {
+        for (language, expected) in [("zh-Hans", "和${applicationName}聊天"), ("zh-Hant", "和${applicationName}聊天")] {
+            let path = try XCTUnwrap(Bundle.main.path(forResource: language, ofType: "lproj"))
+            let bundle = try XCTUnwrap(Bundle(path: path))
+            XCTAssertEqual(bundle.localizedString(forKey: "Talk to ${applicationName}", value: nil, table: "AppShortcuts"), expected)
+            XCTAssertNotEqual(bundle.localizedString(forKey: "Summarize Link", value: nil, table: nil), "Summarize Link")
         }
     }
 

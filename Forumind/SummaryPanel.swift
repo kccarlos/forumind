@@ -631,6 +631,7 @@ struct AssistantPanel: View {
                     }
                     if let session = app.currentSession, session.hasSummary {
                         ReadAloudButton(podcast: app.podcast, id: "summary-\(session.topicKey)", title: session.title, text: session.summary)
+                        TranslateButton(app: app, title: session.title, text: session.summary)
                     }
                     Spacer()
                     Button {

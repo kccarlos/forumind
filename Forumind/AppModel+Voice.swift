@@ -10,25 +10,39 @@ import Foundation
 extension AppModel: VoiceNavigator {
     /// The text of every post on screen, without hidden ones.
     func readVisible() async -> BrowseResult {
-        guard let ref = currentTopicRef else {
+        guard currentTopicRef != nil else {
             return BrowseResult(status: .unavailable, shown: "No topic is open.")
         }
+        let posts = await postsOnScreenWithText(limit: 4)
+        guard !posts.isEmpty else {
+            return BrowseResult(status: .notFound, shown: "No posts are on screen.")
+        }
+        let texts = posts.map { BrowseText.content(of: $0) }
+        let numbers = posts.map { "\($0.number)" }.joined(separator: ", ")
+        return BrowseResult(status: .read, shown: "Posts \(numbers) on screen", content: texts.joined(separator: "\n\n"))
+    }
+
+    /// The posts on screen (at most `limit`) with their text, without
+    /// hidden ones: the voice `read` tool and Translate Posts on Screen.
+    func postsOnScreenWithText(limit: Int) async -> [BrowsePostText] {
+        guard let ref = currentTopicRef else { return [] }
         let rules = browser.moderationRules
         let posts = await browser.postsOnScreen().filter {
             !rules.hidesUser($0.username, siteURL: ref.siteURL)
                 && !rules.hidesPost($0.number, siteURL: ref.siteURL, topicID: ref.topicID)
         }
-        guard !posts.isEmpty else {
-            return BrowseResult(status: .notFound, shown: "No posts are on screen.")
-        }
-        var texts: [String] = []
-        for post in posts.prefix(4) {
+        var texts: [BrowsePostText] = []
+        for post in posts.prefix(limit) {
             if case .shown(let text) = await postText(post.number, in: ref, facts: topicOverviews[ref.topicKey]?.facts) {
-                texts.append(BrowseText.content(of: text))
+                texts.append(text)
             }
         }
-        let numbers = posts.map { "\($0.number)" }.joined(separator: ", ")
-        return BrowseResult(status: .read, shown: "Posts \(numbers) on screen", content: texts.joined(separator: "\n\n"))
+        return texts
+    }
+
+    /// Translate Posts on Screen: up to eight posts.
+    func postsToTranslate() async -> [BrowsePostText] {
+        await postsOnScreenWithText(limit: 8)
     }
 
     var researchProgress: String? {

@@ -108,6 +108,14 @@ struct SettingsRootView: View {
             }
 
             Section {
+                ReadingLanguagePicker(app: app)
+            } footer: {
+                Text(ReadingLanguage.isTranslationAvailable
+                    ? "Summaries, answers, digest cards and posts can be translated into this language on your device. The daily podcast is written in it too."
+                    : "The daily podcast is written in this language. Translating needs iOS 18.")
+            }
+
+            Section {
                 row(.help)
             } footer: {
                 Text("Forumind \(AppVersion.text())")
@@ -190,6 +198,27 @@ struct SettingsRootView: View {
             SettingsRowLabel(page: page, value: value)
         }
         .accessibilityIdentifier("settingsRow-\(page.rawValue)")
+    }
+}
+
+/// Settings › Reading language: the app's language, or one of
+/// `ReadingLanguage.choices` (names from the system).
+struct ReadingLanguagePicker: View {
+    @ObservedObject var app: AppModel
+
+    var body: some View {
+        Picker(selection: $app.settings.readingLanguage) {
+            Text("App language (\(AppLanguage.displayName))", comment: "Reading language option; the placeholder is the app's language name").tag("")
+            ForEach(ReadingLanguage.choices, id: \.self) { code in
+                Text(verbatim: ReadingLanguage.displayName(code)).tag(code)
+            }
+        } label: {
+            HStack(spacing: DCTheme.spacingM) {
+                SettingsIcon(symbol: "translate", tint: Color(light: 0x2F9E6B, dark: 0x4CC38A))
+                Text("Reading language")
+            }
+        }
+        .accessibilityIdentifier("settingsRow-readingLanguage")
     }
 }
 

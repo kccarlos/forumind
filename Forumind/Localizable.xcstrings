@@ -1,6 +1,9 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "%@" : {
+      "shouldTranslate" : false
+    },
     "%@ API key is required." : {
       "comment" : "Error; the placeholder is the AI provider's name",
       "localizations" : {
@@ -1201,6 +1204,22 @@
         }
       }
     },
+    "A forum topic’s web address. Leave empty to use the clipboard." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "论坛话题的网址。留空则使用剪贴板中的链接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "論壇話題的網址。留空則使用剪貼簿中的連結。"
+          }
+        }
+      }
+    },
     "A good default is filled in. Tap the list button to see every model." : {
       "localizations" : {
         "zh-Hans" : {
@@ -2363,6 +2382,23 @@
         }
       }
     },
+    "App language (%@)" : {
+      "comment" : "Reading language option; the placeholder is the app's language name",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App 语言（%@）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App 語言（%@）"
+          }
+        }
+      }
+    },
     "Apple Intelligence" : {
       "comment" : "AI provider name. Use Apple's official name for Apple Intelligence in this language.",
       "localizations" : {
@@ -2679,6 +2715,22 @@
         }
       }
     },
+    "Ask ${forum} ${question}" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "问${forum}：${question}"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "問${forum}：${question}"
+          }
+        }
+      }
+    },
     "Ask %@ anything…" : {
       "comment" : "Ask the forum placeholder; the placeholder is a forum name",
       "localizations" : {
@@ -2692,6 +2744,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "向 %@ 提出任何問題…"
+          }
+        }
+      }
+    },
+    "Ask a Forum" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "问论坛"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "問論壇"
           }
         }
       }
@@ -2935,6 +3003,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在問論壇"
+          }
+        }
+      }
+    },
+    "Asks one of your forums a question: Forumind searches and reads its topics and answers with sources." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "向你的某个论坛提问：Forumind 会搜索并阅读其中的话题，给出附带来源的回答。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "向你的某個論壇提問：Forumind 會搜尋並閱讀其中的話題，給出附帶來源的回答。"
           }
         }
       }
@@ -4899,6 +4983,22 @@
         }
       }
     },
+    "Couldn’t translate" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法翻译"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法翻譯"
+          }
+        }
+      }
+    },
     "Create summary" : {
       "localizations" : {
         "zh-Hans" : {
@@ -6196,6 +6296,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "例如：用繁體中文回答。摘要不超過 300 字。"
+          }
+        }
+      }
+    },
+    "Forum" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "论坛"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "論壇"
           }
         }
       }
@@ -7846,6 +7962,22 @@
         }
       }
     },
+    "Link" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "链接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連結"
+          }
+        }
+      }
+    },
     "Listed latest topics" : {
       "comment" : "Agent step",
       "localizations" : {
@@ -8923,6 +9055,22 @@
         }
       }
     },
+    "No posts are on screen" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "屏幕上没有帖子"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "螢幕上沒有貼文"
+          }
+        }
+      }
+    },
     "No posts are on screen. Scroll to a post, then open this again." : {
       "localizations" : {
         "zh-Hans" : {
@@ -9664,22 +9812,6 @@
         }
       }
     },
-    "Only two destinations" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "只发往两个地方"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "只傳送到兩個地方"
-          }
-        }
-      }
-    },
     "Only where it needs to go" : {
       "localizations" : {
         "zh-Hans" : {
@@ -9772,6 +9904,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "打開「設定 › Apple Intelligence 與 Siri」，開啟 Apple Intelligence，然後回到這裡。"
+          }
+        }
+      }
+    },
+    "Open Today’s Digest" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开今日摘要"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打開今日摘要"
+          }
+        }
+      }
+    },
+    "Open Topic" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开话题"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打開話題"
           }
         }
       }
@@ -10097,6 +10261,38 @@
         }
       }
     },
+    "Opens a forum topic in Forumind and summarizes it. Without a link, the link on the clipboard is used." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Forumind 中打开论坛话题并为它生成摘要。未提供链接时，使用剪贴板中的链接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Forumind 中打開論壇話題並為它產生摘要。未提供連結時，使用剪貼簿中的連結。"
+          }
+        }
+      }
+    },
+    "Opens a topic you’ve read in Forumind." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Forumind 中打开你读过的话题。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Forumind 中打開你讀過的話題。"
+          }
+        }
+      }
+    },
     "Opens it in the browser" : {
       "comment" : "Accessibility hint of a result card over the page",
       "localizations" : {
@@ -10110,6 +10306,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在瀏覽器中開啟"
+          }
+        }
+      }
+    },
+    "Opens the Today page with today’s digest." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开“今日”页面，查看今天的摘要。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打開「今日」頁面，查看今天的摘要。"
           }
         }
       }
@@ -10598,6 +10810,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "播放"
+          }
+        }
+      }
+    },
+    "Play Podcast" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "播放播客"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "播放 Podcast"
+          }
+        }
+      }
+    },
+    "Play Today’s Podcast" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "播放今天的播客"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "播放今天的 Podcast"
+          }
+        }
+      }
+    },
+    "Plays today’s podcast. If there is no episode yet, opens the Today page." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "播放今天的播客。如果还没有节目，则打开“今日”页面。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "播放今天的 Podcast。如果還沒有單集，則打開「今日」頁面。"
           }
         }
       }
@@ -11106,6 +11366,22 @@
         }
       }
     },
+    "Question" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "问题"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "問題"
+          }
+        }
+      }
+    },
     "Questions you ask the forum will appear here." : {
       "localizations" : {
         "zh-Hans" : {
@@ -11135,6 +11411,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "排隊中"
+          }
+        }
+      }
+    },
+    "Read" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "阅读"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "閱讀"
           }
         }
       }
@@ -11370,6 +11662,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在讀取論壇回覆…"
+          }
+        }
+      }
+    },
+    "Reading language" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "阅读语言"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "閱讀語言"
           }
         }
       }
@@ -12123,22 +12431,6 @@
         }
       }
     },
-    "Requests go only to the forum you’re reading and the AI provider you chose. Sync uses your own iCloud." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "请求只会发送到你正在阅读的论坛和你选择的 AI 提供方。同步使用你自己的 iCloud。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "請求只會傳送到你正在閱讀的論壇和你選擇的 AI 供應商。同步使用你自己的 iCloud。"
-          }
-        }
-      }
-    },
     "Requests go only to the forum you’re reading and the AI provider you chose. Sync uses your own iCloud. Once a day the app downloads Forumind’s public list of removed content, sending nothing about you." : {
       "localizations" : {
         "zh-Hans" : {
@@ -12577,6 +12869,22 @@
         }
       }
     },
+    "Say or type a question to ask." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请说出或输入要问的问题。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請說出或輸入要問的問題。"
+          }
+        }
+      }
+    },
     "Scroll to latest message" : {
       "localizations" : {
         "zh-Hans" : {
@@ -12589,6 +12897,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "捲動到最新訊息"
+          }
+        }
+      }
+    },
+    "Search and suggestions" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索与建议"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜尋與建議"
           }
         }
       }
@@ -13131,6 +13455,38 @@
         }
       }
     },
+    "Show original" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示原文"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示原文"
+          }
+        }
+      }
+    },
+    "Show translation" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示译文"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示譯文"
+          }
+        }
+      }
+    },
     "Shows the audio health" : {
       "comment" : "Accessibility hint of the voice bar's state",
       "localizations" : {
@@ -13274,6 +13630,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "登入"
+          }
+        }
+      }
+    },
+    "Siri Suggestions" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Siri 建议"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Siri 建議"
           }
         }
       }
@@ -13431,6 +13803,22 @@
         }
       }
     },
+    "Spotlight" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "聚焦搜索"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spotlight"
+          }
+        }
+      }
+    },
     "Stale summary — %lld newer replies" : {
       "localizations" : {
         "en" : {
@@ -13526,6 +13914,22 @@
         }
       }
     },
+    "Start a Voice Chat" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开始语音聊天"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開始語音聊天"
+          }
+        }
+      }
+    },
     "Start with a forum" : {
       "localizations" : {
         "zh-Hans" : {
@@ -13538,6 +13942,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "從一個論壇開始"
+          }
+        }
+      }
+    },
+    "Starts a voice chat about the page in Forumind. If voice isn’t set up yet, opens its settings." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Forumind 中就当前页面开始语音聊天。如果尚未设置语音，则打开语音设置。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Forumind 中就目前頁面開始語音聊天。如果尚未設定語音，則打開語音設定。"
           }
         }
       }
@@ -13903,6 +14323,22 @@
         }
       }
     },
+    "Summaries, answers, digest cards and posts can be translated into this language on your device. The daily podcast is written in it too." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "摘要、回答、每日摘要卡片和帖子可以在设备上翻译成这种语言。每日播客也用这种语言撰写。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "摘要、回答、每日摘要卡片和貼文可以在裝置上翻譯成這種語言。每日 Podcast 也用這種語言撰寫。"
+          }
+        }
+      }
+    },
     "Summaries, chat and Ask the forum use your own key. It stays in the Keychain." : {
       "localizations" : {
         "zh-Hans" : {
@@ -13979,6 +14415,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "摘要"
+          }
+        }
+      }
+    },
+    "Summarize ${url}" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "总结${url}"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "總結${url}"
+          }
+        }
+      }
+    },
+    "Summarize Link" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "总结链接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "總結連結"
           }
         }
       }
@@ -14704,6 +15172,22 @@
         }
       }
     },
+    "The daily podcast is written in this language. Translating needs iOS 18." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每日播客用这种语言撰写。翻译功能需要 iOS 18。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每日 Podcast 用這種語言撰寫。翻譯功能需要 iOS 18。"
+          }
+        }
+      }
+    },
     "The details are in the topic." : {
       "comment" : "Podcast: fallback line when a topic has nothing speakable",
       "localizations" : {
@@ -15049,6 +15533,22 @@
         }
       }
     },
+    "The text’s language couldn’t be identified." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法识别文本的语言。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法辨識文字的語言。"
+          }
+        }
+      }
+    },
     "The topic-read budget (%lld) is used up; answer with what you have." : {
       "comment" : "Ask the forum step error; the number is the maximum topic reads per run",
       "localizations" : {
@@ -15062,6 +15562,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "閱讀話題的次數上限（%lld）已用完；請根據現有資訊作答。"
+          }
+        }
+      }
+    },
+    "The translation was cancelled. To translate, allow the language download when iOS asks." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "翻译已取消。要翻译，请在 iOS 询问时允许下载语言。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "翻譯已取消。要翻譯，請在 iOS 詢問時允許下載語言。"
           }
         }
       }
@@ -15165,6 +15681,22 @@
         }
       }
     },
+    "There’s no web link to summarize. Copy a forum topic’s link first, or choose one." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有可总结的网页链接。请先复制论坛话题的链接，或选择一个链接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有可總結的網頁連結。請先拷貝論壇話題的連結，或選擇一個連結。"
+          }
+        }
+      }
+    },
     "There’s nothing to sign up for, and nothing about how you use the app is collected." : {
       "localizations" : {
         "zh-Hans" : {
@@ -15177,6 +15709,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "不需要註冊任何帳號，也不會收集你使用 App 的任何資訊。"
+          }
+        }
+      }
+    },
+    "These posts are already in %@." : {
+      "comment" : "Translate Posts on Screen; the placeholder is a language name",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这些帖子已经是%@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這些貼文已經是%@。"
           }
         }
       }
@@ -15440,6 +15989,22 @@
         }
       }
     },
+    "Today’s Digest" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今日摘要"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今日摘要"
+          }
+        }
+      }
+    },
     "Today’s digest is ready to make" : {
       "comment" : "Notification title after the daily digest's forum data was fetched in the background; the AI summaries are made when the app opens",
       "localizations" : {
@@ -15541,6 +16106,22 @@
         }
       }
     },
+    "Topic" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "话题"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "話題"
+          }
+        }
+      }
+    },
     "Topic on %@" : {
       "comment" : "Eyebrow above a topic title; the placeholder is a forum name",
       "localizations" : {
@@ -15607,6 +16188,22 @@
         }
       }
     },
+    "Topics you read and their summaries can be found in Spotlight, and Siri can suggest them again. Both stay on this device. Turning Spotlight off removes Forumind’s entries from Spotlight." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你读过的话题及其摘要可以在聚焦搜索中找到，Siri 也可以再次建议它们。两者都只保留在本设备上。关闭聚焦搜索会从中移除 Forumind 的条目。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你讀過的話題及其摘要可以在 Spotlight 中找到，Siri 也可以再次建議它們。兩者都只保留在本裝置上。關閉 Spotlight 會從中移除 Forumind 的項目。"
+          }
+        }
+      }
+    },
     "Topics you summarize or chat about here, and your questions to the forum, show up here." : {
       "localizations" : {
         "zh-Hans" : {
@@ -15635,6 +16232,167 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已在此網站阻擋追蹤器"
+          }
+        }
+      }
+    },
+    "Translate" : {
+      "comment" : "Button: translates the text into the reading language on the device",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "翻译"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "翻譯"
+          }
+        }
+      }
+    },
+    "Translate Posts on Screen" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "翻译屏幕上的帖子"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "翻譯螢幕上的貼文"
+          }
+        }
+      }
+    },
+    "Translate posts" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "翻译帖子"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "翻譯貼文"
+          }
+        }
+      }
+    },
+    "Translated on this device from %@ to %@." : {
+      "comment" : "Translation sheet footer; the placeholders are language names",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Translated on this device from %1$@ to %2$@."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已在本设备上从%1$@翻译成%2$@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已在本裝置上從%1$@翻譯成%2$@。"
+          }
+        }
+      }
+    },
+    "Translated on this device to %@." : {
+      "comment" : "Translation sheet footer; the placeholder is a language name",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已在本设备上翻译成%@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已在本裝置上翻譯成%@。"
+          }
+        }
+      }
+    },
+    "Translating from %@ to %@ isn’t available on this device." : {
+      "comment" : "Translation error; the placeholders are language names",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Translating from %1$@ to %2$@ isn’t available on this device."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本设备不支持从%1$@翻译成%2$@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本裝置不支援從%1$@翻譯成%2$@。"
+          }
+        }
+      }
+    },
+    "Translating this text to %@ isn’t available on this device." : {
+      "comment" : "Translation error; the placeholder is a language name",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本设备不支持将这段文本翻译成%@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本裝置不支援將這段文字翻譯成%@。"
+          }
+        }
+      }
+    },
+    "Translating…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在翻译…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在翻譯…"
+          }
+        }
+      }
+    },
+    "Translation needs iOS 18" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "翻译需要 iOS 18"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "翻譯需要 iOS 18"
           }
         }
       }
@@ -16553,6 +17311,22 @@
         }
       }
     },
+    "Voice Chat" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音聊天"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "語音聊天"
+          }
+        }
+      }
+    },
     "Voice ended after a quiet moment. Tap the microphone to talk again." : {
       "comment" : "Voice bar: the idle timeout closed the session",
       "localizations" : {
@@ -17137,6 +17911,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "最新的回覆補充了什麼？"
+          }
+        }
+      }
+    },
+    "What do you want to ask?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你想问什么？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你想問什麼？"
           }
         }
       }

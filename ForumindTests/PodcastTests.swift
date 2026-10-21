@@ -526,6 +526,48 @@ final class PodcastTests: XCTestCase {
         XCTAssertEqual(app.podcast.store.load(digestID: digest.id)?.readyCount, 4)
     }
 
+    func testTheScriptIsWrittenInTheReadingLanguage() async throws {
+        let harness = makeHarness()
+        let app = harness.app
+        connect(app)
+        app.digests = [completeDigest(cards: 1)]
+        var languages: [String] = []
+        app.podcast.makeEngine = { _, _, language in
+            languages.append(language)
+            return FakeSpeechEngine()
+        }
+        harness.ai.answers = [#"{"turns":[{"speaker":"A","text":"Hi."},{"speaker":"B","text":"Hello."}]}"#]
+
+        app.settings.readingLanguage = "ja"
+        app.podcast.make()
+        try await waitUntil { app.podcast.episode?.isComplete == true && !app.podcast.activity.isRunning }
+        XCTAssertEqual(app.podcast.episode?.language, "ja")
+        XCTAssertEqual(languages.first, "ja", "the device's voices speak it")
+        XCTAssertTrue(harness.ai.calls.contains { $0.system.contains("Write the dialogue in Japanese") })
+
+        // The default: the app's language.
+        app.settings.readingLanguage = ""
+        app.podcast.remake()
+        try await waitUntil { app.podcast.episode?.isComplete == true && !app.podcast.activity.isRunning }
+        XCTAssertEqual(app.podcast.episode?.language, AppLanguage.current)
+    }
+
+    func testPlayTodaysPodcastPlaysAnEpisodeThatExists() async throws {
+        let harness = makeHarness()
+        let app = harness.app
+        connect(app)
+        let digest = completeDigest(cards: 1)
+        app.digests = [digest]
+        app.podcast.makeEngine = { _, _, _ in FakeSpeechEngine() }
+        harness.ai.answers = [#"{"turns":[{"speaker":"A","text":"Hi."},{"speaker":"B","text":"Hello."}]}"#]
+        app.podcast.make()
+        try await waitUntil { app.podcast.episode?.isComplete == true && !app.podcast.activity.isRunning }
+
+        app.perform(.playToday)
+        XCTAssertEqual(app.podcast.player.playlist?.id, digest.id.uuidString)
+        XCTAssertFalse(app.showsTodayPage)
+    }
+
     func testTheDailyPodcastIsMadeOnlyWhenTurnedOnAndNeverAsks() async throws {
         let harness = makeHarness()
         let app = harness.app
