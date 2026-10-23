@@ -386,6 +386,8 @@ struct OnboardingForumsPage: View {
         }
         .animation(DCMotion.quick, value: addError)
         .animation(DCMotion.quick, value: addedName)
+        .sensoryFeedback(.success, trigger: addedName) { _, new in new != nil }
+        .sensoryFeedback(.warning, trigger: addError) { _, new in new != nil }
     }
 
     private func add() {
@@ -401,10 +403,8 @@ struct OnboardingForumsPage: View {
                 addedName = forum.displayName
                 address = ""
                 addressFocused = false
-                DCHaptics.success()
             } catch {
                 addError = error.localizedDescription
-                DCHaptics.warning()
             }
             adding = false
         }

@@ -35,7 +35,12 @@ question to the AI service **you** choose:
 - **A provider you connect** (for example OpenAI, Anthropic, Google Gemini,
   Google Vertex AI, OpenRouter, Groq, xAI, DeepSeek, or NVIDIA NIM): requests go straight from
   your device to that provider using your own API key, and that provider's
-  privacy policy applies to what you send it.
+  privacy policy applies to what you send it. Before the first request to
+  each such provider, the app asks for your consent on a page that names the
+  provider, says what is sent, and links to its terms and privacy policy.
+  If you don't allow it, nothing is sent to that provider. You can see where
+  each feature sends data, and withdraw or give consent, in **Settings ›
+  Data & privacy**.
 - **A model on your own computer** (Ollama or LM Studio): requests go to that
   computer over your local network and nowhere else.
 

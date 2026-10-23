@@ -245,6 +245,9 @@ private enum MarkdownCache {
 /// showing the previous parse in between, so long answers stream smoothly.
 struct MarkdownView: View {
     private let source: String
+    /// `[#N](forumind-post:N)` links render as post-citation chips with a
+    /// 44 pt hit area (paragraphs and list items lay out word by word).
+    private let citations: Bool
     @State private var rendered: Rendered?
 
     private struct Rendered {
@@ -255,8 +258,9 @@ struct MarkdownView: View {
 
     private static let throttle: TimeInterval = 0.12
 
-    init(_ source: String) {
+    init(_ source: String, citations: Bool = false) {
         self.source = source
+        self.citations = citations
     }
 
     private var document: MarkdownDocument {
@@ -269,7 +273,7 @@ struct MarkdownView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             ForEach(Array(document.blocks.enumerated()), id: \.offset) { _, block in
-                MarkdownBlockView(block: block)
+                MarkdownBlockView(block: block, citations: citations)
                     .equatable()
             }
         }
@@ -300,6 +304,17 @@ struct MarkdownView: View {
 /// document around them streams.
 private struct MarkdownBlockView: View, Equatable {
     let block: MarkdownBlock
+    var citations = false
+
+    /// Inline text; with citations in it, word by word around the chips.
+    @ViewBuilder
+    private func inline(_ text: String) -> some View {
+        if citations, text.contains("](\(PostCitations.scheme):") {
+            CitedText(source: text)
+        } else {
+            MarkdownInline.text(text)
+        }
+    }
 
     var body: some View {
         switch block {
@@ -318,7 +333,7 @@ private struct MarkdownBlockView: View, Equatable {
             .padding(.top, level <= 2 ? 6 : 2)
             .accessibilityAddTraits(.isHeader)
         case .paragraph(let text):
-            MarkdownInline.text(text)
+            inline(text)
                 .font(.body)
                 .lineSpacing(4)
                 .fixedSize(horizontal: false, vertical: true)
@@ -406,7 +421,7 @@ private struct MarkdownBlockView: View, Equatable {
                         .foregroundStyle(DCTheme.brandBlue)
                         .frame(minWidth: ordered ? 20 : 12, alignment: ordered ? .trailing : .center)
                         .accessibilityHidden(!ordered)
-                    MarkdownInline.text(item)
+                    inline(item)
                         .font(.body)
                         .lineSpacing(4)
                         .fixedSize(horizontal: false, vertical: true)
@@ -457,6 +472,11 @@ enum MarkdownInline {
                     value[range].font = .footnote.weight(.bold).monospacedDigit()
                     value[range].foregroundColor = DCTheme.agentTint
                     value[range].backgroundColor = DCTheme.agentTint.opacity(0.14)
+                } else if run.link?.scheme == PostCitations.scheme {
+                    // A post citation outside a paragraph (a heading).
+                    value[range].font = .footnote.weight(.bold).monospacedDigit()
+                    value[range].foregroundColor = DCTheme.citationText
+                    value[range].backgroundColor = DCTheme.postHighlightBackground
                 } else {
                     value[range].foregroundColor = DCTheme.brandBlue
                     value[range].underlineStyle = .single
@@ -473,3 +493,227 @@ private extension Collection {
     }
 }
 
+
+// MARK: - Post citations
+
+extension EnvironmentValues {
+    /// The post the reader last jumped to: its citation chips show filled.
+    @Entry var activeCitation: Int?
+}
+
+/// A paragraph with `#N` post citations, laid out word by word so each chip
+/// can be a real button: about 28 pt to look at, 44 × 44 pt to tap, at least
+/// 4 pt apart. VoiceOver reads the paragraph as one element, then the chips.
+private struct CitedText: View {
+    let source: String
+
+    private enum Token {
+        case text(AttributedString, spaceAfter: Bool)
+        /// A chip and the punctuation right after it ("#37."), which never
+        /// wraps onto the next line alone.
+        case citation(Int, suffix: AttributedString?, spaceAfter: Bool)
+    }
+
+    var body: some View {
+        let tokens = Self.tokens(source)
+        CitationFlowLayout(lineSpacing: 4) {
+            ForEach(Array(tokens.enumerated()), id: \.offset) { _, token in
+                switch token {
+                case .text(let text, let spaceAfter):
+                    Text(text)
+                        .fixedSize()
+                        .layoutValue(key: TrailingSpace.self, value: spaceAfter ? 4 : 0)
+                        .accessibilityHidden(true)
+                case .citation(let number, let suffix, let spaceAfter):
+                    HStack(spacing: 1) {
+                        CitationChip(number: number)
+                        if let suffix {
+                            Text(suffix).fixedSize().accessibilityHidden(true)
+                        }
+                    }
+                    .layoutValue(key: TrailingSpace.self, value: suffix == nil || spaceAfter ? 4 : 0)
+                }
+            }
+        }
+        .background {
+            Color.clear
+                .accessibilityElement()
+                .accessibilityLabel(Text(verbatim: Self.plain(tokens)))
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private static func plain(_ tokens: [Token]) -> String {
+        tokens.compactMap { token -> String? in
+            switch token {
+            case .text(let text, let spaceAfter):
+                return String(text.characters) + (spaceAfter ? " " : "")
+            case .citation(_, let suffix, let spaceAfter):
+                return suffix.map { String($0.characters) + (spaceAfter ? " " : "") }
+            }
+        }
+        .joined()
+        .trimmingCharacters(in: .whitespaces)
+    }
+
+    /// Words (CJK one character each) with their styling, and the chips.
+    private static func tokens(_ source: String) -> [Token] {
+        let value = MarkdownInline.attributed(source.replacingOccurrences(of: "\n", with: " "))
+        var tokens: [Token] = []
+        let characters = value.characters
+        for run in value.runs {
+            if let url = run.link, let number = PostCitations.postNumber(from: url) {
+                tokens.append(.citation(number, suffix: nil, spaceAfter: true))
+                continue
+            }
+            var start = run.range.lowerBound
+            var index = start
+            while index < run.range.upperBound {
+                let character = characters[index]
+                let next = characters.index(after: index)
+                let breaksAfter = character.isWhitespace || character.isWide
+                    || (next < run.range.upperBound && characters[next].isWide)
+                if breaksAfter {
+                    append(AttributedString(value[start..<next]), to: &tokens)
+                    start = next
+                }
+                index = next
+            }
+            if start < run.range.upperBound {
+                append(AttributedString(value[start..<run.range.upperBound]), to: &tokens)
+            }
+        }
+        return tokens
+    }
+
+    private static func append(_ chunk: AttributedString, to tokens: inout [Token]) {
+        let text = String(chunk.characters)
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else {
+            // A lone space: belongs to the word before.
+            if case .text(let previous, _) = tokens.last {
+                tokens[tokens.count - 1] = .text(previous, spaceAfter: true)
+            }
+            return
+        }
+        // Punctuation after a chip ("#37 ." from the model, or "#37."): glued.
+        if case .citation(let number, nil, _) = tokens.last,
+           trimmed.unicodeScalars.allSatisfy(CharacterSet.punctuationCharacters.contains),
+           let range = chunk.range(of: trimmed) {
+            tokens[tokens.count - 1] = .citation(
+                number, suffix: AttributedString(chunk[range]), spaceAfter: text.last?.isWhitespace == true
+            )
+            return
+        }
+        var word = chunk
+        if text.last?.isWhitespace == true, let range = word.range(of: trimmed) {
+            word = AttributedString(word[range])
+            tokens.append(.text(word, spaceAfter: true))
+        } else {
+            tokens.append(.text(word, spaceAfter: false))
+        }
+    }
+}
+
+private extension Character {
+    /// CJK and other scripts written without spaces: lines break anywhere.
+    var isWide: Bool {
+        guard let scalar = unicodeScalars.first else { return false }
+        switch scalar.value {
+        case 0x2E80...0x9FFF, 0xAC00...0xD7AF, 0xF900...0xFAFF, 0xFF00...0xFFEF, 0x20000...0x2FA1F: return true
+        default: return false
+        }
+    }
+}
+
+/// `#37`: tap to scroll the page to post 37 (AppModel.jumpToCitation).
+struct CitationChip: View {
+    let number: Int
+    @Environment(\.openURL) private var openURL
+    @Environment(\.activeCitation) private var activeCitation
+
+    private var isActive: Bool { activeCitation == number }
+
+    var body: some View {
+        Button {
+            if let url = PostCitations.url(post: number) { openURL(url) }
+        } label: {
+            Text(verbatim: "#\(number)")
+                .font(.footnote.weight(.bold).monospacedDigit())
+                .foregroundStyle(isActive ? Color.white : DCTheme.citationText)
+                .padding(.horizontal, 8)
+                .frame(minWidth: 36, minHeight: 28)
+                .background(
+                    isActive ? AnyShapeStyle(DCTheme.brandBlue) : AnyShapeStyle(DCTheme.postHighlightBackground),
+                    in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+                )
+                // At least 44 pt wide in the line (the chip centred in it), so
+                // neighbouring hit areas never overlap, and 44 pt high to tap
+                // without taking more room between the lines. 46 pt: the
+                // drawer's floating sheet is drawn about 4 % smaller at medium.
+                .frame(minWidth: 46)
+                .padding(.vertical, 9)
+                .contentShape(Rectangle())
+                .padding(.vertical, -9)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("Post \(number)", comment: "Accessibility label of a post citation in an AI summary; the placeholder is the post number"))
+        .accessibilityHint(Text("Shows the post on the page", comment: "Accessibility hint of a post citation in an AI summary"))
+        .accessibilityIdentifier("citation-\(number)")
+    }
+}
+
+/// Space after a flowed item (a word's trailing space, a chip's gap).
+private struct TrailingSpace: LayoutValueKey {
+    static let defaultValue: CGFloat = 0
+}
+
+/// Lines of words and chips, each line centred vertically.
+private struct CitationFlowLayout: Layout {
+    var lineSpacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let lines = arrange(width: proposal.width ?? .infinity, subviews: subviews)
+        let width = lines.map(\.width).max() ?? 0
+        let height = lines.reduce(0) { $0 + $1.height } + lineSpacing * CGFloat(max(0, lines.count - 1))
+        return CGSize(width: proposal.width ?? width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var y = bounds.minY
+        for line in arrange(width: bounds.width, subviews: subviews) {
+            for item in line.items {
+                let size = subviews[item.index].sizeThatFits(.unspecified)
+                subviews[item.index].place(
+                    at: CGPoint(x: bounds.minX + item.x, y: y + (line.height - size.height) / 2),
+                    proposal: ProposedViewSize(size)
+                )
+            }
+            y += line.height + lineSpacing
+        }
+    }
+
+    private struct Line {
+        var items: [(index: Int, x: CGFloat)] = []
+        var width: CGFloat = 0
+        var height: CGFloat = 0
+    }
+
+    private func arrange(width: CGFloat, subviews: Subviews) -> [Line] {
+        var lines: [Line] = [Line()]
+        var x: CGFloat = 0
+        for index in subviews.indices {
+            let size = subviews[index].sizeThatFits(.unspecified)
+            let space = subviews[index][TrailingSpace.self]
+            if x > 0, x + size.width > width {
+                lines.append(Line())
+                x = 0
+            }
+            lines[lines.count - 1].items.append((index, x))
+            lines[lines.count - 1].width = x + size.width
+            lines[lines.count - 1].height = max(lines[lines.count - 1].height, size.height)
+            x += size.width + space
+        }
+        return lines
+    }
+}

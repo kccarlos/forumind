@@ -15,9 +15,7 @@ final class VoiceUITests: DCUITestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(2))
         showBrowser(in: app)
 
-        let mic = app.buttons["voiceButton"]
-        XCTAssertTrue(waitForHittable(mic, timeout: 10), "The browser bar has no microphone.")
-        mic.tap()
+        startVoice(in: app)
 
         // First session with this provider: consent first, naming Google.
         let agree = app.buttons["voiceConsentAgree"]
@@ -57,10 +55,25 @@ final class VoiceUITests: DCUITestCase {
         XCTAssertTrue(waitForGone(bar, timeout: 5))
 
         // Consent is remembered: the next tap starts at once.
-        mic.tap()
+        startVoice(in: app)
         XCTAssertTrue(bar.waitForExistence(timeout: 10))
         XCTAssertFalse(agree.exists)
         app.buttons["voiceEnd"].tap()
+    }
+
+    /// iPad: the bar's microphone. iPhone: the forum menu (on a page a long
+    /// press on the AI button too; the Forums home has no drawer).
+    private func startVoice(in app: XCUIApplication) {
+        if isPhone {
+            openForumMenu(in: app)
+            let item = app.buttons["Talk to Forumind"]
+            XCTAssertTrue(item.waitForExistence(timeout: 10), "The forum menu has no Talk to Forumind.")
+            item.tap()
+            return
+        }
+        let mic = app.buttons["voiceButton"]
+        XCTAssertTrue(waitForHittable(mic, timeout: 10), "The browser bar has no microphone.")
+        mic.tap()
     }
 
     private func isEnglish(_ app: XCUIApplication) -> Bool {

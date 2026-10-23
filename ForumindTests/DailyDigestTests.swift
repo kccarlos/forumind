@@ -322,6 +322,8 @@ final class DailyDigestTests: XCTestCase {
         )
         app.usesDirectForumRequests = true
         app.browser.onPageContextChanged = nil
+        // Consent has its own tests (AIDataConsentTests).
+        app.allowAllAIProviders()
         addTeardownBlock { @MainActor in
             app.pauseDigest()
             ai.gated = false

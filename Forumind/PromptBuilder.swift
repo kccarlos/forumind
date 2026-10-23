@@ -47,29 +47,39 @@ enum PromptBuilder {
     static let defaultSummaryPrompt = """
     You are an expert forum discussion analyzer. Summarize a Discourse forum discussion.
     The first post is from the original author and all subsequent posts are community replies.
+    Each post starts with a header line "username | date | #N"; N is the post number.
 
     Produce a comprehensive, structured summary using this format:
 
-    ## 📝 Original Post Summary
+    ## Original post
     - Explain the author's main points, questions, and important context.
 
-    ## 💬 Community Response Analysis
+    ## What people are saying
     - Extract valuable advice, different perspectives, warnings, concrete data points,
       consensus, and disagreements.
     - Highlight notably useful contributors when identifiable.
 
-    ## 🎯 Key Takeaways
+    ## Tips from the thread
     - Give the main actionable advice, warnings, consensus recommendations, and
       unresolved questions.
 
     Be professional, accessible, and practical for the forum's readers.
     """
 
+    /// Appended to every summary prompt (custom ones too): the app turns `#N`
+    /// into a tap that scrolls the page to the post.
+    static let citationInstruction = """
+    **CITATIONS:** After each point, cite the posts it comes from by number, written as #N \
+    (for example: "Lowering the current fixes it #37 #52."). Cite only post numbers that \
+    appear in the discussion.
+    """
+
     static var chunkPrompt: String { """
     Summarize this part of a long Discourse forum discussion. Keep concrete data points,
     practical advice, warnings, differing views, and consensus; do not invent information
     that is not provided. This is an intermediate summary that will be combined into the
-    final summary.
+    final summary. Keep the post numbers: after each point write the posts it comes from
+    as #N (each post's header line "username | date | #N" gives N).
 
     **LANGUAGE:** \(discussionLanguageInstruction)
     """ }
@@ -80,10 +90,10 @@ enum PromptBuilder {
         let trimmed = custom.trimmingCharacters(in: .whitespacesAndNewlines)
         let language = discussionLanguageInstruction(appLanguage: appLanguage)
         guard !trimmed.isEmpty else {
-            return "\(defaultSummaryPrompt)\n\n**LANGUAGE:** \(language)"
+            return "\(defaultSummaryPrompt)\n\n\(citationInstruction)\n\n**LANGUAGE:** \(language)"
         }
         // Custom instructions may name a language themselves; they win.
-        return "\(trimmed.prefix(12_000))\n\n**LANGUAGE:** \(language) "
+        return "\(trimmed.prefix(12_000))\n\n\(citationInstruction)\n\n**LANGUAGE:** \(language) "
             + "If the instructions above specify a language, use that instead."
     }
 

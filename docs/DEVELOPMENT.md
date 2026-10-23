@@ -200,7 +200,7 @@ xcodebuild test-without-building -project Forumind.xcodeproj -scheme Forumind \
   -destination "$DEST" CODE_SIGNING_ALLOWED=NO -derivedDataPath /tmp/dc-dd-uitest \
   -only-testing:ForumindUITests/OnboardingUITests \
   -only-testing:ForumindUITests/SettingsNavigationUITests \
-  -only-testing:ForumindUITests/ForumsHomeUITests/testAddForumSheetOpensFromTheForumsHome \
+  -only-testing:ForumindUITests/HomeUITests/testAddForumSheetOpensFromHome \
   -only-testing:ForumindUITests/PhysicalDeviceSmokeTests/testExpandedWorkspacesRenderMarkdownAndKeepChatComposerVisible \
   -only-testing:ForumindUITests/PhysicalDeviceSmokeTests/testManageRowsUseMailStyleSwipeActions \
   -only-testing:ForumindUITests/PhysicalDeviceSmokeTests/testAssistantPageStatesOffline \
@@ -252,7 +252,7 @@ They never overwrite real saved data, and Release builds ignore them.
 
 With `-dc-page-state topic` or `forumHome`, the browser also loads the real
 forum page behind the Assistant, unless `-dc-forums-home` is also passed: then
-nothing is loaded and the Forums home stays up (fully offline). The fictional
+nothing is loaded and Home stays up (fully offline). The fictional
 forums (`-dc-topic makers`) live on reserved example domains that don't
 resolve, so use them with `-dc-forums-home`. Sample forums always show letter
 monograms, never the forums' own icons. With
@@ -271,7 +271,9 @@ runs are labeled as Apple Intelligence runs and it is the selected provider.
 | --- | --- |
 | `-dc-seed-forums` | Pins three forums (Discourse Meta and two fictional ones) and adds two fictional recent ones (icons are fetched live unless `-dc-no-forum-icons`). With it or `-dc-sample`, the suggested forums are fictional too, so screenshots show no real companies. |
 | `-dc-no-forum-icons` | Shows letter monograms instead of the forums' own icons (implied by `-dc-sample`). |
-| `-dc-forums-home` | Starts on the Forums home. |
+| `-dc-forums-home` | Starts on Home. |
+| `-dc-no-forums` | With `-dc-sample`: no forums (Home as a new user sees it). |
+| `-dc-launch <automatic\|home\|lastForum>` | Applies the launch rule (`-dc-` launches skip it otherwise). |
 | `-dc-open <url>` | Opens a page on launch. |
 | `-dc-show-switcher` | Opens the forum switcher. |
 | `-dc-voice-fake` | Voice without a key, microphone or network: a scripted Gemini Live session (`Voice/VoiceDebug.swift`) and silent audio. Voice consent starts cleared, so the first tap shows the consent sheet. |

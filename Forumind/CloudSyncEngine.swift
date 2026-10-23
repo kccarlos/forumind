@@ -502,7 +502,7 @@ actor CloudSyncEngine {
         for (key, session) in local.sessions {
             add(
                 .session, key, Self.units(session: session, now: now),
-                time: session.updatedAt, touched: max(session.updatedAt, session.lastAccessedAt)
+                time: session.updatedAt, touched: max(session.updatedAt, session.openedByUserAt ?? .distantPast)
             )
         }
         for run in local.runs {

@@ -75,62 +75,32 @@ struct ForumindApp: App {
     }
 }
 
-/// ContentView plus the app-level covers: the first-launch walkthrough and
-/// provider setup requested by a shared link.
+/// ContentView plus the app-level hooks. The walkthrough, Terms of Use,
+/// provider setup and Settings presentations go through the presentation
+/// router (PresentationRouter.swift), which ContentView hosts.
 private struct RootView: View {
     @ObservedObject var app: AppModel
-    @State private var replayingOnboarding = false
-    @State private var showingProviderSetup = false
-    #if DEBUG
-    @State private var debugSettings: DebugSettingsRoute?
-    @State private var keychainProbeResult: String?
-    #endif
+    @ObservedObject var router: PresentationRouter
 
-    private var showsOnboarding: Binding<Bool> {
-        Binding(
-            get: { !app.settings.hasCompletedOnboarding || replayingOnboarding },
-            set: { presented in
-                if !presented {
-                    replayingOnboarding = false
-                    if !app.settings.hasCompletedOnboarding { app.completeOnboarding() }
-                }
-            }
-        )
-    }
-
-    private var showsTermsGate: Binding<Bool> {
-        Binding(
-            get: { app.settings.hasCompletedOnboarding && !replayingOnboarding && app.needsTermsAcceptance },
-            set: { _ in }
-        )
+    init(app: AppModel) {
+        self.app = app
+        router = app.router
     }
 
     var body: some View {
         ContentView(app: app)
-            .environment(\.replayOnboarding, ReplayOnboardingAction { replayingOnboarding = true })
-            .fullScreenCover(isPresented: showsOnboarding) {
-                OnboardingFlow(app: app, initialStep: initialStep) {
-                    replayingOnboarding = false
-                }
-            }
-            // Existing users (and a walkthrough closed early) accept the
-            // Terms of Use before using the app.
-            .fullScreenCover(isPresented: showsTermsGate) {
-                TermsGateView(app: app)
-            }
-            .sheet(isPresented: $showingProviderSetup, onDismiss: {
-                app.needsProviderSetup = nil
-            }) {
-                ProviderSetupSheet(app: app, role: app.needsProviderSetup ?? .assistant)
-            }
+            .environment(\.replayOnboarding, ReplayOnboardingAction { app.router.replayingOnboarding = true })
             .onChange(of: app.settings.hasCompletedOnboarding) {
-                presentProviderSetupIfNeeded()
+                app.presentProviderSetupIfNeeded()
             }
-            .onChange(of: app.needsProviderSetup) { presentProviderSetupIfNeeded() }
+            .onChange(of: app.needsProviderSetup) { app.presentProviderSetupIfNeeded() }
             // App Intents (Siri, Shortcuts, the Action button) wait for the
             // UI, so their sheets and panes can show.
             .task {
                 SystemEntry.attach(app)
+                // Apple Intelligence became an ordinary favorite (§6): a
+                // user running a role on it keeps it in the model menus.
+                app.starActiveAppleIntelligenceOnce()
                 // Siri learns the forum names for "Ask … in Forumind".
                 app.forumsDidChangeForShortcuts()
             }
@@ -138,29 +108,18 @@ private struct RootView: View {
             .onContinueUserActivity(CSSearchableItemActionType) { activity in
                 if let identifier = activity.userInfo?[CSSearchableItemActivityIdentifier] as? String,
                    let topicKey = SpotlightCatalog.topicKey(fromIdentifier: identifier) {
+                    app.noteExternalEntry()
                     app.openTopic(topicKey: topicKey)
                 }
             }
             .onContinueUserActivity(TopicActivity.type) { activity in
                 if let topicKey = TopicActivity.topicKey(from: activity) {
+                    app.noteExternalEntry()
                     app.openTopic(topicKey: topicKey)
                 }
             }
-            // Start a Voice Chat without voice set up: Settings › Voice.
-            .sheet(item: $app.requestedSettingsPage) { page in
-                NavigationStack {
-                    SettingsRootView(app: app, initialPage: page)
-                        .navigationTitle("Settings")
-                        .navigationBarTitleDisplayMode(.inline)
-                        .toolbar {
-                            ToolbarItem(placement: .confirmationAction) {
-                                Button("Done") { app.requestedSettingsPage = nil }
-                            }
-                        }
-                }
-            }
             // A request that arrived during the walkthrough is shown after it.
-            .onChange(of: replayingOnboarding) { presentProviderSetupIfNeeded() }
+            .onChange(of: router.replayingOnboarding) { app.presentProviderSetupIfNeeded() }
             // "Sync API keys" (Settings › iCloud Sync, reset, or a synced
             // settings change): move keys between iCloud Keychain and local.
             .onChange(of: app.settings.syncAPIKeys) { _, synchronizes in
@@ -170,58 +129,19 @@ private struct RootView: View {
                 KeychainProviderKeyStore.shared.setSynchronizes(synchronizes, keys: keys)
             }
             #if DEBUG
-            .fullScreenCover(item: $debugSettings) { route in
-                NavigationStack {
-                    SettingsRootView(app: app, initialPage: route.page)
-                        .navigationTitle("Settings")
-                        .navigationBarTitleDisplayMode(.inline)
-                }
-            }
-            .alert(
-                Text(verbatim: "Keychain sync probe"),
-                isPresented: Binding(get: { keychainProbeResult != nil }, set: { if !$0 { keychainProbeResult = nil } })
-            ) {
-                Button(role: .cancel) {} label: { Text(verbatim: "OK") }
-            } message: {
-                Text(keychainProbeResult ?? "")
-            }
             .task {
                 if KeychainSyncProbe.isRequested {
-                    keychainProbeResult = KeychainSyncProbe.run().summary
+                    app.router.keychainProbeResult = KeychainSyncProbe.run().summary
                 }
                 if OnboardingDebug.arguments.contains("-dc-panel-settings") {
                     try? await Task.sleep(for: .seconds(1))
                     app.panelRoute = .settings
-                    app.presentAssistant = true
+                    app.requestAssistant()
                 }
                 if let value = OnboardingDebug.settingsPage {
-                    debugSettings = DebugSettingsRoute(page: SettingsPage.parse(value))
+                    app.router.item = .debugSettings(SettingsPage.parse(value))
                 }
             }
             #endif
     }
-
-    private var initialStep: OnboardingStep {
-        #if DEBUG
-        if let step = OnboardingDebug.initialStep, !replayingOnboarding { return step }
-        #endif
-        return .welcome
-    }
-
-    /// A shared link needs an AI provider first; not over the walkthrough.
-    private func presentProviderSetupIfNeeded() {
-        guard let role = app.needsProviderSetup, app.settings.hasCompletedOnboarding, !replayingOnboarding else { return }
-        if app.isProviderReady(for: role) {
-            app.needsProviderSetup = nil
-        } else {
-            showingProviderSetup = true
-        }
-    }
 }
-
-#if DEBUG
-private struct DebugSettingsRoute: Identifiable {
-    var page: SettingsPage?
-    var id: String { page?.rawValue ?? "root" }
-}
-#endif

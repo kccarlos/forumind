@@ -17,14 +17,7 @@ struct SettingsDataPage: View {
 
     var body: some View {
         Form {
-            Section {
-                VStack(alignment: .leading, spacing: DCTheme.spacingL) {
-                    PrivacyPoints()
-                }
-                .padding(.vertical, DCTheme.spacingS)
-            } header: {
-                Text("Your privacy")
-            }
+            AIDataFlowSection(app: app)
 
             Section {
                 Toggle(isOn: $app.settings.spotlightEnabled) {

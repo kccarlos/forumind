@@ -131,33 +131,148 @@ class DCUITestCase: XCTestCase {
 
     // MARK: Navigation
 
-    /// In the single-pane layout, switches to the Assistant workspace.
+    /// Shows the assistant: on iPhone the AI drawer (from the bar's AI
+    /// button, at medium); in the iPad single-pane layout the Assistant
+    /// workspace.
     func showAssistant(in app: XCUIApplication) {
+        if isPhone {
+            let state = drawerState(in: app)
+            if state.waitForExistence(timeout: 3) {
+                if state.label == "detent=peek" { dragDrawer(in: app, to: 0.45) }
+                return
+            }
+            let button = app.buttons["aiButton"]
+            if waitForBarItem(button, timeout: 10) { tapBarItem(button) }
+            _ = state.waitForExistence(timeout: 10)
+            return
+        }
         let workspace = app.segmentedControls["workspacePicker"]
         if workspace.waitForExistence(timeout: 5) {
             workspace.buttons["Assistant"].tap()
         }
     }
 
-    /// In the single-pane layout, switches to the Browse workspace.
+    /// Shows the page: on iPhone closes the AI drawer (a sample launch opens
+    /// it on its own shortly after launch); in the iPad single-pane layout
+    /// the Browse workspace.
     func showBrowser(in app: XCUIApplication) {
+        if isPhone {
+            closeDrawer(in: app)
+            return
+        }
         let workspace = app.segmentedControls["workspacePicker"]
         if workspace.exists {
             workspace.buttons["Browse"].tap()
         }
     }
 
-    /// On compact widths the home, account and sign-in controls live behind
-    /// the browser's More menu.
-    func openBrowserMenuIfCompact(in app: XCUIApplication) {
-        let menu = app.buttons["browserMoreMenu"]
-        if isPhone, menu.waitForExistence(timeout: 10) {
-            menu.tap()
-        }
+    // MARK: AI drawer (iPhone)
+
+    /// DEBUG readout inside the drawer: `detent=peek|medium|large`. Gone
+    /// while the drawer is closed.
+    func drawerState(in app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any)["drawerState"].firstMatch
     }
 
+    /// Drags the drawer by its header to a point of the screen's height
+    /// (0 top … 1 bottom).
+    func dragDrawer(in app: XCUIApplication, to y: CGFloat) {
+        let header = app.descendants(matching: .any)["drawerHeader"].firstMatch
+        guard header.waitForExistence(timeout: 5) else { return }
+        // On the title, clear of the model pill (a press on it opens its menu).
+        let start = header.coordinate(withNormalizedOffset: CGVector(dx: 0.08, dy: 0.5))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: y))
+        start.press(forDuration: 0.1, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.1)
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+    }
+
+    /// Swipes the drawer down until it closes (large and medium only go
+    /// down a height; from the peek it closes).
+    func closeDrawer(in app: XCUIApplication) {
+        let state = drawerState(in: app)
+        guard state.waitForExistence(timeout: 3) else { return }
+        for _ in 0..<4 where state.exists {
+            dragDrawer(in: app, to: 0.99)
+        }
+        XCTAssertTrue(waitForGone(state, timeout: 5), "The AI drawer did not close.")
+    }
+
+    /// Settings: on iPhone from the forum menu (a sheet); in the iPad
+    /// layouts inside the assistant panel.
+    func openSettings(in app: XCUIApplication) {
+        if isPhone {
+            closeDrawer(in: app)
+            openBrowserMenuIfCompact(in: app)
+            let item = app.buttons["Settings"].firstMatch
+            XCTAssertTrue(item.waitForExistence(timeout: 10), "Settings is missing from the forum menu.")
+            item.tap()
+            return
+        }
+        showAssistant(in: app)
+        let open = app.buttons["openSettings"]
+        XCTAssertTrue(open.waitForExistence(timeout: 10))
+        open.tap()
+    }
+
+    /// Leaves Settings opened with `openSettings(in:)` (from its root list).
+    func closeSettings(in app: XCUIApplication) {
+        if isPhone {
+            let done = app.navigationBars.buttons["Done"].firstMatch
+            XCTAssertTrue(done.waitForExistence(timeout: 10))
+            done.tap()
+            return
+        }
+        let back = app.buttons["backToTopic"]
+        XCTAssertTrue(back.waitForExistence(timeout: 10))
+        back.tap()
+        showBrowser(in: app)
+    }
+
+    /// On iPhone the home, account, sign-in and page controls live in the
+    /// forum menu (the bar's avatar).
+    func openBrowserMenuIfCompact(in app: XCUIApplication) {
+        if isPhone { openForumMenu(in: app) }
+    }
+
+    /// iPhone: taps the bar's forum avatar to open the forum menu.
+    func openForumMenu(in app: XCUIApplication) {
+        let avatar = app.buttons["forumSwitcher"]
+        if !waitForBarItem(avatar, timeout: 15) { attachTree(app) }
+        XCTAssertTrue(avatar.exists, "The bar has no forum avatar.")
+        tapBarItem(avatar)
+    }
+
+    /// The Forums home: on iPhone the forum menu's Home item; on iPad the
+    /// switcher's All forums.
+    func openForumsHomeFromSwitcher(in app: XCUIApplication) {
+        if isPhone {
+            openForumMenu(in: app)
+            let item = app.buttons["Home · Today & all forums"]
+            XCTAssertTrue(item.waitForExistence(timeout: 10), "Home is missing from the forum menu.")
+            item.tap()
+            return
+        }
+        app.buttons["forumSwitcher"].tap()
+        let allForums = app.buttons["switcherAllForums"]
+        XCTAssertTrue(allForums.waitForExistence(timeout: 10))
+        allForums.tap()
+    }
+
+    /// From a launch with `-dc-forums-home` to Home with the browser pane
+    /// in front (iPad samples open on the Assistant in one pane).
+    @discardableResult
+    func openHome(in app: XCUIApplication) -> XCUIElement {
+        let home = any(app, "home")
+        if !home.waitForExistence(timeout: 15) { showBrowser(in: app) }
+        if !home.waitForExistence(timeout: 10) { openForumsHomeFromSwitcher(in: app) }
+        XCTAssertTrue(home.waitForExistence(timeout: 10), "Home did not appear.")
+        showBrowser(in: app)
+        return home
+    }
+
+    /// iPhone menus open up from the bottom bar, so tap above them.
     func dismissMenu(in app: XCUIApplication) {
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)).tap()
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: isPhone ? 0.12 : 0.95)).tap()
     }
 
     /// Taps a Settings sub-page's back button (titled after the root).
@@ -168,6 +283,28 @@ class DCUITestCase: XCTestCase {
         } else {
             app.navigationBars.buttons.element(boundBy: 0).tap()
         }
+    }
+
+    // MARK: iPhone bar
+
+    /// Items in the iPhone's system toolbar report `isHittable == false` (the
+    /// toolbar element spans the window), so wait until one is on screen
+    /// and tap it by coordinate.
+    func waitForBarItem(_ element: XCUIElement, timeout: TimeInterval = 10) -> Bool {
+        wait(timeout: timeout) {
+            guard element.exists else { return false }
+            let frame = element.frame
+            return frame.width > 0 && frame.height > 0 && frame.minY >= 0
+                && frame.maxY <= XCUIApplication().windows.firstMatch.frame.maxY + 1
+        }
+    }
+
+    func tapBarItem(_ element: XCUIElement) {
+        element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+    }
+
+    func pressBarItem(_ element: XCUIElement, duration: TimeInterval) {
+        element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: duration)
     }
 
     // MARK: Waits

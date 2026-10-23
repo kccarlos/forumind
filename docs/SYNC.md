@@ -37,7 +37,7 @@ unit this device didn't touch can't beat a remote edit.
 |---|---|---|
 | Settings, except device-local ones | `settings` (one record) | per setting, newest wins; each provider configuration is one unit, without its API key; the Summaries & chat model (`assistantModel`) and the Ask the forum model (`agentModel`) are separate units, so two devices changing different ones both keep their change |
 | Forums | `forum`, one per forum | newest wins; `addedAt` takes the minimum, `lastVisitedAt` the maximum |
-| Topic sessions: summary, chat, instructions, kept flag, counts | `session`, one per topic | newest wins per unit; the chat history is one unit (never merged message by message, so a cleared or edited chat can't come back), and the summary travels with its post count, time, provider, and model; `createdAt` min, `updatedAt` / `lastAccessedAt` max |
+| Topic sessions: summary, chat, instructions, kept flag, counts | `session`, one per topic | newest wins per unit; the chat history is one unit (never merged message by message, so a cleared or edited chat can't come back), and the summary travels with its post count, time, provider, and model; `createdAt` min, `updatedAt` / `openedByUserAt` max |
 | Ask the forum runs, including the transcript | `run`, one per run | the run as a whole, newest wins |
 | Watched topics | `watched`, one per topic | newest wins; `knownPostCount` takes the maximum |
 

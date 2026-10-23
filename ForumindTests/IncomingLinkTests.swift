@@ -209,7 +209,7 @@ final class IncomingLinkTests: XCTestCase {
         app.handleDeepLink(IncomingLink.url(for: request))
         deliverTopicPage(to: app)
 
-        XCTAssertTrue(app.presentAssistant)
+        XCTAssertGreaterThan(app.assistantRequest, 0)
         XCTAssertEqual(app.assistantMode, .summary)
         XCTAssertEqual(app.currentTopic?.topicKey, "forum.example.com/t/42")
         XCTAssertFalse(app.activities.contains { $0.type == .summary })

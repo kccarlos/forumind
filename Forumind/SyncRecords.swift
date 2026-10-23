@@ -206,6 +206,8 @@ enum SyncSettings {
 
     /// Each provider configuration is one unit: `configurations.<provider>`.
     static let configurationPrefix = "configurations."
+    /// Each provider's AI data consent is one unit: `aiConsent.<provider>`.
+    static let aiConsentPrefix = "aiConsent."
 }
 
 /// How the units of each kind are built and merged.
@@ -239,7 +241,7 @@ enum SyncSchema {
 
     static func rule(kind: SyncKind, unit: String) -> Rule {
         switch (kind, unit) {
-        case (.session, "updatedAt"), (.session, "lastAccessedAt"), (.session, "lastCheckedAt"): .max
+        case (.session, "updatedAt"), (.session, "openedByUserAt"), (.session, "lastCheckedAt"): .max
         case (.session, "createdAt"): .min
         case (.watched, "knownPostCount"), (.watched, "lastCheckedAt"): .max
         case (.watched, "addedAt"): .min
@@ -323,6 +325,9 @@ enum SyncSchema {
                 units[SyncSettings.configurationPrefix + provider] = .object(configuration)
             }
         }
+        if let consent = object.removeValue(forKey: "aiConsent")?.objectValue {
+            for (provider, value) in consent { units[SyncSettings.aiConsentPrefix + provider] = value }
+        }
         for (key, value) in object { units[key] = value }
         return units
     }
@@ -404,17 +409,21 @@ enum SyncSchema {
     static func applying(settingsUnits units: [String: JSONValue], to local: AppSettings) throws -> AppSettings {
         guard var object = try SyncCoding.json(local).objectValue else { return local }
         var configurations = object["configurations"]?.objectValue ?? [:]
+        var consent = object["aiConsent"]?.objectValue ?? [:]
         for (name, value) in units where !value.isNull {
-            if name.hasPrefix(SyncSettings.configurationPrefix) {
+            if name.hasPrefix(SyncSettings.aiConsentPrefix) {
+                consent[String(name.dropFirst(SyncSettings.aiConsentPrefix.count))] = value
+            } else if name.hasPrefix(SyncSettings.configurationPrefix) {
                 let provider = String(name.dropFirst(SyncSettings.configurationPrefix.count))
                 var configuration = value.objectValue ?? [:]
                 configuration["apiKey"] = configurations[provider]?.objectValue?["apiKey"] ?? .string("")
                 configurations[provider] = .object(configuration)
-            } else if !SyncSettings.deviceLocalKeys.contains(name), name != "configurations" {
+            } else if !SyncSettings.deviceLocalKeys.contains(name), name != "configurations", name != "aiConsent" {
                 object[name] = value
             }
         }
         object["configurations"] = .object(configurations)
+        object["aiConsent"] = .object(consent)
         var result = try SyncCoding.decode(AppSettings.self, from: .object(object))
         // Keys are never read from a synced record, whatever it holds.
         for provider in AIProvider.allCases {

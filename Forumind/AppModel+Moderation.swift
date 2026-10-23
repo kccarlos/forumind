@@ -79,3 +79,65 @@ extension AppModel {
         if list != remoteModeration { remoteModeration = list }
     }
 }
+
+// MARK: - Report AI output (App Review 1.2)
+
+extension AppModel {
+    /// The open topic's saved summary or (in chat) its latest answer, as a
+    /// report; nil when there is nothing written yet.
+    func currentAIOutputReport(feature: AIOutput.Feature) -> ReportTarget? {
+        guard let topic = currentTopic, let session = currentSession else { return nil }
+        let text: String
+        switch feature {
+        case .summary: text = session.summary
+        case .chatAnswer: text = session.history.last(where: { $0.role == .assistant })?.content ?? ""
+        case .askAnswer: return nil
+        }
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        // Who wrote it: the summary's own model; for a chat answer, the
+        // latest finished chat job (kept a day), else the current model.
+        let writer: (AIProvider, String)?
+        switch feature {
+        case .summary:
+            writer = session.provider.map { ($0, session.model) }
+        default:
+            writer = activities
+                .first { $0.topicKey == topic.topicKey && $0.type == .chat && $0.status == .completed }
+                .map { ($0.provider, $0.model) }
+        }
+        let current = selection(for: .assistant)
+        let (provider, model) = writer ?? (current.provider, current.model)
+        return ReportTarget(
+            siteURL: topic.siteURL,
+            forumName: reportForumName(for: topic),
+            topicTitle: topic.title,
+            topicURL: topic.url,
+            kind: .aiOutput(AIOutput(feature: feature, model: Self.reportModel(provider, model), text: text))
+        )
+    }
+
+    /// An Ask the forum answer as a report.
+    func aiOutputReport(for run: AgentRun, answer: String) -> ReportTarget {
+        ReportTarget(
+            siteURL: run.siteURL,
+            forumName: forumInfo(siteURL: run.siteURL).displayName,
+            topicTitle: "",
+            topicURL: nil,
+            kind: .aiOutput(AIOutput(
+                feature: .askAnswer,
+                model: Self.reportModel(run.provider, run.model),
+                text: answer,
+                question: run.goal
+            ))
+        )
+    }
+
+    /// Shows the report form (a routed sheet).
+    func report(_ target: ReportTarget) {
+        router.item = .reportAIOutput(target)
+    }
+
+    private static func reportModel(_ provider: AIProvider, _ model: String) -> String {
+        model.isEmpty ? provider.displayName : "\(provider.displayName) · \(model)"
+    }
+}

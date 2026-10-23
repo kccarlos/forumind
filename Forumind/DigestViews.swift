@@ -1,64 +1,6 @@
 import SwiftUI
 
-// MARK: - Forums home entry
-
-/// The Today row at the top of the Forums home: what today's digest is
-/// doing, and a tap opens the Today page.
-struct TodayEntry: View {
-    @ObservedObject var app: AppModel
-
-    var body: some View {
-        Section {
-            Button {
-                DCHaptics.tap()
-                app.showsTodayPage = true
-            } label: {
-                HStack(spacing: DCTheme.spacingM) {
-                    DigestIcon(size: 36)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Today")
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(.primary)
-                        Text(status)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
-                    Spacer(minLength: 0)
-                    if app.digestActivity.isRunning {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Image(systemName: "chevron.right")
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(Color(uiColor: .tertiaryLabel))
-                    }
-                }
-                .contentShape(Rectangle())
-            }
-            .tint(.primary)
-            .accessibilityElement(children: .combine)
-            .accessibilityHint("Opens today’s digest")
-            .accessibilityIdentifier("todayEntry")
-        }
-    }
-
-    private var status: String {
-        guard let today = app.todaysDigest else {
-            if app.digestActivity == .preparing {
-                return String(localized: "Checking your forums…", comment: "Daily digest: reading the forums' topic lists before summarizing")
-            }
-            return app.settings.dailyDigestEnabled
-                ? String(localized: "Your digest of watched and trending topics", comment: "Forums home Today row before today's digest is made, with the daily digest on")
-                : String(localized: "Make a digest of today’s topics", comment: "Forums home Today row when the daily digest is off")
-        }
-        if !today.isComplete {
-            return String(localized: "\(today.finishedCount) of \(today.cards.count) ready", comment: "Daily digest progress: cards summarized so far, then the number of cards")
-        }
-        return today.cards.isEmpty
-            ? String(localized: "Nothing new today", comment: "Daily digest with no topics")
-            : String(localized: "\(today.cards.count) topics")
-    }
-}
+// MARK: - Glyph
 
 /// The digest's glyph: a sun in a warm rounded square.
 struct DigestIcon: View {
@@ -84,88 +26,68 @@ enum DigestStyle {
 // MARK: - Today page
 
 /// Today's digest: one card per topic, filled in one by one as the
-/// summaries finish, plus the earlier digests kept on this device. Shown as
-/// a sheet over the browser, so it works the same on iPhone and iPad.
+/// summaries finish, plus the earlier digests kept on this device. Pushed
+/// over Home (`HomeRoute.today`) on iPhone and iPad.
 struct TodayPage: View {
     @ObservedObject var app: AppModel
-    /// Opens a topic or post in the browser (the page closes).
+    /// Opens a topic or post in the browser (Home and this page close).
     let onOpen: (URL, DigestCard) -> Void
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var showsSettings = false
 
     var body: some View {
-        NavigationStack {
-            List {
-                header
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets(top: DCTheme.spacingS, leading: 4, bottom: 0, trailing: 4))
-                if let today = app.todaysDigest {
-                    if today.cards.contains(where: { $0.state == .done }) {
-                        PodcastTodaySection(app: app, podcast: app.podcast, digest: today, onOpen: onOpen)
-                    }
-                    todaySections(today)
-                } else {
-                    startSection
+        List {
+            header
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets(top: DCTheme.spacingS, leading: 4, bottom: 0, trailing: 4))
+            if let today = app.todaysDigest {
+                if today.cards.contains(where: { $0.state == .done }) {
+                    PodcastTodaySection(app: app, podcast: app.podcast, digest: today, onOpen: onOpen)
                 }
-                earlierSection
+                todaySections(today)
+            } else {
+                startSection
             }
-            .listStyle(.insetGrouped)
-            .listSectionSpacing(.compact)
-            .scrollContentBackground(.hidden)
-            .background(DCTheme.pageBackground)
-            .animation(DCMotion.respecting(reduceMotion, DCMotion.smooth), value: app.todaysDigest)
-            .navigationTitle("Today")
-            .navigationBarTitleDisplayMode(.inline)
-            .navigationDestination(isPresented: $showsSettings) {
-                SettingsDigestPage(app: app)
-                    .navigationTitle(SettingsPage.digest.title)
-                    .navigationBarTitleDisplayMode(.inline)
-            }
-            .navigationDestination(for: UUID.self) { id in
-                if let digest = app.digests.first(where: { $0.id == id }) {
-                    DigestHistoryPage(app: app, digest: digest, onOpen: onOpen)
-                }
-            }
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                        .fontWeight(.semibold)
-                        .keyboardShortcut(.cancelAction)
-                        .accessibilityIdentifier("todayDone")
-                }
-                ToolbarItem(placement: .topBarLeading) {
-                    Menu {
-                        if app.todaysDigest?.isComplete == true, app.isProviderReady(for: .assistant) {
-                            Button {
-                                app.makeTodaysDigest(replacing: true)
-                            } label: {
-                                Label("Make Again", systemImage: "arrow.clockwise")
-                            }
-                        }
-                        if app.podcast.episode?.digestID == app.todaysDigest?.id, app.podcast.episode != nil,
-                           !app.podcast.activity.isRunning, app.podcast.canMake {
-                            Button {
-                                app.podcast.remake()
-                            } label: {
-                                Label("Make Podcast Again", systemImage: "waveform")
-                            }
-                        }
+            earlierSection
+        }
+        .listStyle(.insetGrouped)
+        .listSectionSpacing(.compact)
+        .scrollContentBackground(.hidden)
+        .background(DCTheme.pageBackground)
+        .animation(DCMotion.respecting(reduceMotion, DCMotion.smooth), value: app.todaysDigest)
+        .navigationTitle("Today")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    if app.todaysDigest?.isComplete == true, app.isProviderReady(for: .assistant) {
                         Button {
-                            showsSettings = true
+                            app.makeTodaysDigest(replacing: true)
                         } label: {
-                            Label("Digest Settings", systemImage: "gearshape")
+                            Label("Make Again", systemImage: "arrow.clockwise")
                         }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
                     }
-                    .accessibilityLabel("More")
-                    .accessibilityIdentifier("todayMenu")
+                    if app.podcast.episode?.digestID == app.todaysDigest?.id, app.podcast.episode != nil,
+                       !app.podcast.activity.isRunning, app.podcast.canMake {
+                        Button {
+                            app.podcast.remake()
+                        } label: {
+                            Label("Make Podcast Again", systemImage: "waveform")
+                        }
+                    }
+                    Button {
+                        app.homePath.append(.digestSettings)
+                    } label: {
+                        Label("Digest Settings", systemImage: "gearshape")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
                 }
+                .accessibilityLabel("More")
+                .accessibilityIdentifier("todayMenu")
             }
         }
-        .modifier(PodcastConsentPresenter(podcast: app.podcast))
-        .dcFormSheet()
+        // (The podcast's consent sheet comes from the presentation router.)
         .task {
             app.resumeDigestIfNeeded()
             app.podcast.resumeIfNeeded()
@@ -212,6 +134,8 @@ struct TodayPage: View {
                 )
             } else if !app.isProviderReady(for: .assistant) {
                 providerSection
+            } else if let provider = app.providerAwaitingConsent(for: .assistant) {
+                consentSection(provider)
             }
         }
         if today.cards.isEmpty {
@@ -261,10 +185,12 @@ struct TodayPage: View {
                 action: ("Try again", { app.makeTodaysDigest() })
             )
         case .idle, .summarizing:
-            if app.isProviderReady(for: .assistant) {
-                makeSection
-            } else {
+            if !app.isProviderReady(for: .assistant) {
                 providerSection
+            } else if let provider = app.providerAwaitingConsent(for: .assistant) {
+                consentSection(provider)
+            } else {
+                makeSection
             }
         }
     }
@@ -291,7 +217,7 @@ struct TodayPage: View {
                     .foregroundStyle(.secondary)
                 if !app.settings.dailyDigestEnabled {
                     Button {
-                        showsSettings = true
+                        app.homePath.append(.digestSettings)
                     } label: {
                         Text("Want it every day? Turn on the daily digest")
                             .font(.footnote.weight(.semibold))
@@ -304,17 +230,42 @@ struct TodayPage: View {
         }
     }
 
+    @ViewBuilder
     private var providerSection: some View {
+        let provider = app.selection(for: .assistant).provider
+        if app.readiness(of: app.selection(for: .assistant)) == .aiConsentDeclined {
+            noticeSection(
+                symbol: "hand.raised",
+                title: "Not allowed",
+                message: "You chose not to send forum content to \(provider.displayName). The digest needs it to summarize today’s topics.",
+                action: ("Allow…", { app.aiConsent.ask(provider) })
+            )
+        } else {
+            connectSection
+        }
+    }
+
+    private var connectSection: some View {
         noticeSection(
             symbol: "cpu",
             title: "Connect an AI provider",
             message: "The digest’s summaries use your AI provider or Apple Intelligence.",
-            action: ("Set up", {
-                dismiss()
-                Task { @MainActor in
-                    // After the page has gone: the setup sheet belongs to the root view.
-                    try? await Task.sleep(for: .milliseconds(600))
-                    app.needsProviderSetup = .assistant
+            action: ("Set up", { app.needsProviderSetup = .assistant })
+        )
+    }
+
+    /// The digest never shows the consent page by itself: it waits here
+    /// until the person answers it.
+    private func consentSection(_ provider: AIProvider) -> some View {
+        noticeSection(
+            symbol: "hand.raised",
+            title: "Waiting for your OK",
+            message: "The digest sends today’s topics to \(provider.displayName) to summarize them. It starts once you allow it.",
+            action: ("Review…", {
+                Task {
+                    try? await app.authorizeSending(to: provider, mayAsk: true)
+                    // A second tap waited on the same page: start once.
+                    if !app.digestActivity.isRunning { app.makeTodaysDigest() }
                 }
             })
         )
@@ -352,7 +303,7 @@ struct TodayPage: View {
         if !earlier.isEmpty {
             Section {
                 ForEach(earlier) { digest in
-                    NavigationLink(value: digest.id) {
+                    NavigationLink(value: HomeRoute.digest(digest.id)) {
                         DigestHistoryRow(digest: digest)
                     }
                     .swipeActions {
@@ -396,7 +347,7 @@ private struct DigestHistoryRow: View {
 }
 
 /// An earlier digest, read only.
-private struct DigestHistoryPage: View {
+struct DigestHistoryPage: View {
     @ObservedObject var app: AppModel
     let digest: DailyDigest
     let onOpen: (URL, DigestCard) -> Void

@@ -61,7 +61,7 @@ extension AppModel {
         Array(
             sessions.values
                 .filter { $0.siteURL == siteURL && ($0.hasSummary || !$0.history.isEmpty) }
-                .sorted { $0.lastAccessedAt > $1.lastAccessedAt }
+                .sorted { $0.lastSeenAt > $1.lastSeenAt }
                 .prefix(limit)
         )
     }
@@ -199,6 +199,8 @@ struct AssistantDebugSeed {
 /// - `-dc-chat-streaming`              a chat answer in progress
 /// - `-dc-agent-running`               the agent run is still working
 /// - `-dc-no-summary`                  the open topic has no summary yet
+/// - `-dc-fake-summary`                Create summary streams the sample summary (no network, no AI)
+/// - `-dc-ask-ai-consent`              no AI data consent yet: the consent page comes first
 /// - `-dc-scroll-sources`              Agent: scrolls to the answer's sources
 /// - `-dc-manage-kind <kind>`          Manage: all | summaries | agent | watched | activity
 /// - `-dc-chat-typing`                 with `-dc-chat-streaming`: no text yet (typing dots)
@@ -275,7 +277,7 @@ extension AppModel {
             value.updatedAt = ago(updated)
             value.summaryUpdatedAt = ago(updated)
             value.chatUpdatedAt = chat.isEmpty ? nil : ago(updated)
-            value.lastAccessedAt = ago(updated)
+            value.openedByUserAt = ago(updated)
             return value
         }
 
@@ -383,7 +385,6 @@ extension AppModel {
             var value = WorkRecord(type: type, siteURL: topic.siteURL, topicID: topic.topicID,
                                    title: topic.title, url: topic.url, provider: sampleProvider, model: sampleModel)
             value.status = status
-            value.phase = status.rawValue
             value.statusText = text
             value.progress = status == .completed ? 1 : nil
             value.createdAt = ago(minutes + 2)
@@ -426,7 +427,6 @@ extension AppModel {
         }
         if AssistantDebug.has("-dc-summary-running") {
             var summaryRecord = record(.summary, openTopic, 0, status: .running, text: text.summaryRunningStatus)
-            summaryRecord.phase = "summarizing"
             summaryRecord.progress = 0.62
             activities.insert(summaryRecord, at: 0)
             sampleTickers.append { [weak self] tick in
@@ -525,11 +525,16 @@ extension AppModel {
             configuration.apiKey = AssistantDebug.has("-dc-no-agent-key") || AssistantDebug.has("-dc-no-provider") ? "" : "sample-key"
             sampleSettings.setConfiguration(configuration, for: sampleAgent.provider)
         }
+        // The sample has agreed to send forum content, unless a test checks
+        // the consent page.
+        if !AssistantDebug.has("-dc-ask-ai-consent") {
+            for provider in AIProvider.allCases where provider.requiresDataConsent {
+                sampleSettings.aiConsent[provider.rawValue] = .allowed(now)
+            }
+        }
         if sampleAgent != ModelSelection(provider: sampleProvider, model: sampleModel) {
-            sampleSettings.favoriteModels = [
-                FavoriteModel(provider: sampleProvider, model: sampleModel),
-                FavoriteModel(provider: sampleAgent.provider, model: sampleAgent.model)
-            ].filter { !$0.provider.isAppleIntelligence }
+            sampleSettings.favoriteModels = [ModelSelection(provider: sampleProvider, model: sampleModel), sampleAgent]
+                .compactMap(FavoriteModel.init(selection:))
         }
         settings = sampleSettings
 
@@ -553,9 +558,10 @@ extension AppModel {
         Task { @MainActor [weak self] in
             for delay in [500, 1200] {
                 try? await Task.sleep(for: .milliseconds(delay))
-                self?.presentAssistant = true
+                self?.requestAssistant()
             }
         }
     }
 }
 #endif
+

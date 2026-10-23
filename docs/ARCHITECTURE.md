@@ -10,7 +10,7 @@ flowchart LR
   subgraph Device
     Share["Share extension<br/>(ForumindShare)"] -- "SharedInbox.json<br/>+ forumind:// link" --> App
     subgraph App["App (Forumind)"]
-      UI["SwiftUI views<br/>ContentView, SummaryPanel,<br/>AgentPanel, ForumsHome, Settings"]
+      UI["SwiftUI views<br/>ContentView, SummaryPanel,<br/>AgentPanel, HomeView, Settings"]
       Model["AppModel<br/>state, work queue, agent runner"]
       Browser["ForumBrowserModel<br/>WKWebView + content blocking"]
       Forum["ForumService<br/>Discourse JSON / raw"]
@@ -53,7 +53,7 @@ All app code is in `Forumind/`; files are grouped here by role.
 | `PageContext.swift` | What the Assistant knows about the current page. After each navigation (and Discourse SPA route change) an in-page probe checks `meta[name=generator]`, `discourse-base-uri`, and `#data-discourse-setup`; the page settles into `loading`, `notForum`, `maybe`, `forumHome`, or `topic`. On a topic it also says where the reader is: the post in the URL, the posts on screen and highlighted, and (once fetched) the post count and accepted answer. |
 | `ForumSite.swift` | Forum identity. A forum is its site URL: origin plus an optional base path for subfolder installs; https only (http for localhost). A topic key is `host[/basePath]/t/{id}`, unique across forums. URL builders (including a post, `/t/slug/id/N`, and the `?filter=summary` and `?username_filters=` views) and per-host cookie filtering live here. |
 | `ForumDirectory.swift` | Pinned and recent forums, suggested forums, and "Add forum" address parsing and validation. |
-| `ForumsHome.swift` | The Forums home screen and the forum switcher. |
+| `HomeView.swift`, `HomeState.swift` | Home (the Today module, Continue reading, pinned forums, Watching, Recent, suggestions) and the pages pushed over it; the Today module's states and the launch rule (where the app opens). |
 | `ForumService.swift` | Discourse JSON and `/raw` endpoints for one forum per call, with incremental page caching and `Retry-After` handling. Post level: search hits with post number and author (`ForumSearchHit`), topic facts from the topic JSON already fetched (`ForumTopicFacts`: post-id stream, opening poster, accepted answer, likes), and specific posts by id (`/t/{id}/posts.json`). |
 | `ForumRequestPacing.swift` | `ForumRequestPace` (the setting) and `ForumRequestPacer`, which spaces out every forum request per host; its clock is injectable for tests. |
 
@@ -95,7 +95,7 @@ and after every page, so the bar and status keep moving during long reads.
 | `AppModel+Assistant.swift`, `+Browse.swift`, `+Onboarding.swift`, `+ContentBlocking.swift`, `+CloudSync.swift`, `+StateDebug.swift` | Feature slices of `AppModel` (and their DEBUG launch arguments). |
 | `Models.swift` | Codable models: `AppSettings`, `TopicSession`, `AgentRun`, `WatchedTopic`, `WorkRecord`, provider configuration, `ModelSelection`. |
 | `WatchSupport.swift` | Local notifications (watched topics, the daily digest) and the Background App Refresh task for watched topics. |
-| `DailyDigest.swift`, `AppModel+Digest.swift`, `DigestViews.swift` | The daily digest: cards, planning, the prefetch and its background task, storage; making the cards; the Today page, its Forums home row, and Settings › Daily digest. |
+| `DailyDigest.swift`, `AppModel+Digest.swift`, `DigestViews.swift` | The daily digest: cards, planning, the prefetch and its background task, storage; making the cards; the Today page and Settings › Daily digest. |
 | `AppModel+System.swift`, `System/*.swift` | System entry points: App Intents and Siri phrases, Spotlight, Siri suggestions (see below). |
 | `Translation/*.swift` | On-device translation: the reading language, the Translate button and sheet (see below). |
 | `Podcast/*.swift`, `PodcastViews.swift` | The podcast: settings and consent, the script and its checks, Gemini TTS and on-device speech, the episode cache, the player with Now Playing, the controller (making, Ask about this, read aloud); the Today page's mini player and chapter list, the consent sheet, the read-aloud button. |
@@ -104,6 +104,13 @@ and after every page, so the bar and status keep moving during long reads.
 once (`TaskLimiter`), with per-topic ordering, up to 50 queued, progress and
 cancellation, and restore after relaunch. Finished activity is kept for 24
 hours. Removing a forum together with its data cancels its work first.
+Cancelling frees a job's worker slot at once. When the app leaves the
+foreground, running work goes on for the background time the system gives;
+when it runs out (or a request fails because the app is in the background)
+the work goes back in the queue as paused, keeping the pages it read, and
+starts again when the app is active. Forum requests retry dropped
+connections and gateway errors; work the app starts by itself (a watched
+topic's refresh) reports failures in Manage without an alert.
 
 **RunSettings.** Settings edits apply immediately to work that hasn't started;
 work that is already running keeps a snapshot (`RunSettings`) of the provider,
@@ -186,10 +193,15 @@ prefetch live in `digests.json` next to the snapshot, on the device only
 (not in iCloud sync); they can be deleted in Settings › Daily digest or from
 the Today page, and a forum's cards go with its data.
 
-The Today row sits at the top of the Forums home, and the Today page is a
-sheet owned by `ContentView`, so it works the same in the single-pane
-(iPhone) and side-by-side (iPad) layouts; opening a link closes it and shows
-the browser.
+The Today module sits at the top of Home, and the Today page is pushed over
+Home (`AppModel.homePath`: the iPhone bar's navigation stack, or Home's own
+on iPad); opening a link closes both and shows the browser.
+
+**Launch.** Settings › Browser › When Forumind opens: Automatic (default),
+Home or Last forum. A link, notification, Siri, Spotlight or the share
+extension always opens its page. Automatic shows Home on the first launch of
+the day when Today has a podcast or digest ready or being made (the day is
+kept in UserDefaults on the device), and otherwise the last forum.
 
 ### AI providers
 
@@ -802,7 +814,9 @@ CloudKit builds. Details: [SYNC.md](SYNC.md).
 `Persistence.swift`:
 
 - `PersistentStore` saves one `AppSnapshot` as `state.json` in Application
-  Support (saves are coalesced). If a snapshot can't be decoded, it is copied
+  Support (saves are coalesced; the snapshot is encoded and written on a
+  background queue, newest wins, and flushed when the app leaves the
+  foreground or a background task ends). If a snapshot can't be decoded, it is copied
   aside as `state.unreadable-<timestamp>.json` before the app starts empty.
 - `KeychainProviderKeyStore` keeps API keys out of the snapshot, as generic
   password items (synchronizable while **Sync API keys** is on).
@@ -811,13 +825,16 @@ CloudKit builds. Details: [SYNC.md](SYNC.md).
 
 History limits: chats and activity you haven't kept are cleared after a day;
 the 40 most recent unkept summaries are kept, plus everything marked **Keep**;
-the 50 most recent agent runs are kept.
+the 50 most recent agent runs are kept. Topics opened without a summary: the
+60 most recent. Topics only the agent read stay while a saved run cites them,
+and lose their fetched pages after a day (`SessionRetention.swift`; applied
+on launch and after each job).
 
 ## Tests
 
 | Target | What it covers |
 | --- | --- |
 | `ForumindTests` | Unit tests: forum identity and URL building, forum request pacing (fake clock), the daily digest (card plan, prefetch cap, scheduling, resumable cards), the work queue and state transitions, incoming links, onboarding, agent sources (topic and post level), post-level browsing (the current list, landing URLs, page position and its debounce, find/read with moderation, research single-flight, result trimming), the podcast (script JSON and its speech checks, chapters from cards, the Gemini TTS request on both endpoints and responses from fixtures, retries, engine and system-voice selection, the player's timeline, chapter navigation and remembered position with fakes, Ask about this pausing and resuming, the opt-in defaults, cache cleanup), the voice agent offline (Gemini Live message fixtures, the session against a fake transport, fake audio and a manual clock, tool mapping, context notes, consent, typed input, the cost guard), the audio pipeline without hardware (sample-rate conversion, framing, the voice-activity detector on four short speech fixtures in `ForumindTests/Audio` mixed with generated noise, the jitter buffer and time-stretch replays, the time-pitch graph rendered offline, the microphone watchdog), post-level Discourse parsing (trimmed JSON fixtures in `DiscourseFixtures.swift`), content blocking (compiles every bundled chunk in WebKit), CloudKit sync against a fake transport (two simulated devices), Keychain sync, iPad layout math, String Catalog completeness (every key translated, matching format specifiers and intent placeholders, plural variations), App Intents (each intent's action through a fake router, the forum query's order, the AppModel carrying actions out), Spotlight against a fake index (items, identifiers, removal on every delete path and the switch), Siri-suggestion donations, and the reading-language decision and Markdown segmenting for translation. |
-| `ForumindUITests` | UI tests on simulators (Forums home, the Today page and its podcast on a fake engine, landing on a post and the result cards on a live topic, the voice consent sheet and bar on a scripted session, onboarding, settings navigation, share hand-off, iPad layouts) and smoke tests for physical devices. |
+| `ForumindUITests` | UI tests on simulators (Home, the Today page and its podcast on a fake engine, landing on a post and the result cards on a live topic, the voice consent sheet and bar on a scripted session, onboarding, settings navigation, share hand-off, iPad layouts) and smoke tests for physical devices. |
 
 See [DEVELOPMENT.md](DEVELOPMENT.md) for how to run them.

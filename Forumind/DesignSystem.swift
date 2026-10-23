@@ -33,20 +33,52 @@ enum DCTheme {
     static let border = Color.secondary.opacity(0.16)
 
     // Brand
-    static let brandBlue = Color(light: 0x3A5BE0, dark: 0x7B93FF)
-    static let brandPurple = Color(light: 0x8E2DB5, dark: 0xC77DEB)
-    static let brandInk = Color(light: 0x17132B, dark: 0xF2F0FA)
+    // High-contrast values (UI_REDESIGN_SPEC 3.1) apply when the user turns on
+    // Increase Contrast. Light + high contrast uses the spec's darker value;
+    // dark + high contrast is a lighter tint of the dark value.
+    static let brandBlue = Color(light: 0x3A5BE0, dark: 0x7B93FF, highContrastLight: 0x2A45B8, highContrastDark: 0xA9BAFF)
+    static let brandPurple = Color(light: 0x8E2DB5, dark: 0xC77DEB, highContrastLight: 0x6E1F8E, highContrastDark: 0xE0A8F7)
+    static let brandInk = Color(uiColor: UIColor { traits in
+        traits.accessibilityContrast == .high
+            ? .label
+            : UIColor(hex: traits.userInterfaceStyle == .dark ? 0xF2F0FA : 0x17132B)
+    })
     static let brandGradient = BrandPalette.gradient
 
     /// One color per assistant capability, used for icons and accents.
     static let summaryTint = brandBlue
-    static let chatTint = Color(light: 0x0E8A7E, dark: 0x4FD1C0)
+    static let chatTint = Color(light: 0x0E8A7E, dark: 0x4FD1C0, highContrastLight: 0x0A6B62, highContrastDark: 0x8BEBDD)
     static let agentTint = brandPurple
 
     // Status
     static let success = Color(light: 0x087A43, dark: 0x4CD68C)
     static let warning = Color(light: 0xA35B00, dark: 0xFFB44C)
     static let danger = Color(light: 0xC52D3A, dark: 0xFF6B76)
+
+    // New-replies badge: text and background.
+    static let newRepliesBadgeText = Color(light: 0x8A4A00, dark: 0xFFB44C, highContrastLight: 0x6E3A00, highContrastDark: 0xFFD08A)
+    static let newRepliesBadgeBackground = Color(light: 0xFFF1DE, dark: 0x3A2A12, highContrastLight: 0xFFE6C4, highContrastDark: 0x2A1C08)
+
+    // Highlight for a cited post: fill, stroke colour and stroke width.
+    static let postHighlightBackground = Color(light: 0xEEF1FF, dark: 0x1E2550)
+    static let postHighlightStroke = brandBlue
+    static func postHighlightStrokeWidth(highContrast: Bool) -> CGFloat { highContrast ? 3 : 2 }
+    /// A post citation chip's number (on `postHighlightBackground`).
+    static let citationText = Color(light: 0x2A45B8, dark: 0xA9BAFF)
+}
+
+extension Color {
+    /// `#RRGGBB` for the page's CSS (the browser bridge's post highlight).
+    func cssHex(dark: Bool, highContrast: Bool) -> String {
+        let traits = UITraitCollection(traitsFrom: [
+            UITraitCollection(userInterfaceStyle: dark ? .dark : .light),
+            UITraitCollection(accessibilityContrast: highContrast ? .high : .normal)
+        ])
+        var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+        UIColor(self).resolvedColor(with: traits).getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+        func byte(_ value: CGFloat) -> Int { Int((min(max(value, 0), 1) * 255).rounded()) }
+        return String(format: "#%02X%02X%02X", byte(red), byte(green), byte(blue))
+    }
 }
 
 /// Shared animation curves: quick for toggles, smooth for layout changes.
@@ -73,17 +105,31 @@ extension Color {
         )
     }
 
-    /// A color that adapts to light and dark mode.
-    init(light: UInt32, dark: UInt32) {
+    /// A color that adapts to light and dark mode, and optionally to
+    /// Increase Contrast (`accessibilityContrast == .high`).
+    init(light: UInt32, dark: UInt32, highContrastLight: UInt32? = nil, highContrastDark: UInt32? = nil) {
         self.init(uiColor: UIColor { traits in
-            let hex = traits.userInterfaceStyle == .dark ? dark : light
-            return UIColor(
-                red: CGFloat((hex >> 16) & 0xFF) / 255,
-                green: CGFloat((hex >> 8) & 0xFF) / 255,
-                blue: CGFloat(hex & 0xFF) / 255,
-                alpha: 1
-            )
+            let isDark = traits.userInterfaceStyle == .dark
+            let isHigh = traits.accessibilityContrast == .high
+            let hex = switch (isDark, isHigh) {
+            case (false, false): light
+            case (true, false): dark
+            case (false, true): highContrastLight ?? light
+            case (true, true): highContrastDark ?? dark
+            }
+            return UIColor(hex: hex)
         })
+    }
+}
+
+extension UIColor {
+    convenience init(hex: UInt32) {
+        self.init(
+            red: CGFloat((hex >> 16) & 0xFF) / 255,
+            green: CGFloat((hex >> 8) & 0xFF) / 255,
+            blue: CGFloat(hex & 0xFF) / 255,
+            alpha: 1
+        )
     }
 }
 
@@ -220,11 +266,6 @@ struct DCSectionHeader: View {
 extension View {
     func dcCard(tint: Color = .clear) -> some View {
         modifier(DCCardModifier(tint: tint))
-    }
-
-    /// Legacy name kept while views migrate to `dcCard`.
-    func ucsCard(tint: Color = .clear) -> some View {
-        dcCard(tint: tint)
     }
 }
 

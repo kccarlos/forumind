@@ -64,8 +64,10 @@ final class SettingsNavigationUITests: DCUITestCase {
         if !back.isHittable { app.swipeDown() }
         XCTAssertTrue(waitForHittable(back))
         back.tap()
+        // iPhone: the drawer's Ask box; iPad: the panel's mode picker.
         XCTAssertTrue(
-            app.segmentedControls["assistantModePicker"].waitForExistence(timeout: 10),
+            (isPhone ? any(app, "askScopeButton") : app.segmentedControls["assistantModePicker"])
+                .waitForExistence(timeout: 10),
             "Back to assistant did not return to the assistant."
         )
         XCTAssertFalse(root.exists)
@@ -134,7 +136,11 @@ final class SettingsNavigationUITests: DCUITestCase {
         XCTAssertTrue(assistant.waitForExistence(timeout: 5))
         XCTAssertTrue(assistant.label.contains("claude-sonnet-4-5"), "Got “\(assistant.label)”.")
         XCTAssertTrue(agent.label.contains("deepseek-v4-flash"), "Got “\(agent.label)”.")
-        XCTAssertTrue(any(app, "useSameModel").exists, "Different models offer “Use the same model for both”.")
+        XCTAssertTrue(any(app, "useSameModel-agent").exists, "Different models offer “Use deepseek-v4-flash for both”.")
+        XCTAssertTrue(any(app, "useSameModel-assistant").exists)
+        // Favorites with their state; both roles' models are starred.
+        XCTAssertTrue(any(app, "favoriteModel-anthropic:claude-sonnet-4-5").exists)
+        XCTAssertFalse(any(app, "starCurrentModel-assistant").exists, "The current model is starred already.")
 
         capture("ai-models")
 
@@ -151,41 +157,122 @@ final class SettingsNavigationUITests: DCUITestCase {
     /// (and Summary) switch the summaries & chat model, Ask the forum its own.
     func testAssistantModelSwitcherFollowsTheMode() throws {
         try skipUnlessPhone("The Assistant header layout checked here is the iPhone one.")
-        for (mode, title, model) in [
-            ("chat", "Summaries & chat model", "claude-sonnet-4-5"),
-            ("agent", "Ask the forum model", "deepseek-v4-flash")
-        ] {
-            let app = launch(["-dc-sample", "-dc-forums-home", "-dc-topic", "makers", "-dc-assistant-mode", mode,
-                              "-dc-agent-model", "deepseek:deepseek-v4-flash"])
-            let more = app.buttons["assistantMoreMenu"]
-            XCTAssertTrue(more.waitForExistence(timeout: 20), "The Assistant did not open in \(mode).")
-            more.tap()
-            let switcher = app.buttons["modelSwitcher"]
-            XCTAssertTrue(switcher.waitForExistence(timeout: 5))
-            XCTAssertTrue(switcher.label.contains(title), "Got “\(switcher.label)” in \(mode).")
-            switcher.tap()
-            let current = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", model)).firstMatch
+        // The drawer's model pill shows the mode's model and lists the favorites.
+        for (mode, model) in [("chat", "claude-sonnet-4-5"), ("agent", "deepseek-v4-flash")] {
+            let app = launch(["-dc-sample", "-dc-topic", "makers", "-dc-assistant-mode", mode,
+                              "-dc-agent-model", "deepseek:deepseek-v4-flash"] + phonePage)
+            let pill = app.buttons["modelPill"]
+            XCTAssertTrue(pill.waitForExistence(timeout: 20), "The drawer did not open in \(mode).")
+            XCTAssertTrue(pill.label.contains(model), "Got “\(pill.label)” in \(mode).")
+            pill.tap()
+            // A favorite reads "Provider, model · Ready" (menu toggles drop
+            // their identifiers).
+            let current = menuOption(model, in: app)
             XCTAssertTrue(current.waitForExistence(timeout: 5), "The \(mode) switcher doesn't list \(model).")
+            // The menu names its role (ModelMenu / ModelForum).
+            let title = mode == "agent" ? "ASK THE FORUM" : "SUMMARIES & CHAT"
+            XCTAssertTrue(app.staticTexts[title].exists, "No “\(title)” header in \(mode).")
+            XCTAssertTrue(any(app, "modelUseForBoth").exists, "The roles differ: “Use X for both”.")
             capture("model-switcher-\(mode)")
             app.terminate()
         }
     }
 
+    /// §6: picking a favorite from the drawer's pill switches the scope's
+    /// model, and the pill's label follows.
+    func testModelPillSwitchesTheModel() throws {
+        try skipUnlessPhone("The model pill is in the iPhone drawer's header.")
+        let app = launch(["-dc-sample", "-dc-topic", "makers", "-dc-assistant-mode", "chat",
+                          "-dc-agent-model", "deepseek:deepseek-v4-flash"] + phonePage)
+        let pill = app.buttons["modelPill"]
+        XCTAssertTrue(pill.waitForExistence(timeout: 20), "The drawer did not open.")
+        XCTAssertTrue(pill.label.contains("claude-sonnet-4-5"), "Got “\(pill.label)”.")
+        pill.tap()
+        let option = menuOption("deepseek-v4-flash", in: app)
+        XCTAssertTrue(waitOrDump(option, timeout: 5, in: app), "The menu doesn't list the other favorite.")
+        option.tap()
+        let switched = NSPredicate(format: "label CONTAINS %@", "deepseek-v4-flash")
+        expectation(for: switched, evaluatedWith: pill)
+        waitForExpectations(timeout: 5)
+        // Only This topic's model changed: the roles now share it.
+        pill.tap()
+        XCTAssertTrue(menuOption("claude-sonnet-4-5", in: app).waitForExistence(timeout: 5))
+        XCTAssertFalse(any(app, "modelUseForBoth").exists, "Both roles use deepseek-v4-flash now.")
+        // AI models… opens Settings › AI models over the drawer (router).
+        app.buttons["modelMenuSettings"].tap()
+        XCTAssertTrue(app.navigationBars["AI models"].waitForExistence(timeout: 10), "AI models… did not open Settings › AI models.")
+    }
+
+    /// Settings › AI models favorites (ModelSettings): tap = pick the role,
+    /// hold = use for both, swipe = remove.
+    func testFavoritesTapHoldAndSwipe() throws {
+        let app = launch(["-dc-sample", "-dc-show-settings", "provider", "-dc-agent-model", "deepseek:deepseek-v4-flash"])
+        XCTAssertTrue(app.navigationBars["AI models"].waitForExistence(timeout: 20))
+        let agent = any(app, "modelRole-agent")
+        let assistant = any(app, "modelRole-assistant")
+        XCTAssertTrue(agent.waitForExistence(timeout: 5))
+
+        // Tap: the role choice; Ask the forum takes claude-sonnet-4-5.
+        let claude = any(app, "favoriteModel-anthropic:claude-sonnet-4-5")
+        XCTAssertTrue(reveal(claude, in: app))
+        claude.tap()
+        let useForAgent = app.buttons["Use for Ask the forum"]
+        XCTAssertTrue(waitOrDump(useForAgent, timeout: 5, in: app), "Tapping a favorite offers its roles.")
+        useForAgent.tap()
+        XCTAssertTrue(wait(timeout: 5) { agent.label.contains("claude-sonnet-4-5") }, "Got “\(agent.label)”.")
+
+        // Hold: both roles take deepseek-v4-flash.
+        let deepseek = any(app, "favoriteModel-deepseek:deepseek-v4-flash")
+        XCTAssertTrue(reveal(deepseek, in: app))
+        deepseek.press(forDuration: 1.2)
+        XCTAssertTrue(wait(timeout: 5) {
+            agent.label.contains("deepseek-v4-flash") && assistant.label.contains("deepseek-v4-flash")
+        }, "Holding a favorite uses it for both; got “\(assistant.label)” and “\(agent.label)”.")
+        XCTAssertFalse(app.buttons["Use for Ask the forum"].exists, "Holding doesn't open the role choice.")
+
+        // Swipe left: remove. The roles keep their model, so it can be starred again.
+        deepseek.swipeLeft()
+        let remove = app.buttons["Remove"]
+        XCTAssertTrue(remove.waitForExistence(timeout: 5))
+        remove.tap()
+        XCTAssertTrue(waitForGone(deepseek, timeout: 5))
+        XCTAssertTrue(any(app, "starCurrentModel-assistant").waitForExistence(timeout: 5), "Star deepseek-v4-flash is offered.")
+    }
+
+    /// A favorite in the model menu: "Provider, model · state".
+    private func menuOption(_ model: String, in app: XCUIApplication) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", ", \(model) · ")).firstMatch
+    }
+
     /// Only the role that can't run shows the setup card: here Ask the
     /// forum's provider has no key while chat works.
     func testSetupCardShowsOnlyForTheRoleThatIsNotReady() throws {
-        let args = ["-dc-sample", "-dc-forums-home", "-dc-topic", "makers",
+        let args = ["-dc-sample", "-dc-topic", "makers",
                     "-dc-agent-model", "deepseek:deepseek-v4-flash", "-dc-no-agent-key"]
+            + (isPhone ? phonePage : ["-dc-forums-home"])
         var app = launch(args + ["-dc-assistant-mode", "agent"])
         let card = any(app, "providerSetupCard")
         XCTAssertTrue(card.waitForExistence(timeout: 20), "Ask the forum should ask for its model.")
-        XCTAssertTrue(app.staticTexts["Choose a model for Ask the forum"].exists)
+        XCTAssertTrue(
+            app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "deepseek-v4-flash isn’t ready")).firstMatch.exists,
+            "The card names the model that isn't ready."
+        )
+        XCTAssertTrue(app.buttons["providerSetupButton"].label.contains("Key"), "Got “\(app.buttons["providerSetupButton"].label)”.")
+        // Never a dead end: the ready favorite is offered (ModelSetup).
+        XCTAssertTrue(any(app, "readyModel-anthropic:claude-sonnet-4-5").exists)
         capture("setup-card-agent")
         app.terminate()
 
         app = launch(args + ["-dc-assistant-mode", "chat"])
         XCTAssertTrue(app.buttons["assistantMoreMenu"].waitForExistence(timeout: 20))
         XCTAssertFalse(any(app, "providerSetupCard").exists, "Chat's model is ready.")
+    }
+
+    /// iPhone: the AI drawer shows on pages, not over the Forums home (where
+    /// the fictional makers forum's failed load lands), so load a real page
+    /// under the seeded makers topic.
+    private var phonePage: [String] {
+        isPhone ? ["-dc-open", DCUITestCase.forumLatest] : []
     }
 
     /// Screenshot attached to the result; also written to

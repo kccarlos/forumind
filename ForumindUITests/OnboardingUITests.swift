@@ -62,7 +62,7 @@ final class OnboardingUITests: DCUITestCase {
         browse.tap()
 
         XCTAssertTrue(waitForGone(any(app, "onboarding"), timeout: 10), "The walkthrough did not close.")
-        XCTAssertTrue(any(app, "forumsHome").waitForExistence(timeout: 10), "Finishing did not land on the Forums home.")
+        XCTAssertTrue(any(app, "home").waitForExistence(timeout: 10), "Finishing did not land on the Forums home.")
         XCTAssertTrue(app.buttons["forumSwitcher"].exists)
     }
 
@@ -86,7 +86,7 @@ final class OnboardingUITests: DCUITestCase {
         XCTAssertFalse(app.buttons["onboardingBack"].isEnabled)
         browse.tap()
         XCTAssertTrue(waitForGone(any(app, "onboarding"), timeout: 10))
-        XCTAssertTrue(any(app, "forumsHome").waitForExistence(timeout: 10))
+        XCTAssertTrue(any(app, "home").waitForExistence(timeout: 10))
     }
 
     func testBackReturnsToThePreviousStep() throws {

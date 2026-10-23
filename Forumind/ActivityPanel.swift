@@ -195,12 +195,12 @@ struct ActivityPanel: View {
                 .padding(.trailing, 10)
         }
         .background(DCTheme.toolbar)
+        .sensoryFeedback(.selection, trigger: kind)
     }
 
     private func kindChip(_ item: Kind) -> some View {
         let selected = kind == item
         return Button {
-            DCHaptics.tap()
             withAnimation(DCMotion.respecting(reduceMotion, DCMotion.quick)) { kind = item }
         } label: {
             HStack(spacing: 5) {

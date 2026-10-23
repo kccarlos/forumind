@@ -376,11 +376,11 @@ struct SettingsBrowserPage: View {
                             position: position,
                             selected: app.settings.browserBarPosition == position
                         ) {
-                            DCHaptics.tap()
                             withAnimation(DCMotion.quick) { app.settings.browserBarPosition = position }
                         }
                     }
                 }
+                .sensoryFeedback(.selection, trigger: app.settings.browserBarPosition)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, DCTheme.spacingS)
                 .listRowSeparator(.hidden)
@@ -395,13 +395,28 @@ struct SettingsBrowserPage: View {
             } header: {
                 Text("Browser bar")
             } footer: {
-                Text("The bar shrinks while you scroll down a forum page and comes back when you scroll up or tap it. Bottom keeps it within reach of your thumb.")
+                VStack(alignment: .leading, spacing: DCTheme.spacingXS) {
+                    Text("The bar shrinks while you scroll down a forum page and comes back when you scroll up or tap it. Bottom keeps it within reach of your thumb.")
+                    Text("Automatic puts it at the bottom on iPhone and in narrow windows, and at the top when the assistant is beside the page.")
+                }
+            }
+
+            Section {
+                Picker("When Forumind opens", selection: $app.settings.launchDestination) {
+                    ForEach(LaunchDestination.allCases) { destination in
+                        Text(destination.displayName).tag(destination)
+                    }
+                }
+                .accessibilityIdentifier("launchDestination")
+            } footer: {
+                Text("Automatic opens Home the first time each day when Today has a podcast or digest, and otherwise the forum you read last. Links, notifications, Siri and shared pages always open what they point to.")
             }
 
             ContentBlockingSettingsSections(app: app, rules: app.contentRules)
         }
         .formStyle(.grouped)
         .onChange(of: app.settings.browserBarPosition) { app.saveSettings() }
+        .onChange(of: app.settings.launchDestination) { app.saveSettings() }
     }
 }
 
@@ -481,11 +496,20 @@ private struct ContentBlockingSettingsSections: View {
     }
 }
 
-/// Tiny phone mock with the bar at the top or bottom.
+/// Tiny phone mock with the bar at the top or bottom (Automatic: at the
+/// bottom, with the top outlined).
 private struct BrowserBarPreview: View {
     let position: BrowserBarPosition
     let selected: Bool
     let action: () -> Void
+
+    private var accessibilityLabel: Text {
+        switch position {
+        case .automatic: Text("Bar placed automatically", comment: "Settings › Browser: preview of the Automatic bar position")
+        case .top: Text("Bar at the top")
+        case .bottom: Text("Bar at the bottom")
+        }
+    }
 
     var body: some View {
         Button(action: action) {
@@ -498,6 +522,18 @@ private struct BrowserBarPreview: View {
                             .fill(selected ? DCTheme.brandBlue : Color.secondary.opacity(0.5))
                             .frame(width: 52, height: 12)
                             .padding(8)
+                    }
+                    .overlay(alignment: .top) {
+                        // Automatic: bottom, or top beside the assistant.
+                        if position == .automatic {
+                            Capsule()
+                                .strokeBorder(
+                                    selected ? DCTheme.brandBlue : Color.secondary.opacity(0.5),
+                                    style: StrokeStyle(lineWidth: 1.5, dash: [3, 2])
+                                )
+                                .frame(width: 52, height: 12)
+                                .padding(8)
+                        }
                     }
                     .overlay {
                         VStack(alignment: .leading, spacing: 5) {
@@ -518,7 +554,7 @@ private struct BrowserBarPreview: View {
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(position == .top ? "Bar at the top" : "Bar at the bottom")
+        .accessibilityLabel(accessibilityLabel)
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

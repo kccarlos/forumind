@@ -409,6 +409,7 @@ final class StateTransitionTests: XCTestCase {
     func testClearAllWhileSummaryAndChatRunLeavesNothingBehind() async throws {
         var session = TopicSession(siteURL: site, topicID: "1", url: topic("1").url, title: "Topic 1")
         session.source = "Existing source"
+        session.openedByUserAt = Date()  // pulled from its page
         session.summary = "Old summary"
         let run = finishedRun()
         let harness = makeHarness(snapshot: AppSnapshot(sessions: [session], agentRuns: [run]))
@@ -499,6 +500,7 @@ final class StateTransitionTests: XCTestCase {
     func testClearingTheChatWhileItIsAnsweredDropsTheAnswer() async throws {
         var session = TopicSession(siteURL: site, topicID: "1", url: topic("1").url, title: "Topic 1")
         session.source = "Existing source"
+        session.openedByUserAt = Date()  // pulled from its page
         let harness = makeHarness(snapshot: AppSnapshot(sessions: [session]))
         let app = harness.app
         select(app, .ollama, model: "model-a")
@@ -515,6 +517,7 @@ final class StateTransitionTests: XCTestCase {
     func testClearingTheChatWhileTheTopicIsReadSkipsTheProvider() async throws {
         var session = TopicSession(siteURL: site, topicID: "1", url: topic("1").url, title: "Topic 1")
         session.source = "Existing source"
+        session.openedByUserAt = Date()  // pulled from its page
         let harness = makeHarness(snapshot: AppSnapshot(sessions: [session]))
         let app = harness.app
         select(app, .ollama, model: "model-a")
@@ -707,7 +710,7 @@ final class StateTransitionTests: XCTestCase {
         XCTAssertTrue(app.enqueueSummary(for: topic("1")))
         try await waitUntil { harness.ai.waiting == 1 }
         let running = try XCTUnwrap(app.activities.first)
-        XCTAssertEqual(running.phase, "generating")
+        XCTAssertEqual(running.status, .running)
         XCTAssertEqual(try XCTUnwrap(running.progress), WorkProgress.summary(ai: 0), accuracy: 1e-9)
         XCTAssertEqual(running.statusText, "Summarizing part 1 of 2…")
 
@@ -722,6 +725,7 @@ final class StateTransitionTests: XCTestCase {
     func testChatIsIndeterminateWhileAnswering() async throws {
         var session = TopicSession(siteURL: site, topicID: "1", url: topic("1").url, title: "Topic 1")
         session.source = "Existing source"
+        session.openedByUserAt = Date()  // pulled from its page
         let harness = makeHarness(snapshot: AppSnapshot(sessions: [session]))
         let app = harness.app
         select(app, .ollama, model: "model-a")
@@ -730,7 +734,7 @@ final class StateTransitionTests: XCTestCase {
         app.sendChat()
         try await waitUntil { harness.ai.waiting == 1 }
         let running = try XCTUnwrap(app.activities.first)
-        XCTAssertEqual(running.phase, "generating")
+        XCTAssertEqual(running.statusText, "Answering follow-up question…")
         XCTAssertNil(running.progress)
         harness.ai.releaseAll()
         try await waitUntil { app.activities.allSatisfy(\.status.isTerminal) }
@@ -896,7 +900,7 @@ final class StateTransitionTests: XCTestCase {
         // Now the other way round: the assistant's key is gone.
         setKey(app, "sk-deepseek", for: .deepSeek)
         setKey(app, "", for: .openAI)
-        app.presentedError = nil
+        app.dismissPresentedError()
         app.startAgentRun(goal: "Summarize it", siteURL: site)
         try await waitUntil { app.agentRuns.first?.status.isTerminal == true }
         let run = try XCTUnwrap(app.agentRuns.first)
@@ -1044,6 +1048,215 @@ final class StateTransitionTests: XCTestCase {
         XCTAssertEqual(app.settings.agentModel, app.settings.assistantModel)
     }
 
+    // MARK: Errors
+
+    /// One classifier for every job: no connection, a dropped or slow one,
+    /// and errors the network did not cause.
+    func testNetworkFailuresAreOfflineTransientOrNotTheNetwork() {
+        XCTAssertEqual(NetworkFailure.classify(URLError(.notConnectedToInternet)), .offline)
+        XCTAssertEqual(NetworkFailure.classify(URLError(.dataNotAllowed)), .offline)
+        XCTAssertEqual(NetworkFailure.classify(URLError(.networkConnectionLost)), .transient)
+        XCTAssertEqual(NetworkFailure.classify(URLError(.timedOut)), .transient)
+        XCTAssertEqual(NetworkFailure.classify(AssistantError.http(503, "")), .transient)
+        XCTAssertNil(NetworkFailure.classify(AssistantError.http(401, "Bad key")))
+        XCTAssertNil(NetworkFailure.classify(URLError(.cancelled)))
+        XCTAssertNil(NetworkFailure.classify(CancellationError()))
+        XCTAssertTrue(NetworkFailure.isUnreachable(URLError(.cannotFindHost)))
+    }
+
+    /// A second error waits for the first to be closed instead of replacing
+    /// it; the same message is not queued twice.
+    func testErrorsQueueInsteadOfOverwritingEachOther() {
+        let app = makeHarness().app
+        app.presentError("First")
+        app.presentError("Second")
+        app.presentError("First")
+        XCTAssertEqual(app.presentedError, "First")
+        XCTAssertEqual(app.rootAlert.map { if case .error(let error) = $0 { error.message } else { "" } }, "First")
+        app.dismissRootAlert()
+        XCTAssertEqual(app.presentedError, "Second")
+        app.dismissRootAlert()
+        XCTAssertNil(app.presentedError)
+        XCTAssertNil(app.rootAlert)
+    }
+
+    /// A summary the app queued by itself (a watched topic's refresh) that
+    /// fails shows in Activity without an alert; the user's own one alerts.
+    func testAutomaticWorkFailsQuietlyAndUserWorkAlerts() async throws {
+        let harness = makeHarness()
+        let app = harness.app
+        select(app, .openAI, model: "gpt-test", key: "")
+        XCTAssertTrue(app.enqueueSummary(for: topic("1"), origin: .automatic))
+        try await waitUntil { app.activities.allSatisfy(\.status.isTerminal) }
+        XCTAssertEqual(app.activities.first?.status, .failed)
+        XCTAssertEqual(app.activities.first?.origin, .automatic)
+        XCTAssertNil(app.presentedError)
+
+        XCTAssertTrue(app.enqueueSummary(for: topic("2")))
+        try await waitUntil { app.activities.allSatisfy(\.status.isTerminal) }
+        XCTAssertTrue(app.presentedError?.contains("isn’t connected") ?? false, app.presentedError ?? "")
+    }
+
+    // MARK: Cancellation
+
+    /// Cancelling work whose provider ignores the cancel frees its worker
+    /// slot at once: queued work starts without waiting for the old calls.
+    func testCancelFreesWorkerSlotsEvenWhenTheProviderIgnoresIt() async throws {
+        let harness = makeHarness()
+        let app = harness.app
+        select(app, .ollama, model: "model-a")
+        for id in ["1", "2", "3"] { XCTAssertTrue(app.enqueueSummary(for: topic(id))) }
+        try await waitUntil { harness.ai.waiting == 2 }
+        let third = try XCTUnwrap(app.activities.first { $0.topicID == "3" })
+        XCTAssertEqual(third.status, .queued)
+
+        // Fast repeated taps: cancelling twice is the same as once.
+        for record in app.activities where record.status == .running {
+            app.cancel(record: record)
+            app.cancel(record: record)
+        }
+        try await waitUntil { harness.ai.waiting == 3 }
+        XCTAssertEqual(app.activities.first { $0.topicID == "3" }?.status, .running)
+        XCTAssertEqual(app.activities.filter { $0.status == .cancelled }.count, 2)
+
+        harness.ai.gated = false
+        harness.ai.releaseAll()
+        try await waitUntil { app.activities.allSatisfy(\.status.isTerminal) }
+        XCTAssertEqual(app.activities.first { $0.topicID == "3" }?.status, .completed)
+        XCTAssertEqual(app.sessions[topic("1").topicKey]?.summary ?? "", "", "a cancelled job's late answer is dropped")
+    }
+
+    // MARK: Ask box
+
+    /// Text typed in the Ask box stays in front when the run it waits for
+    /// finishes, or another run is selected: the box never swaps it for the
+    /// other, empty draft.
+    func testTypedAskTextSurvivesTheRunFinishingAndAnotherRunBeingSelected() async throws {
+        let planner = SteppingPlanner()
+        let harness = makeHarness(planner: planner)
+        let app = harness.app
+        select(app, .ollama, model: "model-a")
+        app.settings.agentMaxSteps = 1
+        app.chooseAskForum(siteURL: site)
+        app.startAgentRun(goal: "First", siteURL: site)
+        try await waitUntil { planner.isWaiting }
+        XCTAssertTrue(app.askWaitsForRun)
+        app.askDraft = "Typed while it runs"
+        XCTAssertFalse(app.canSendAsk, "waits for the run")
+
+        planner.release()
+        try await waitUntil { planner.calls == 2 && planner.isWaiting }
+        planner.release()
+        try await waitUntil { app.agentRuns.first?.status.isTerminal == true }
+        XCTAssertEqual(app.askDraft, "Typed while it runs")
+        XCTAssertEqual(app.askDraftTarget, .goal)
+        XCTAssertTrue(app.canSendAsk)
+
+        // A follow-up typed for the finished run stays when a running one
+        // is selected, and waits for it.
+        app.askDraft = ""
+        XCTAssertEqual(app.askDraftTarget, .followUp)
+        app.askDraft = "A follow-up"
+        let second = try app.startAgentRun(goal: "Second", siteURL: site) { _ in }
+        app.selectedAgentRunID = second
+        XCTAssertEqual(app.askDraft, "A follow-up")
+        XCTAssertEqual(app.askDraftTarget, .followUp)
+        XCTAssertFalse(app.canSendAsk)
+        // Fast repeated taps on Send do nothing while it can't send.
+        app.sendAsk()
+        app.sendAsk()
+        XCTAssertEqual(app.askDraft, "A follow-up")
+        XCTAssertEqual(app.agentRuns.count, 2)
+    }
+
+    // MARK: Background
+
+    /// Leaving the foreground mid-read: the job goes on in the grace period;
+    /// when it ends the job pauses (pages read so far kept, nothing failed,
+    /// no alert), survives a kill as queued work, and starts again in the
+    /// foreground without reading those pages again.
+    func testWorkPausesWhenTheGracePeriodEndsAndResumesInTheForeground() async throws {
+        let grace = FakeBackgroundGrace()
+        let harness = makeHarness(backgroundGrace: grace)
+        let app = harness.app
+        app.restorePendingTasksIfNeeded()
+        select(app, .ollama, model: "model-a")
+        StateForumStub.postCounts["1"] = 250
+        StateForumStub.gate(path: "/raw/1?page=2")
+        XCTAssertTrue(app.enqueueSummary(for: topic("1")))
+        try await waitUntil { StateForumStub.isWaiting }
+
+        app.handleScenePhase(.background)
+        XCTAssertEqual(grace.begun, 1)
+        XCTAssertEqual(app.activities.first?.status, .running, "it goes on for now")
+        grace.expire()
+        try await waitUntil { app.activities.first?.status == .queued }
+        XCTAssertEqual(app.activities.first?.statusText, "Paused until Forumind is open again")
+        XCTAssertEqual(app.sessions[topic("1").topicKey]?.rawPages.map(\.page), [1])
+        XCTAssertNil(app.presentedError)
+        XCTAssertEqual(grace.ended, 1)
+
+        // Killed now: the next launch finds it queued, to restore.
+        let relaunched = AppModel(store: PersistentStore(fileURL: harness.store.directoryURL.appendingPathComponent("state.json"), keys: harness.keys))
+        relaunched.browser.onPageContextChanged = nil
+        XCTAssertEqual(relaunched.activities.first?.status, .queued)
+        XCTAssertEqual(relaunched.sessions[topic("1").topicKey]?.rawPages.map(\.page), [1])
+
+        StateForumStub.release()
+        app.handleScenePhase(.active)
+        try await waitUntil { harness.ai.waiting == 1 }
+        XCTAssertEqual(StateForumStub.requestsWithQuery.filter { $0 == "/raw/1?page=1" }.count, 1, "page 1 was kept")
+        harness.ai.releaseAll()
+        try await waitUntil { app.activities.allSatisfy(\.status.isTerminal) }
+        XCTAssertEqual(app.activities.first?.status, .completed)
+    }
+
+    /// Paused while its provider call ignores the cancel, then resumed: the
+    /// old call finishing late must not cancel (or write over) the resumed
+    /// job.
+    func testAPausedJobsLateOldCallDoesNotCancelTheResumedOne() async throws {
+        let grace = FakeBackgroundGrace()
+        let harness = makeHarness(backgroundGrace: grace)
+        let app = harness.app
+        app.restorePendingTasksIfNeeded()
+        select(app, .ollama, model: "model-a")
+        XCTAssertTrue(app.enqueueSummary(for: topic("1")))
+        try await waitUntil { harness.ai.waiting == 1 }
+
+        app.handleScenePhase(.background)
+        grace.expire()
+        try await waitUntil { app.activities.first?.status == .queued }
+        app.handleScenePhase(.active)
+        try await waitUntil { harness.ai.waiting == 2 }
+        XCTAssertEqual(app.activities.first?.status, .running)
+
+        harness.ai.gated = false
+        harness.ai.releaseAll()
+        try await waitUntil { app.activities.allSatisfy(\.status.isTerminal) }
+        XCTAssertEqual(app.activities.first?.status, .completed)
+        XCTAssertEqual(app.sessions[topic("1").topicKey]?.summary, "Summary by ollama/model-a")
+    }
+
+    /// A request that fails because the app is in the background (the
+    /// connection was cut) pauses the job instead of failing it.
+    func testANetworkFailureInTheBackgroundPausesInsteadOfFailing() async throws {
+        let grace = FakeBackgroundGrace()
+        let harness = makeHarness(backgroundGrace: grace)
+        let app = harness.app
+        select(app, .ollama, model: "model-a")
+        StateForumStub.postCounts["1"] = 250
+        StateForumStub.gate(path: "/raw/1?page=2")
+        XCTAssertTrue(app.enqueueSummary(for: topic("1")))
+        try await waitUntil { StateForumStub.isWaiting }
+        app.handleScenePhase(.background)
+        StateForumStub.offline = true
+        StateForumStub.release()
+        try await waitUntil { app.activities.first?.status == .queued }
+        XCTAssertNil(app.presentedError)
+        XCTAssertEqual(app.sessions[topic("1").topicKey]?.rawPages.map(\.page), [1, 2])
+        XCTAssertEqual(grace.ended, 1, "nothing left to run")
+    }
+
     // MARK: Helpers
 
     private struct Harness {
@@ -1056,7 +1269,11 @@ final class StateTransitionTests: XCTestCase {
         let deliver: (PageContext) -> Void
     }
 
-    private func makeHarness(snapshot: AppSnapshot? = nil, planner: AgentPlanner? = nil) -> Harness {
+    private func makeHarness(
+        snapshot: AppSnapshot? = nil,
+        planner: AgentPlanner? = nil,
+        backgroundGrace: BackgroundGracing? = nil
+    ) -> Harness {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         let keys = InMemoryProviderKeyStore()
@@ -1070,9 +1287,12 @@ final class StateTransitionTests: XCTestCase {
             store: store,
             forumService: ForumService(session: session, pacer: ForumRequestPacer(clock: InstantPacingClock())),
             aiService: ai,
-            planner: planner
+            planner: planner,
+            backgroundGrace: backgroundGrace
         )
         app.usesDirectForumRequests = true
+        // Consent has its own tests (AIDataConsentTests).
+        app.allowAllAIProviders()
         let handler = app.browser.onPageContextChanged
         app.browser.onPageContextChanged = nil
         addTeardownBlock { @MainActor in
@@ -1334,6 +1554,7 @@ final class StateForumStub: URLProtocol {
     nonisolated(unsafe) private static var gatedPath: String?
     nonisolated(unsafe) private static var held: (() -> Void)?
     nonisolated(unsafe) private static var seen: [String] = []
+    nonisolated(unsafe) private static var seenWithQuery: [String] = []
     nonisolated(unsafe) private static var counts: [String: Int] = [:]
     nonisolated(unsafe) private static var listBodies: [String: String] = [:]
     nonisolated(unsafe) private static var isOffline = false
@@ -1351,6 +1572,8 @@ final class StateForumStub: URLProtocol {
 
     /// Every request so far, as its path.
     static var requests: [String] { lock.withLock { seen } }
+    /// Every request so far, as path?query.
+    static var requestsWithQuery: [String] { lock.withLock { seenWithQuery } }
 
     static var postCounts: [String: Int] {
         get { lock.withLock { counts } }
@@ -1364,6 +1587,7 @@ final class StateForumStub: URLProtocol {
             gatedPath = nil
             held = nil
             seen = []
+            seenWithQuery = []
             counts = [:]
             listBodies = [:]
             isOffline = false
@@ -1399,6 +1623,7 @@ final class StateForumStub: URLProtocol {
             return
         }
         let listKey = "\(request.url?.host ?? "")\(path)"
+        let pathAndQuery = request.url?.query.map { "\(path)?\($0)" } ?? path
         let respond = { [self] in
             let (status, body) = Self.lists[listKey].map { (200, $0) } ?? Self.body(for: path)
             let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: "HTTP/1.1", headerFields: nil)!
@@ -1408,7 +1633,9 @@ final class StateForumStub: URLProtocol {
         }
         let hold: Bool = Self.lock.withLock {
             Self.seen.append(path)
-            guard Self.gatedPath == path, Self.held == nil else { return false }
+            Self.seenWithQuery.append(pathAndQuery)
+            // A gate is a path, or a path?query for one page.
+            guard Self.gatedPath == path || Self.gatedPath == pathAndQuery, Self.held == nil else { return false }
             Self.held = respond
             return true
         }
@@ -1431,5 +1658,29 @@ final class StateForumStub: URLProtocol {
             return (200, "Post 1 of topic \(parts[1])\n\n\nPost 2")
         }
         return (404, "missing")
+    }
+}
+
+/// The background grace period on demand.
+@MainActor
+final class FakeBackgroundGrace: BackgroundGracing {
+    private(set) var begun = 0
+    private(set) var ended = 0
+    private var expiration: (() -> Void)?
+
+    func begin(name: String, expiration: @escaping () -> Void) -> UIBackgroundTaskIdentifier {
+        begun += 1
+        self.expiration = expiration
+        return UIBackgroundTaskIdentifier(rawValue: begun)
+    }
+
+    func end(_ id: UIBackgroundTaskIdentifier) {
+        ended += 1
+        expiration = nil
+    }
+
+    /// The system's time is up.
+    func expire() {
+        expiration?()
     }
 }

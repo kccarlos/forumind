@@ -138,7 +138,6 @@ struct SettingsForumsPage: View {
             .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
             Spacer(minLength: DCTheme.spacingS)
             Button {
-                DCHaptics.tap()
                 withAnimation(DCMotion.quick) { app.togglePin(forum) }
             } label: {
                 Image(systemName: forum.isPinned ? "pin.fill" : "pin")
@@ -149,6 +148,7 @@ struct SettingsForumsPage: View {
             .buttonStyle(.borderless)
             .accessibilityLabel(forum.isPinned ? "Unpin \(forum.displayName)" : "Pin \(forum.displayName)")
         }
+        .sensoryFeedback(.impact(weight: .light), trigger: forum.isPinned)
         .contextMenu {
             Button {
                 app.togglePin(forum)
@@ -193,6 +193,8 @@ struct SettingsForumsPage: View {
                 }
             }
             Toggle("Pin it", isOn: $pinNew)
+                .sensoryFeedback(.success, trigger: addedName) { _, new in new != nil }
+                .sensoryFeedback(.warning, trigger: addError) { _, new in new != nil }
             if let addError {
                 Label(addError, systemImage: "exclamationmark.circle.fill")
                     .font(.footnote)
@@ -221,10 +223,8 @@ struct SettingsForumsPage: View {
                 withAnimation { addedName = forum.displayName }
                 address = ""
                 addressFocused = false
-                DCHaptics.success()
             } catch {
                 withAnimation { addError = error.localizedDescription }
-                DCHaptics.warning()
             }
             adding = false
         }

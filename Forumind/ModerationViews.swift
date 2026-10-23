@@ -242,9 +242,7 @@ struct ReportSheet: View {
     }
 
     private func send(target: ReportTarget, reason: ReportReason?, note: String, blocked: Bool) {
-        let subject = ModerationReport.subject(for: target, blocked: blocked)
-        let body = ModerationReport.body(for: target, reason: reason, note: note, blocked: blocked)
-        let draft = MailDraft(subject: subject, body: body)
+        let draft = ModerationReport.draft(for: target, reason: reason, note: note, blocked: blocked)
         if MFMailComposeViewController.canSendMail() {
             mail = draft
         } else {
@@ -263,15 +261,21 @@ struct ReportForm: View {
     let target: ReportTarget
     let onSend: (ReportReason, String) -> Void
     @Environment(\.dismiss) private var dismiss
-    @State private var reason: ReportReason = .spam
+    @State private var reason: ReportReason
     @State private var note = ""
+
+    init(target: ReportTarget, onSend: @escaping (ReportReason, String) -> Void) {
+        self.target = target
+        self.onSend = onSend
+        _reason = State(initialValue: ReportReason.reasons(for: target.kind)[0])
+    }
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
                     Picker("Reason", selection: $reason) {
-                        ForEach(ReportReason.allCases) { reason in
+                        ForEach(ReportReason.reasons(for: target.kind)) { reason in
                             Text(reason.title).tag(reason)
                         }
                     }
@@ -307,6 +311,35 @@ struct ReportForm: View {
         case .topic: String(localized: "Report topic")
         case .post: String(localized: "Report post")
         case .user: String(localized: "Report user")
+        case .aiOutput(let output):
+            output.feature == .summary
+                ? String(localized: "Report summary", comment: "Title of the form that reports an AI summary")
+                : String(localized: "Report answer", comment: "Title of the form that reports an AI answer")
+        }
+    }
+}
+
+/// Report This Summary… / Report This Answer… (App Review 1.2): the reason
+/// form, then the email (Mail queues it while offline) or, without Mail,
+/// the report to copy or share. A routed sheet.
+struct AIOutputReportSheet: View {
+    let target: ReportTarget
+    @Environment(\.dismiss) private var dismiss
+    @State private var draft: MailDraft?
+
+    var body: some View {
+        if let draft {
+            if MFMailComposeViewController.canSendMail() {
+                MailComposer(draft: draft) { dismiss() }
+                    .ignoresSafeArea()
+            } else {
+                ReportEmailFallback(draft: draft)
+            }
+        } else {
+            ReportForm(target: target) { reason, note in
+                draft = ModerationReport.draft(for: target, reason: reason, note: note, blocked: false)
+            }
+            .accessibilityIdentifier("aiOutputReportForm")
         }
     }
 }

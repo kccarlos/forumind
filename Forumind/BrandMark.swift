@@ -66,7 +66,9 @@ struct BrandGlyphLayout: View {
     }
 }
 
-/// Full-bleed square app icon artwork (iOS applies the corner mask).
+/// Full-bleed square app icon artwork (iOS applies the corner mask). Not
+/// drawn in the app: scripts/brand/render_app_icon.swift renders the icon
+/// PNGs from it.
 struct BrandAppIcon: View {
     enum Appearance { case light, dark, tinted }
 

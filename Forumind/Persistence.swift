@@ -50,8 +50,15 @@ final class PersistentStore {
     /// store at a custom location (tests, previews) keeps them in memory so it
     /// never reads or overwrites the app's real keys.
     let keys: ProviderKeyStore
-    /// Snapshot writes so far (lets tests check that edits are coalesced).
+    /// Snapshot saves asked for so far (lets tests check that edits are
+    /// coalesced); main thread only.
     private(set) var saveCount = 0
+    /// Encodes and writes snapshots off the main thread, one at a time.
+    private let writeQueue = DispatchQueue(label: "Forumind.snapshot-writer", qos: .utility)
+    private let pendingLock = NSLock()
+    /// The newest snapshot not written yet (an older one waiting is
+    /// replaced: only the latest state matters), with who hears of a failure.
+    private var pendingWrite: (snapshot: AppSnapshot, onError: (Error) -> Void)?
     /// The app's own store (Application Support), not a test/preview location.
     let usesDefaultLocation: Bool
     /// The folder holding the snapshot; iCloud sync keeps its files here too
@@ -84,6 +91,7 @@ final class PersistentStore {
     }
 
     func load() -> AppSnapshot {
+        flush()
         let snapshot = decodeSnapshot()
         // The key store follows "Sync API keys" before any key is read.
         (keys as? KeychainProviderKeyStore)?.configure(synchronizes: snapshot.settings.syncAPIKeys)
@@ -110,7 +118,52 @@ final class PersistentStore {
         try? data.write(to: copy, options: .atomic)
     }
 
+    /// Writes now, after any scheduled write (seeding, tests).
     func save(_ snapshot: AppSnapshot) throws {
+        saveCount += 1
+        try writeQueue.sync {
+            drainPendingWrite()
+            try write(snapshot)
+        }
+    }
+
+    /// Writes in the background. Saves that arrive while one is being
+    /// written are coalesced into one write of the newest snapshot, so writes
+    /// land in order and never fall behind. `onError` runs on the main thread.
+    func scheduleSave(_ snapshot: AppSnapshot, onError: @escaping (Error) -> Void) {
+        saveCount += 1
+        let startsWrite: Bool = pendingLock.withLock {
+            let idle = pendingWrite == nil
+            pendingWrite = (snapshot, onError)
+            return idle
+        }
+        guard startsWrite else { return }
+        writeQueue.async { [self] in drainPendingWrite() }
+    }
+
+    /// Waits until every scheduled snapshot is on disk (the app leaving the
+    /// foreground, a background task ending, reading the file back).
+    func flush() {
+        writeQueue.sync { drainPendingWrite() }
+    }
+
+    /// On `writeQueue`.
+    private func drainPendingWrite() {
+        guard let pending = pendingLock.withLock({ () -> (snapshot: AppSnapshot, onError: (Error) -> Void)? in
+            defer { pendingWrite = nil }
+            return pendingWrite
+        }) else {
+            return
+        }
+        do {
+            try write(pending.snapshot)
+        } catch {
+            DispatchQueue.main.async { pending.onError(error) }
+        }
+    }
+
+    /// On `writeQueue`.
+    private func write(_ snapshot: AppSnapshot) throws {
         let directory = fileURL.deletingLastPathComponent()
         try FileManager.default.createDirectory(
             at: directory,
@@ -118,7 +171,6 @@ final class PersistentStore {
         )
         let data = try encoder.encode(snapshot)
         try data.write(to: fileURL, options: .atomic)
-        saveCount += 1
     }
 }
 
@@ -381,6 +433,10 @@ struct KeychainStore {
     }
 }
 
+/// The work queue's worker slots: at most `limit` jobs at once, one per
+/// topic. A slot belongs to its job (`workID`), so cancelling a job frees
+/// its slot at once, even while its task is still unwinding (a provider or
+/// web page that ignores cancellation), and a late release is a no-op.
 actor TaskLimiter {
     private struct Waiter {
         let workID: UUID
@@ -389,21 +445,22 @@ actor TaskLimiter {
     }
 
     private let limit: Int
-    private var active = 0
-    private var activeTopics: Set<String> = []
+    /// Topic of each job holding a slot.
+    private var active: [UUID: String] = [:]
     private var waiters: [Waiter] = []
 
     init(limit: Int) {
         self.limit = max(1, limit)
     }
 
+    private var activeTopics: Set<String> { Set(active.values) }
+
     func acquire(topicID: String, workID: UUID) async -> Bool {
         if Task.isCancelled {
             return false
         }
-        if active < limit, !activeTopics.contains(topicID) {
-            active += 1
-            activeTopics.insert(topicID)
+        if active.count < limit, !activeTopics.contains(topicID) {
+            active[workID] = topicID
             return true
         }
         return await withCheckedContinuation { continuation in
@@ -413,26 +470,24 @@ actor TaskLimiter {
         }
     }
 
+    /// A cancelled job: out of the queue, or its slot freed.
     func cancel(workID: UUID) {
-        guard let index = waiters.firstIndex(where: { $0.workID == workID }) else {
-            return
+        if let index = waiters.firstIndex(where: { $0.workID == workID }) {
+            waiters.remove(at: index).continuation.resume(returning: false)
+        } else {
+            release(workID: workID)
         }
-        waiters.remove(at: index).continuation.resume(returning: false)
     }
 
-    func release(topicID: String) {
-        if activeTopics.remove(topicID) != nil {
-            active = max(0, active - 1)
-        }
-
-        while active < limit,
+    func release(workID: UUID) {
+        guard active.removeValue(forKey: workID) != nil else { return }
+        while active.count < limit,
               let nextIndex = waiters.firstIndex(where: {
                   !activeTopics.contains($0.topicID)
               })
         {
             let next = waiters.remove(at: nextIndex)
-            active += 1
-            activeTopics.insert(next.topicID)
+            active[next.workID] = next.topicID
             next.continuation.resume(returning: true)
         }
     }

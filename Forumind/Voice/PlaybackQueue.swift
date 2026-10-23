@@ -141,15 +141,6 @@ struct PlaybackQueue {
         PlaybackProfile(floorMilliseconds: targetFloorMilliseconds, ceilingMilliseconds: targetCeilingMilliseconds)
     }
 
-    /// Switches the target range (the voice provider changed). The target
-    /// restarts at the new floor; counters are kept.
-    mutating func setProfile(_ profile: PlaybackProfile) {
-        guard profile != self.profile else { return }
-        targetFloorMilliseconds = profile.floorMilliseconds
-        targetCeilingMilliseconds = profile.ceilingMilliseconds
-        targetMilliseconds = profile.floorMilliseconds
-    }
-
     /// True while the player has audio to play — most of "speaking".
     var isSpeaking: Bool { scheduledSamples > 0 }
 

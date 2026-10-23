@@ -130,8 +130,10 @@ final class SystemEntryTests: XCTestCase {
             .appendingPathComponent("state.json")
         var session = TopicSession(siteURL: site, topicID: "5", url: URL(string: "\(site)/t/five/5")!, title: "Five")
         session.rawPages = [RawForumPage(page: 1, content: "long text")]
+        session.openedByUserAt = Date()
+        let agentRead = TopicSession(siteURL: site, topicID: "6", url: URL(string: "\(site)/t/six/6")!, title: "Six")
         try PersistentStore(fileURL: fileURL).save(AppSnapshot(
-            sessions: [session],
+            sessions: [session, agentRead],
             forums: [
                 Forum(siteURL: "https://recent.example.com", name: "Recent", lastVisitedAt: Date()),
                 Forum(siteURL: site, name: "Pinned", isPinned: true)
@@ -151,7 +153,7 @@ final class SystemEntryTests: XCTestCase {
         let app = makeApp(ready: true)
         app.perform(.summarize(topicURL))
         deliverTopicPage(to: app)
-        XCTAssertTrue(app.presentAssistant)
+        XCTAssertGreaterThan(app.assistantRequest, 0)
         XCTAssertEqual(app.assistantMode, .summary)
         XCTAssertTrue(app.activities.contains { $0.type == .summary && $0.topicKey == "forum.example.com/t/42" })
         for record in app.activities where !record.status.isTerminal { app.cancel(record: record) }
@@ -162,7 +164,7 @@ final class SystemEntryTests: XCTestCase {
         app.settings.acceptedTermsVersion = 0
         app.perform(.summarize(topicURL))
         deliverTopicPage(to: app)
-        XCTAssertTrue(app.presentAssistant)
+        XCTAssertGreaterThan(app.assistantRequest, 0)
         XCTAssertFalse(app.activities.contains { $0.type == .summary })
 
         app.perform(.ask(siteURL: site, question: "Why?"))
@@ -174,7 +176,7 @@ final class SystemEntryTests: XCTestCase {
         let app = makeApp(ready: true)
         app.perform(.ask(siteURL: site, question: "Did anyone fix it?"))
         XCTAssertEqual(app.assistantMode, .agent)
-        XCTAssertTrue(app.presentAssistant)
+        XCTAssertGreaterThan(app.assistantRequest, 0)
         XCTAssertEqual(app.agentSiteURL, site)
         let run = try XCTUnwrap(app.agentRuns.first)
         XCTAssertEqual(run.goal, "Did anyone fix it?")

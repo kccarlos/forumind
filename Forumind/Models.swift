@@ -145,6 +145,9 @@ struct FavoriteModel: Codable, Hashable, Identifiable {
 }
 
 enum BrowserBarPosition: String, Codable, CaseIterable, Identifiable {
+    /// Bottom on iPhone and in narrow windows, top in the iPad split layout.
+    /// The default for new users; existing users keep their stored choice.
+    case automatic
     case top
     case bottom
 
@@ -152,8 +155,17 @@ enum BrowserBarPosition: String, Codable, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
+        case .automatic: String(localized: "Automatic", comment: "Browser address bar position: bottom on iPhone and in narrow windows, top in the iPad split layout")
         case .top: String(localized: "Top", comment: "Browser address bar position: at the top of the screen")
         case .bottom: String(localized: "Bottom", comment: "Browser address bar position: at the bottom of the screen")
+        }
+    }
+
+    /// Where the bar goes in this layout: never `.automatic`.
+    func resolved(isSplit: Bool) -> BrowserBarPosition {
+        switch self {
+        case .automatic: isSplit ? .top : .bottom
+        case .top, .bottom: self
         }
     }
 }
@@ -196,7 +208,9 @@ struct AppSettings: Codable, Equatable {
     var systemPrompt = ""
     var forumContextLimit = 30_000
     var summaryBatchLimit = SummaryBatchLimit.default
-    var browserBarPosition: BrowserBarPosition = .top
+    var browserBarPosition: BrowserBarPosition = .automatic
+    /// Where the app opens (HomeState.swift). Synced.
+    var launchDestination: LaunchDestination = .automatic
     var agentMaxSteps = AgentLimits.defaultMaxSteps
     var agentMaxTopicReads = AgentLimits.defaultMaxTopicReads
     var agentReadLimit = AgentLimits.defaultReadLimit
@@ -253,6 +267,9 @@ struct AppSettings: Codable, Equatable {
     /// Topics the user reads are offered to Siri suggestions
     /// (`NSUserActivity`). On by default; per device.
     var donatesTopicActivity = true
+    /// AI data consent per provider (`AIDataConsent.swift`), keyed by the
+    /// provider's raw value. Syncs, one unit per provider.
+    var aiConsent: [String: AIConsentDecision] = [:]
 
     init() {}
 
@@ -268,6 +285,7 @@ struct AppSettings: Codable, Equatable {
         case forumContextLimit
         case summaryBatchLimit
         case browserBarPosition
+        case launchDestination
         case agentMaxSteps
         case agentMaxTopicReads
         case agentReadLimit
@@ -295,6 +313,7 @@ struct AppSettings: Codable, Equatable {
         case readingLanguage
         case spotlightEnabled
         case donatesTopicActivity
+        case aiConsent
     }
 
     // Snapshots written by earlier versions lack the newer keys; a missing key
@@ -327,10 +346,15 @@ struct AppSettings: Codable, Equatable {
             try container.decodeIfPresent(Int.self, forKey: .summaryBatchLimit)
                 ?? SummaryBatchLimit.default
         )
-        browserBarPosition = try container.decodeIfPresent(
+        // Settings from before the setting existed had the bar on top; a
+        // value from a newer build falls back the same way.
+        browserBarPosition = (try? container.decodeIfPresent(
             BrowserBarPosition.self,
             forKey: .browserBarPosition
-        ) ?? .top
+        )) ?? .top
+        // Missing (older snapshots) or unknown (a newer build's value).
+        launchDestination = (try? container.decodeIfPresent(LaunchDestination.self, forKey: .launchDestination))
+            .flatMap { $0 } ?? .automatic
         agentMaxSteps = AgentLimits.clampSteps(
             try container.decodeIfPresent(Int.self, forKey: .agentMaxSteps)
                 ?? AgentLimits.defaultMaxSteps
@@ -384,6 +408,7 @@ struct AppSettings: Codable, Equatable {
         readingLanguage = (try? container.decodeIfPresent(String.self, forKey: .readingLanguage)).flatMap { $0 } ?? ""
         spotlightEnabled = (try? container.decodeIfPresent(Bool.self, forKey: .spotlightEnabled)).flatMap { $0 } ?? true
         donatesTopicActivity = (try? container.decodeIfPresent(Bool.self, forKey: .donatesTopicActivity)).flatMap { $0 } ?? true
+        aiConsent = try container.decodeIfPresent([String: AIConsentDecision].self, forKey: .aiConsent) ?? [:]
     }
 
     func configuration(for provider: AIProvider) -> ProviderConfiguration {
@@ -408,6 +433,13 @@ struct AppSettings: Codable, Equatable {
 struct RawForumPage: Codable, Equatable {
     var page: Int
     var content: String
+    /// The topic's post count when the page was fetched: a page that was full
+    /// then never changes (`CachePlan`). Nil for pages saved by older builds
+    /// (the session's post count stands in).
+    var topicPostCount: Int?
+
+    /// Posts per raw page.
+    static let size = 100
 }
 
 enum ChatRole: String, Codable {
@@ -446,7 +478,10 @@ struct TopicSession: Codable, Identifiable, Equatable {
     var summaryUpdatedAt: Date?
     var chatUpdatedAt: Date?
     var lastCheckedAt: Date?
-    var lastAccessedAt = Date()
+    /// When the user last opened the topic in the browser; nil when only
+    /// the agent (or a digest) read it. Continue reading, Spotlight and the
+    /// Siri topic entities list only topics the user opened (or summaries).
+    var openedByUserAt: Date?
 
     init(
         siteURL: String,
@@ -463,7 +498,7 @@ struct TopicSession: Codable, Identifiable, Equatable {
     private enum CodingKeys: String, CodingKey {
         case siteURL, topicID, url, title, source, rawPages, summary, history, kept, instructions
         case totalPosts, summaryPostCount, provider, model, createdAt, updatedAt
-        case summaryUpdatedAt, chatUpdatedAt, lastCheckedAt, lastAccessedAt
+        case summaryUpdatedAt, chatUpdatedAt, lastCheckedAt, openedByUserAt
     }
 
     init(from decoder: Decoder) throws {
@@ -487,13 +522,16 @@ struct TopicSession: Codable, Identifiable, Equatable {
         summaryUpdatedAt = try container.decodeIfPresent(Date.self, forKey: .summaryUpdatedAt)
         chatUpdatedAt = try container.decodeIfPresent(Date.self, forKey: .chatUpdatedAt)
         lastCheckedAt = try container.decodeIfPresent(Date.self, forKey: .lastCheckedAt)
-        lastAccessedAt = try container.decodeIfPresent(Date.self, forKey: .lastAccessedAt) ?? Date()
+        openedByUserAt = try container.decodeIfPresent(Date.self, forKey: .openedByUserAt)
     }
 
     /// `host[/basePath]/t/{id}`; the key of `AppModel.sessions`.
     var topicKey: String { TopicIdentity.key(siteURL: siteURL, topicID: topicID) }
     var id: String { topicKey }
     var hasSummary: Bool { !summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    /// When the user last opened it, else when it last changed (lists and
+    /// "· 2 hours ago" lines).
+    var lastSeenAt: Date { openedByUserAt ?? updatedAt }
     var hasInstructions: Bool {
         !instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -918,6 +956,14 @@ struct ForumPost: Equatable, Identifiable {
     var likeCount: Int?
 }
 
+/// Who asked for a job. Work the app starts by itself (a watched topic's
+/// summary refresh) never interrupts with an alert: a failure stays on its
+/// record in Activity.
+enum WorkOrigin: String, Codable {
+    case user
+    case automatic
+}
+
 enum WorkStatus: String, Codable {
     case queued
     case running
@@ -944,17 +990,24 @@ struct WorkRecord: Codable, Identifiable, Equatable {
     var provider: AIProvider
     var model: String
     var status: WorkStatus = .queued
-    var phase = "queued"
-    var statusText = String(localized: "Waiting for an available worker…", comment: "Status of queued AI work (summary, chat or research) before it starts")
+    var origin: WorkOrigin = .user
+    var statusText = WorkRecord.waitingStatusText
     var progress: Double?
     var error = ""
     /// Per-run override of the hierarchical-summary batch size; nil uses the
     /// setting current when the task runs (survives task restoration).
     var batchLimit: Int?
+    /// Summary Retry: written again even when no reply is new. Not saved (a
+    /// restored task summarizes normally).
+    var regenerate: Bool?
     var createdAt = Date()
     var updatedAt = Date()
     var startedAt: Date?
     var completedAt: Date?
+
+    static var waitingStatusText: String {
+        String(localized: "Waiting for an available worker…", comment: "Status of queued AI work (summary, chat or research) before it starts")
+    }
 
     /// `host[/basePath]/t/{id}`, or `agent:{runID}` for agent work.
     var topicKey: String { TopicIdentity.key(siteURL: siteURL, topicID: topicID) }
@@ -982,7 +1035,7 @@ struct WorkRecord: Codable, Identifiable, Equatable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, type, siteURL, topicID, title, url, question, provider, model, status, phase
+        case id, type, siteURL, topicID, title, url, question, provider, model, status, origin
         case statusText, progress, error, batchLimit, createdAt, updatedAt, startedAt, completedAt
     }
 
@@ -999,7 +1052,7 @@ struct WorkRecord: Codable, Identifiable, Equatable {
         provider = try container.decode(AIProvider.self, forKey: .provider)
         model = try container.decode(String.self, forKey: .model)
         status = try container.decode(WorkStatus.self, forKey: .status)
-        phase = try container.decodeIfPresent(String.self, forKey: .phase) ?? status.rawValue
+        origin = try container.decodeIfPresent(WorkOrigin.self, forKey: .origin) ?? .user
         statusText = try container.decodeIfPresent(String.self, forKey: .statusText) ?? ""
         progress = try container.decodeIfPresent(Double.self, forKey: .progress)
         error = try container.decodeIfPresent(String.self, forKey: .error) ?? ""
@@ -1040,42 +1093,43 @@ struct ForumResourceResponse {
     var data: Data
 }
 
+/// Which pages of a topic to fetch. A page that was full when it was
+/// fetched never changes (replies are appended), so it is reused; the last,
+/// growing page and every missing one (a read cut short, pages dropped to
+/// save space) are fetched. Fewer posts than before (deleted replies): all
+/// pages again.
 enum CachePlan: Equatable {
     case unchanged
     case fetch(reusablePages: [RawForumPage], pageNumbers: [Int])
 
+    /// `knownTotalPosts`: the session's post count, for pages saved without
+    /// their own.
     static func make(
         cachedPages: [RawForumPage],
         knownTotalPosts: Int?,
         currentTotalPosts: Int,
         totalPages: Int
     ) -> CachePlan {
+        let allPages = Array(1...max(1, totalPages))
         let normalized = Dictionary(
             cachedPages.map { ($0.page, $0) },
             uniquingKeysWith: { _, newest in newest }
         )
-        let completeCache = totalPages > 0
-            && (1...totalPages).allSatisfy { normalized[$0] != nil }
-
-        if knownTotalPosts == currentTotalPosts && completeCache {
-            return .unchanged
+        let fetchedAt = { (page: RawForumPage) in page.topicPostCount ?? knownTotalPosts }
+        // Replies were deleted since a page was fetched: nothing lines up.
+        if normalized.values.contains(where: { (fetchedAt($0) ?? 0) > currentTotalPosts }) {
+            return .fetch(reusablePages: [], pageNumbers: allPages)
         }
-
-        guard let knownTotalPosts,
-              knownTotalPosts > 0,
-              currentTotalPosts > knownTotalPosts
-        else {
-            return .fetch(reusablePages: [], pageNumbers: Array(1...max(1, totalPages)))
-        }
-
-        let firstMutablePage = (knownTotalPosts / 100) + 1
+        // Full when fetched (it never changes), or fetched at today's count.
         let reusable = normalized.values
-            .filter { $0.page < firstMutablePage }
+            .filter { page in
+                guard page.page <= totalPages, let count = fetchedAt(page) else { return false }
+                return page.page * RawForumPage.size <= count || count == currentTotalPosts
+            }
             .sorted { $0.page < $1.page }
-        let pages = firstMutablePage <= totalPages
-            ? Array(firstMutablePage...totalPages)
-            : []
-        return .fetch(reusablePages: reusable, pageNumbers: pages)
+        let reused = Set(reusable.map(\.page))
+        let missing = allPages.filter { !reused.contains($0) }
+        return missing.isEmpty ? .unchanged : .fetch(reusablePages: reusable, pageNumbers: missing)
     }
 }
 
@@ -1087,6 +1141,11 @@ enum AssistantError: LocalizedError {
     case http(Int, String)
     case emptyResponse
     case cancelled
+    /// Forum content can't go to this provider before the person agrees
+    /// (`AIDataConsent.swift`); work the app starts by itself waits.
+    case aiConsentRequired(AIProvider)
+    /// The person chose Don't Allow (or withdrew consent) for this provider.
+    case aiConsentDeclined(AIProvider)
 
     var errorDescription: String? {
         switch self {
@@ -1104,6 +1163,10 @@ enum AssistantError: LocalizedError {
             String(localized: "The AI provider returned an empty response.")
         case .cancelled:
             String(localized: "The operation was cancelled.")
+        case .aiConsentRequired(let provider):
+            String(localized: "Waiting for your OK to send forum content to \(provider.displayName). Start a summary or a question to answer, or allow it in Settings › Data & privacy.", comment: "Error; the placeholder is an AI provider's name. Settings › Data & privacy names the app's own Settings page.")
+        case .aiConsentDeclined(let provider):
+            String(localized: "You chose not to send forum content to \(provider.displayName). To use it, allow it in Settings › Data & privacy.", comment: "Error; the placeholder is an AI provider's name. Settings › Data & privacy names the app's own Settings page.")
         }
     }
 }

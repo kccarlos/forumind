@@ -2,6 +2,45 @@ import XCTest
 @testable import Forumind
 
 final class CoreTests: XCTestCase {
+    // MARK: Browser bar position
+
+    func testNewSettingsPlaceTheBarAutomatically() {
+        XCTAssertEqual(AppSettings().browserBarPosition, .automatic)
+    }
+
+    func testStoredBarPositionsSurviveAndOldSettingsKeepTheTopBar() throws {
+        func decode(_ json: String) throws -> BrowserBarPosition {
+            try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8)).browserBarPosition
+        }
+        // Existing users keep what they stored (the old default was top).
+        XCTAssertEqual(try decode(#"{"browserBarPosition":"top"}"#), .top)
+        XCTAssertEqual(try decode(#"{"browserBarPosition":"bottom"}"#), .bottom)
+        XCTAssertEqual(try decode(#"{"browserBarPosition":"automatic"}"#), .automatic)
+        // Settings from before the setting existed had the bar on top.
+        XCTAssertEqual(try decode("{}"), .top)
+        // A value from a newer build doesn't break the settings.
+        XCTAssertEqual(try decode(#"{"browserBarPosition":"floating","systemPrompt":"kept"}"#), .top)
+        XCTAssertEqual(
+            try JSONDecoder().decode(AppSettings.self, from: Data(#"{"browserBarPosition":"floating","systemPrompt":"kept"}"#.utf8)).systemPrompt,
+            "kept"
+        )
+
+        var settings = AppSettings()
+        settings.browserBarPosition = .automatic
+        let roundTripped = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(settings))
+        XCTAssertEqual(roundTripped.browserBarPosition, .automatic)
+    }
+
+    func testAutomaticBarIsAtTheBottomExceptInTheSplitLayout() {
+        XCTAssertEqual(BrowserBarPosition.automatic.resolved(isSplit: false), .bottom)
+        XCTAssertEqual(BrowserBarPosition.automatic.resolved(isSplit: true), .top)
+        for isSplit in [false, true] {
+            XCTAssertEqual(BrowserBarPosition.top.resolved(isSplit: isSplit), .top)
+            XCTAssertEqual(BrowserBarPosition.bottom.resolved(isSplit: isSplit), .bottom)
+        }
+        XCTAssertEqual(BrowserBarPosition.allCases, [.automatic, .top, .bottom])
+    }
+
     func testMarkdownParserRecognizesStructuredBlocks() {
         let document = MarkdownDocument(
             source: """
@@ -304,6 +343,30 @@ final class CoreTests: XCTestCase {
             ),
             .fetch(reusablePages: [], pageNumbers: [1, 2])
         )
+        // A read cut short (same count): only the missing pages.
+        XCTAssertEqual(
+            CachePlan.make(cachedPages: pages, knownTotalPosts: 250, currentTotalPosts: 250, totalPages: 3),
+            .fetch(reusablePages: pages, pageNumbers: [3])
+        )
+        // No pages at all (dropped, or a session from another device): all of them.
+        XCTAssertEqual(
+            CachePlan.make(cachedPages: [], knownTotalPosts: 250, currentTotalPosts: 260, totalPages: 3),
+            .fetch(reusablePages: [], pageNumbers: [1, 2, 3])
+        )
+        // Pages carry the count they were read at: page 2 was the growing
+        // last page at 150, whatever the session's count says now.
+        let counted = [
+            RawForumPage(page: 1, content: "one", topicPostCount: 150),
+            RawForumPage(page: 2, content: "two", topicPostCount: 150)
+        ]
+        XCTAssertEqual(
+            CachePlan.make(cachedPages: counted, knownTotalPosts: 260, currentTotalPosts: 260, totalPages: 3),
+            .fetch(reusablePages: [counted[0]], pageNumbers: [2, 3])
+        )
+        XCTAssertEqual(
+            CachePlan.make(cachedPages: counted, knownTotalPosts: 260, currentTotalPosts: 150, totalPages: 2),
+            .unchanged
+        )
     }
 
     func testBoundedForumContextPreservesBeginningAndLatestReplies() {
@@ -464,7 +527,7 @@ final class CoreTests: XCTestCase {
             """
             return Self.response(request, status: 200, body: body)
         }
-        let service = AIService(session: session)
+        let service = AIService.allowingAll(session: session)
         let answer = try await service.answer(
             source: "forum",
             summary: "summary",
@@ -499,7 +562,7 @@ final class CoreTests: XCTestCase {
                 body: "data: {\"choices\":[{\"delta\":{\"content\":\"Summary\"}}]}\n\ndata: [DONE]\n"
             )
         }
-        let service = AIService(session: session)
+        let service = AIService.allowingAll(session: session)
 
         let summary = try await service.generateSummary(
             content: "forum source",
@@ -518,13 +581,14 @@ final class CoreTests: XCTestCase {
 
     func testTaskLimiterSerializesSameTopicWithoutBlockingOtherTopics() async {
         let limiter = TaskLimiter(limit: 2)
-        let acquiredTopicA = await limiter.acquire(topicID: "topic-a", workID: UUID())
-        let acquiredTopicB = await limiter.acquire(topicID: "topic-b", workID: UUID())
+        let (a, b, c, secondA) = (UUID(), UUID(), UUID(), UUID())
+        let acquiredTopicA = await limiter.acquire(topicID: "topic-a", workID: a)
+        let acquiredTopicB = await limiter.acquire(topicID: "topic-b", workID: b)
         XCTAssertTrue(acquiredTopicA)
         XCTAssertTrue(acquiredTopicB)
 
         let secondTopicA = Task {
-            await limiter.acquire(topicID: "topic-a", workID: UUID())
+            await limiter.acquire(topicID: "topic-a", workID: secondA)
         }
         for _ in 0..<100 {
             if await limiter.state().waitingTopics == ["topic-a"] { break }
@@ -535,22 +599,45 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(state.activeTopics, ["topic-a", "topic-b"])
         XCTAssertEqual(state.waitingTopics, ["topic-a"])
 
-        await limiter.release(topicID: "topic-b")
-        let acquiredTopicC = await limiter.acquire(topicID: "topic-c", workID: UUID())
+        await limiter.release(workID: b)
+        let acquiredTopicC = await limiter.acquire(topicID: "topic-c", workID: c)
         XCTAssertTrue(acquiredTopicC)
         state = await limiter.state()
         XCTAssertEqual(state.activeTopics, ["topic-a", "topic-c"])
         XCTAssertEqual(state.waitingTopics, ["topic-a"])
 
-        await limiter.release(topicID: "topic-a")
+        await limiter.release(workID: a)
         let acquiredSecondTopicA = await secondTopicA.value
         XCTAssertTrue(acquiredSecondTopicA)
         state = await limiter.state()
         XCTAssertEqual(state.activeTopics, ["topic-a", "topic-c"])
         XCTAssertTrue(state.waitingTopics.isEmpty)
 
-        await limiter.release(topicID: "topic-a")
-        await limiter.release(topicID: "topic-c")
+        // A late release of a job that already gave its slot back is a no-op.
+        await limiter.release(workID: a)
+        state = await limiter.state()
+        XCTAssertEqual(state.activeTopics, ["topic-a", "topic-c"])
+
+        await limiter.release(workID: secondA)
+        await limiter.release(workID: c)
+    }
+
+    /// Cancelling a running job frees its slot for the next one at once.
+    func testTaskLimiterFreesACancelledRunningJobsSlot() async {
+        let limiter = TaskLimiter(limit: 1)
+        let running = UUID()
+        let acquired = await limiter.acquire(topicID: "a", workID: running)
+        XCTAssertTrue(acquired)
+        let next = Task { await limiter.acquire(topicID: "b", workID: UUID()) }
+        for _ in 0..<100 {
+            if await limiter.state().waitingTopics == ["b"] { break }
+            await Task.yield()
+        }
+        await limiter.cancel(workID: running)
+        let nextAcquired = await next.value
+        XCTAssertTrue(nextAcquired)
+        let state = await limiter.state()
+        XCTAssertEqual(state.activeTopics, ["b"])
     }
 
     @MainActor
@@ -763,6 +850,7 @@ final class CoreTests: XCTestCase {
             planner: planner
         )
         app.usesDirectForumRequests = true
+        app.allowAllAIProviders()
         var settings = app.settings
         settings.configurations["openrouter"] = ProviderConfiguration(
             model: "test-model", baseURL: "https://example.com/v1", apiKey: "key"
@@ -890,7 +978,7 @@ final class CoreTests: XCTestCase {
             ].joined(separator: "\n")
             return Self.response(request, status: 200, body: events)
         }
-        let text = try await AIService(session: session).complete(
+        let text = try await AIService.allowingAll(session: session).complete(
             system: "Be brief.",
             messages: [ChatMessage(role: .user, content: "Hi")],
             configuration: configuration,
@@ -1042,9 +1130,10 @@ final class CoreTests: XCTestCase {
 
     func testTaskLimiterRemovesCancelledQueuedWork() async {
         let limiter = TaskLimiter(limit: 1)
+        let runningID = UUID()
         let acquiredRunningTopic = await limiter.acquire(
             topicID: "running-topic",
-            workID: UUID()
+            workID: runningID
         )
         XCTAssertTrue(acquiredRunningTopic)
 
@@ -1064,7 +1153,7 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(state.activeTopics, ["running-topic"])
         XCTAssertTrue(state.waitingTopics.isEmpty)
 
-        await limiter.release(topicID: "running-topic")
+        await limiter.release(workID: runningID)
     }
 
     private func stubbedSession(

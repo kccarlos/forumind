@@ -618,20 +618,3 @@ struct SettingsVoicePage: View {
         return formatter.string(from: (seconds / 60).rounded(.up) * 60) ?? "0"
     }
 }
-
-/// Presents the consent sheet when `VoiceController` asks for it.
-struct VoiceConsentPresenter: ViewModifier {
-    @ObservedObject var app: AppModel
-    @ObservedObject var voice: VoiceController
-
-    func body(content: Content) -> some View {
-        content.sheet(item: $voice.consentProvider) { provider in
-            VoiceConsentSheet(
-                provider: provider,
-                settings: app.settings.voice,
-                onAgree: { voice.agree(provider) },
-                onCancel: { voice.declineConsent() }
-            )
-        }
-    }
-}

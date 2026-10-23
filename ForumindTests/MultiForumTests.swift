@@ -266,7 +266,8 @@ final class MultiForumTests: XCTestCase {
     @MainActor
     func testRemoveForumDeletesOnlyItsData() throws {
         let store = temporaryStore()
-        let netSession = TopicSession(siteURL: netForum, topicID: "1", url: URL(string: "\(netForum)/t/a/1")!, title: "U")
+        var netSession = TopicSession(siteURL: netForum, topicID: "1", url: URL(string: "\(netForum)/t/a/1")!, title: "U")
+        netSession.openedByUserAt = Date()
         let metaSession = TopicSession(siteURL: meta, topicID: "1", url: URL(string: "\(meta)/t/a/1")!, title: "M")
         let metaWatch = WatchedTopic(siteURL: meta, topicID: "1", url: metaSession.url, title: "M", knownPostCount: 1)
         try store.save(
@@ -643,6 +644,93 @@ final class MultiForumTests: XCTestCase {
         XCTAssertEqual(outcome.status, .cancelled)
         XCTAssertEqual(app.agentRuns.first?.status, .cancelled)
         planner.release()
+    }
+
+    // MARK: Ask box (§5)
+
+    /// Switching the Ask box between This topic and Whole forum (and to a
+    /// new question) carries the typed text along, without overwriting text
+    /// the other draft already has.
+    @MainActor
+    func testSwitchingTheAskScopeKeepsTheTypedText() {
+        let app = AppModel(store: temporaryStore())
+        XCTAssertEqual(app.askScope, .topic)
+        app.askDraft = "half-typed question"
+        XCTAssertEqual(app.chatDraft, "half-typed question")
+
+        app.setAskScope(.forum)
+        XCTAssertEqual(app.assistantMode, .agent)
+        XCTAssertEqual(app.askDraftTarget, .goal)
+        XCTAssertEqual(app.askDraft, "half-typed question")
+        XCTAssertEqual(app.chatDraft, "")
+
+        app.chooseAskForum(siteURL: meta)
+        XCTAssertEqual(app.agentSiteURL, meta)
+        XCTAssertEqual(app.askDraft, "half-typed question")
+
+        app.setAskScope(.topic)
+        XCTAssertEqual(app.askScope, .topic)
+        XCTAssertEqual(app.chatDraft, "half-typed question")
+        XCTAssertEqual(app.agentGoalDraft, "")
+
+        // Text of its own in the other draft stays; nothing is lost.
+        app.agentGoalDraft = "older goal"
+        app.setAskScope(.forum)
+        XCTAssertEqual(app.askDraft, "older goal")
+        XCTAssertEqual(app.chatDraft, "half-typed question")
+    }
+
+    /// A Whole forum question from the Ask box starts an agent run on the
+    /// chosen forum: it is selected, listed with the runs (History, Manage)
+    /// and once it ends the box follows it up; New question goes back to a
+    /// new run and carries the text.
+    @MainActor
+    func testAWholeForumQuestionStartsAnAgentRunListedInHistory() async throws {
+        let session = stubbedSession { request in Self.response(request, 404, "missing") }
+        let planner = RecordingPlanner(actions: [
+            AgentAction(thought: "", tool: AgentPrompt.finalAnswerTool, arguments: ["answer": "Nothing new this week."])
+        ])
+        let app = AppModel(
+            store: temporaryStore(),
+            forumService: ForumService(session: session, pacer: ForumRequestPacer(clock: InstantPacingClock())),
+            aiService: AIService(session: session),
+            planner: planner
+        )
+        app.usesDirectForumRequests = true
+        useLocalProvider(app)
+
+        app.chooseAskForum(siteURL: meta)
+        XCTAssertEqual(app.askScope, .forum)
+        XCTAssertFalse(app.canSendAsk)
+        app.askDraft = "Anything new this week?"
+        XCTAssertTrue(app.canSendAsk)
+        app.sendAsk()
+
+        let run = try XCTUnwrap(app.agentRuns.first)
+        XCTAssertEqual(app.agentRuns.count, 1)
+        XCTAssertEqual(run.goal, "Anything new this week?")
+        XCTAssertEqual(run.siteURL, meta)
+        XCTAssertEqual(app.selectedAgentRunID, run.id)
+        XCTAssertEqual(app.agentGoalDraft, "")
+        XCTAssertTrue(app.activities.contains { $0.type == .agent && $0.siteURL == meta })
+        XCTAssertTrue(app.manageForums.contains { $0.siteURL == meta }, "History groups the run under its forum.")
+
+        let deadline = Date().addingTimeInterval(10)
+        while Date() < deadline, app.agentRuns.first?.status.isTerminal != true {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(app.agentRuns.first?.status, .completed)
+        XCTAssertEqual(app.askDraftTarget, .followUp)
+        XCTAssertEqual(app.askFollowUpRun?.id, run.id)
+
+        app.askDraft = "And last month?"
+        app.startNewAgentQuestion()
+        XCTAssertEqual(app.askDraftTarget, .goal)
+        XCTAssertEqual(app.askDraft, "And last month?")
+        XCTAssertEqual(app.agentFollowUpDraft, "")
+        app.showSelectedAgentRun()
+        XCTAssertEqual(app.askDraftTarget, .followUp)
+        XCTAssertNil(app.presentedError)
     }
 
     // MARK: Helpers

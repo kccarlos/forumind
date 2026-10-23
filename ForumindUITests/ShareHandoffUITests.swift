@@ -53,6 +53,12 @@ final class ShareHandoffUITests: DCUITestCase {
             return
         }
         setupSheet.buttons["Later"].tap()
+        if isPhone {
+            // The drawer shows the summary and the conversation together;
+            // the chat input is pinned at its bottom.
+            XCTAssertTrue(any(app, "chatInput").waitForExistence(timeout: 10), "The drawer has no chat input.")
+            return
+        }
         let modePicker = app.segmentedControls["assistantModePicker"]
         XCTAssertTrue(modePicker.waitForExistence(timeout: 10))
         XCTAssertTrue(modePicker.buttons["Chat"].isSelected)
@@ -69,10 +75,13 @@ final class ShareHandoffUITests: DCUITestCase {
             waitOrDump(address(containing: "\(Self.forumHost)/top", in: app), timeout: 30, in: app),
             "The shared page did not load."
         )
-        XCTAssertFalse(any(app, "forumsHome").exists)
+        XCTAssertFalse(any(app, "home").exists)
         // "open" never switches to the Assistant or asks for a provider.
         RunLoop.current.run(until: Date().addingTimeInterval(3))
         XCTAssertFalse(app.navigationBars["Connect an AI provider"].exists)
+        if isPhone {
+            XCTAssertFalse(drawerState(in: app).exists, "An open link must not open the AI drawer.")
+        }
         let workspace = app.segmentedControls["workspacePicker"]
         if workspace.exists {
             XCTAssertTrue(workspace.buttons["Browse"].isSelected)
@@ -104,17 +113,13 @@ final class ShareHandoffUITests: DCUITestCase {
 
     /// These tests must never start real AI work: skip when a key is saved.
     private func skipIfProviderConfigured(in app: XCUIApplication) throws {
-        showAssistant(in: app)
-        let settings = app.buttons["openSettings"]
-        XCTAssertTrue(settings.waitForExistence(timeout: 20))
-        settings.tap()
+        openSettings(in: app)
         let providerRow = app.buttons["settingsRow-provider"]
         XCTAssertTrue(providerRow.waitForExistence(timeout: 10))
         let ready = app.descendants(matching: .any)
             .matching(label(contains: "Provider ready")).firstMatch
         let configured = ready.exists || providerRow.label.contains("Provider ready")
-        app.buttons["backToTopic"].tap()
-        showBrowser(in: app)
+        closeSettings(in: app)
         if configured {
             throw XCTSkip("An AI provider is configured on this simulator; skipping to avoid real AI calls.")
         }

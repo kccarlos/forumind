@@ -314,6 +314,11 @@ enum ForumSite {
         url(siteURL, "/search.json", query: [URLQueryItem(name: "q", value: query)])
     }
 
+    /// The forum's search page in the browser (the iPhone bar's search).
+    static func searchPageURL(siteURL: String, query: String) -> URL? {
+        url(siteURL, "/search", query: [URLQueryItem(name: "q", value: query)])
+    }
+
     /// `/latest` (the forum home in the browser) or `/latest.json`.
     static func latestURL(siteURL: String, json: Bool = false) -> URL? {
         url(siteURL, json ? "/latest.json" : "/latest")

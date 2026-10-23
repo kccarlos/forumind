@@ -197,6 +197,7 @@ final class AppleIntelligenceTests: XCTestCase {
         XCTAssertEqual(app.settings.selectedProvider, .appleIntelligence)
         XCTAssertEqual(app.settings.assistantModel.provider, .appleIntelligence)
         XCTAssertEqual(app.settings.agentModel.provider, .appleIntelligence, "a new user starts with it for both roles")
+        XCTAssertEqual(app.settings.favoriteModels, [FavoriteModel(provider: .appleIntelligence, model: "Automatic")], "starred, so the model menus list it")
 
         // The user switches back; the default is not applied again.
         app.settings.selectedProvider = .openRouter

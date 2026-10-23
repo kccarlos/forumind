@@ -134,7 +134,7 @@ final class SpotlightTests: XCTestCase {
             session("1", title: "One", summary: "First."),
             session("2", title: "Two", summary: "Second."),
             session("3", title: "Three"),
-            TopicSession(siteURL: otherSite, topicID: "7", url: URL(string: "\(otherSite)/t/seven/7")!, title: "Seven")
+            session("7", title: "Seven", site: otherSite)
         ])
         await settle(app)
         XCTAssertEqual(index.identifiers, ["topic:forum.example.com/t/1", "topic:forum.example.com/t/2", "topic:forum.example.com/t/3", "topic:other.example.org/t/7"])
@@ -224,10 +224,11 @@ final class SpotlightTests: XCTestCase {
                        excerpt: "", url: URL(string: "\(site)/t/x/\(id)")!, lastUsed: Date(timeIntervalSince1970: 0), iconURL: nil)
     }
 
-    private func session(_ id: String, title: String, summary: String = "", accessed: TimeInterval = 0, path: String? = nil) -> TopicSession {
+    private func session(_ id: String, title: String, summary: String = "", accessed: TimeInterval = 0, path: String? = nil, site: String? = nil) -> TopicSession {
+        let site = site ?? self.site
         var session = TopicSession(siteURL: site, topicID: id, url: URL(string: site + (path ?? "/t/topic/\(id)"))!, title: title)
         session.summary = summary
-        session.lastAccessedAt = Date(timeIntervalSince1970: 1_000 + accessed)
+        session.openedByUserAt = Date(timeIntervalSince1970: 1_000 + accessed)
         return session
     }
 

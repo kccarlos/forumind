@@ -127,7 +127,9 @@ final class PodcastController: ObservableObject {
     var canMake: Bool {
         guard let app, let digest = app.todaysDigest, !app.digestActivity.isRunning else { return false }
         guard digest.cards.contains(where: { $0.state == .done && !$0.summary.isEmpty }) else { return false }
-        return Self.isFake || app.isProviderReady(for: .assistant)
+        // The script is written like the digest: never showing the AI data
+        // consent page, so the provider must already be allowed.
+        return Self.isFake || app.canRunUnattended(.assistant)
     }
 
     var isPlayingEpisode: Bool {
@@ -165,6 +167,9 @@ final class PodcastController: ObservableObject {
         refresh()
         if var existing = episode {
             if play { playEpisode() }
+            // Already being made: carry on (a restart would make the chapter
+            // in progress again, another paid call).
+            guard task == nil else { return }
             if !existing.isComplete || existing.entries.contains(where: { $0.state == .failed }) {
                 guard interactive || !existing.entries.contains(where: { $0.state == .failed }) else { return }
                 for index in existing.entries.indices where existing.entries[index].state == .failed {
@@ -340,7 +345,7 @@ final class PodcastController: ObservableObject {
                     entry.chapter = try await script(card: card, index: topicIndex, count: topicCount, previousTitle: previousTitle, hosts: current.hosts, minutes: current.minutesPerChapter, language: current.language, context: context)
                 } catch {
                     guard isCurrent(runID) else { return }
-                    if AppModel.isOffline(error) {
+                    if NetworkFailure.isUnreachable(error) {
                         stopUnreachable(index, digestID: digestID)
                         return
                     }
@@ -362,7 +367,7 @@ final class PodcastController: ObservableObject {
                 entry.error = ""
             } catch {
                 guard isCurrent(runID) else { return }
-                if AppModel.isOffline(error) {
+                if NetworkFailure.isUnreachable(error) {
                     stopUnreachable(index, digestID: digestID)
                     return
                 }

@@ -60,11 +60,26 @@ final class ForumBrowserModel: NSObject, ObservableObject {
           document.querySelector(".current-user, [data-current-user]")
         );
       };
+      // Discourse preloads the signed-in user as a JSON string inside the
+      // page's preloaded data; read once per document.
+      let username;
+      const currentUsername = () => {
+        if (username !== undefined) return username;
+        username = "";
+        try {
+          const preloaded = JSON.parse(document.getElementById("data-preloaded")?.dataset?.preloaded || "{}");
+          const user = typeof preloaded.currentUser === "string" ? JSON.parse(preloaded.currentUser) : preloaded.currentUser;
+          if (typeof user?.username === "string") username = user.username;
+        } catch (error) {}
+        return username;
+      };
       const publishRoute = () => {
+        const authenticated = isAuthenticated();
         window.webkit?.messageHandlers?.dcRouteChanged?.postMessage({
           url: window.location.href,
           title: document.title || "",
-          authenticated: isAuthenticated(),
+          authenticated: authenticated,
+          username: authenticated && document.readyState !== "loading" ? currentUsername() : "",
           // The head is not parsed yet while loading; probing then would
           // report every page as "not Discourse".
           probe: document.readyState === "loading" ? null : probe()
@@ -129,6 +144,9 @@ final class ForumBrowserModel: NSObject, ObservableObject {
     @Published private(set) var canGoBack = false
     @Published private(set) var canGoForward = false
     @Published private(set) var isAuthenticated = false
+    /// The signed-in user's name when the forum's page reports it (memory
+    /// only; never saved or synced).
+    @Published private(set) var signedInUsername: String?
     /// Safari-style chrome: scrolling down the page minimizes the browser bar,
     /// scrolling back up (or reaching the top) restores it.
     @Published private(set) var isChromeMinimized = false
@@ -139,9 +157,13 @@ final class ForumBrowserModel: NSObject, ObservableObject {
     @Published var homeSiteURL: String?
     /// Page load progress (0…1) from WKWebView, for the bar's progress line.
     @Published private(set) var estimatedProgress: Double = 0
-    /// The Forums home is requested over the current page (the browser bar's
-    /// Forums button). Any navigation clears it.
+    /// Home is requested over the current page (the forum menu's Home, the
+    /// launch rule). Any navigation clears it.
     @Published private(set) var isForumsHomeRequested = false
+    /// Home was shown over a load already under way (the restored forum at
+    /// launch): that load's start doesn't dismiss it. Ends when the load
+    /// finishes or fails, or with the next explicit load.
+    private var holdsHomeOverLoad = false
     /// The page's web content process quit repeatedly; auto-reload paused
     /// and the page shows a small Reload banner.
     @Published private(set) var showsCrashNotice = false
@@ -156,12 +178,18 @@ final class ForumBrowserModel: NSObject, ObservableObject {
     /// page has been loaded yet.
     var showsForumsHome: Bool { isForumsHomeRequested || currentURL == nil }
 
-    func showForumsHome() {
+    /// `overPendingLoad`: keep Home up while a load issued earlier (the
+    /// restored forum) starts.
+    func showForumsHome(overPendingLoad: Bool = false) {
+        if overPendingLoad, deferredLoad != nil || webView.isLoading || (currentURL != nil && webView.url == nil) {
+            holdsHomeOverLoad = true
+        }
         if !isForumsHomeRequested { isForumsHomeRequested = true }
     }
 
-    /// Returns to the page under the Forums home (no-op without one).
+    /// Returns to the page under Home (no-op without one).
     func hideForumsHome() {
+        holdsHomeOverLoad = false
         if isForumsHomeRequested { isForumsHomeRequested = false }
     }
 
@@ -185,6 +213,8 @@ final class ForumBrowserModel: NSObject, ObservableObject {
     private let browseMessageHandler = BrowseMessageHandler()
     /// A highlight to re-apply once its topic is on screen (BrowseBridge.swift).
     var pendingHighlight: PendingHighlight?
+    /// A citation jump on its way (smooth scroll, flash on arrival).
+    var pendingJump: PostJump?
     /// The page height the app's result cards cover at the bottom.
     var coveredBottomInset: CGFloat = 0
     /// Directory lookup: pages on a known forum count as Discourse before the
@@ -421,6 +451,16 @@ final class ForumBrowserModel: NSObject, ObservableObject {
         if webView.canGoBack { webView.goBack() }
     }
 
+    /// Pages behind the current one, most recent first (the title's
+    /// long-press history menu).
+    var backHistory: [WKBackForwardListItem] { webView.backForwardList.backList.reversed() }
+    var forwardHistory: [WKBackForwardListItem] { webView.backForwardList.forwardList }
+
+    func go(to item: WKBackForwardListItem) {
+        hideForumsHome()
+        webView.go(to: item)
+    }
+
     func goForward() {
         if webView.canGoForward { webView.goForward() }
     }
@@ -493,26 +533,55 @@ final class ForumBrowserModel: NSObject, ObservableObject {
         return try await fetchDirect(url)
     }
 
+    /// The page's own `fetch()`: given up after 60 s, or as soon as the
+    /// calling task is cancelled (the script call itself ignores that).
     private func fetchInPage(_ url: URL) async throws -> ForumResourceResponse {
+        let requestID = UUID().uuidString
+        let page = webView
         let script = """
-        const response = await fetch(resourceURL, {
-          credentials: "include",
-          cache: "no-store",
-          headers: { "Accept": "application/json,text/plain,text/html,*/*" }
-        });
-        return {
-          statusCode: response.status,
-          statusText: response.statusText,
-          retryAfter: response.headers.get("Retry-After") || "",
-          body: await response.text()
-        };
+        const controller = new AbortController();
+        const running = (window.__forumindFetches = window.__forumindFetches || {});
+        running[requestID] = controller;
+        const timer = setTimeout(() => controller.abort(), timeoutMilliseconds);
+        try {
+          const response = await fetch(resourceURL, {
+            credentials: "include",
+            cache: "no-store",
+            headers: { "Accept": "application/json,text/plain,text/html,*/*" },
+            signal: controller.signal
+          });
+          return {
+            statusCode: response.status,
+            statusText: response.statusText,
+            retryAfter: response.headers.get("Retry-After") || "",
+            body: await response.text()
+          };
+        } finally {
+          clearTimeout(timer);
+          delete running[requestID];
+        }
         """
-        let value = try await webView.callAsyncJavaScript(
-            script,
-            arguments: ["resourceURL": url.absoluteString],
-            in: nil,
-            contentWorld: .page
-        )
+        let value = try await withTaskCancellationHandler {
+            try await page.callAsyncJavaScript(
+                script,
+                arguments: [
+                    "resourceURL": url.absoluteString,
+                    "requestID": requestID,
+                    "timeoutMilliseconds": Self.inPageFetchTimeoutMilliseconds
+                ],
+                in: nil,
+                contentWorld: .page
+            )
+        } onCancel: {
+            Task { @MainActor in
+                _ = try? await page.callAsyncJavaScript(
+                    "const fetches = window.__forumindFetches; if (fetches && fetches[requestID]) fetches[requestID].abort();",
+                    arguments: ["requestID": requestID],
+                    in: nil,
+                    contentWorld: .page
+                )
+            }
+        }
         guard let result = value as? [String: Any],
               let statusCode = result["statusCode"] as? Int,
               let body = result["body"] as? String
@@ -526,6 +595,8 @@ final class ForumBrowserModel: NSObject, ObservableObject {
             data: Data(body.utf8)
         )
     }
+
+    static let inPageFetchTimeoutMilliseconds = 60_000
 
     private func fetchDirect(_ url: URL) async throws -> ForumResourceResponse {
         var request = URLRequest(url: url)
@@ -556,6 +627,7 @@ final class ForumBrowserModel: NSObject, ObservableObject {
         urlString: String,
         title: String,
         authenticated: Bool,
+        username: String = "",
         probe: [String: Any]?
     ) {
         guard let url = URL(string: urlString), Self.isBrowsableURL(url),
@@ -565,6 +637,8 @@ final class ForumBrowserModel: NSObject, ObservableObject {
         }
         if let probe { lastProbe = Self.pageProbe(from: probe, fallbackURL: url) }
         isAuthenticated = authenticated
+        let name = authenticated && !username.isEmpty ? String(username.prefix(60)) : nil
+        if signedInUsername != name { signedInUsername = name }
         updateNavigationState(url: url, title: title)
     }
 
@@ -792,6 +866,7 @@ private final class ForumRouteMessageHandler: NSObject, WKScriptMessageHandler {
         }
         let title = body["title"] as? String ?? ""
         let authenticated = body["authenticated"] as? Bool ?? false
+        let username = body["username"] as? String ?? ""
         let probe = body["probe"] as? [String: Any]
         nonisolated(unsafe) let sendableProbe = probe
         Task { @MainActor [weak browser] in
@@ -799,6 +874,7 @@ private final class ForumRouteMessageHandler: NSObject, WKScriptMessageHandler {
                 urlString: urlString,
                 title: title,
                 authenticated: authenticated,
+                username: username,
                 probe: sendableProbe
             )
         }
@@ -842,7 +918,7 @@ extension ForumBrowserModel: WKNavigationDelegate {
     func webView(_ webView: WKWebView, didStartProvisionalNavigation: WKNavigation!) {
         Task { @MainActor in
             self.expandChrome()
-            self.hideForumsHome()
+            if !self.holdsHomeOverLoad { self.hideForumsHome() }
             self.updateNavigationState()
         }
     }
@@ -857,6 +933,7 @@ extension ForumBrowserModel: WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         Task { @MainActor in
+            self.holdsHomeOverLoad = false
             if self.showsCrashNotice { self.showsCrashNotice = false }
             self.updateNavigationState()
             self.applyModerationToPage()
@@ -879,6 +956,7 @@ extension ForumBrowserModel: WKNavigationDelegate {
         withError error: Error
     ) {
         Task { @MainActor in
+            self.holdsHomeOverLoad = false
             self.updateNavigationState()
         }
     }
@@ -889,6 +967,7 @@ extension ForumBrowserModel: WKNavigationDelegate {
         withError error: Error
     ) {
         Task { @MainActor in
+            self.holdsHomeOverLoad = false
             // The page did not change: back to its lists.
             self.contentBlocker.prepare(forTopURL: webView.url)
             self.updateNavigationState()

@@ -404,6 +404,7 @@ extension AppModel {
         if settings.hasCompletedOnboarding {
             settings.acceptedTermsVersion = arguments.contains("-dc-terms-gate") ? 0 : ModerationTerms.currentVersion
         }
+        applyDrawerDebugArguments()
     }
 }
 #endif

@@ -9,18 +9,30 @@ final class ModerationUITests: DCUITestCase {
         let app = try launchOnForum(topic.url.absoluteString)
         showBrowser(in: app)
 
-        let menu = app.buttons["browserMoreMenu"]
-        XCTAssertTrue(waitForHittable(menu, timeout: 30), "The browser menu is missing.")
+        // iPhone: the forum menu (the bar's avatar); iPad: the bar's More menu.
+        let menu = app.buttons[isPhone ? "forumSwitcher" : "browserMoreMenu"]
+        XCTAssertTrue(
+            isPhone ? waitForBarItem(menu, timeout: 30) : waitForHittable(menu, timeout: 30),
+            "The browser menu is missing."
+        )
         // Menu items lose their identifiers; match the label.
         let reportItem = app.buttons["Report or block…"]
         // The item appears once the page is recognized as a topic.
         let found = wait(timeout: 30) {
-            menu.tap()
+            if isPhone { tapBarItem(menu) } else { menu.tap() }
             if reportItem.waitForExistence(timeout: 3) { return true }
             dismissMenu(in: app)
             return false
         }
         XCTAssertTrue(found, "Report or block is missing from the menu on a topic.")
+        if isPhone {
+            // Topic pages also offer Watch in the forum menu.
+            XCTAssertTrue(
+                app.buttons.matching(NSPredicate(format: "label == %@ OR label == %@", "Watch this topic", "Unwatch topic"))
+                    .firstMatch.exists,
+                "Watch this topic is missing from the forum menu."
+            )
+        }
         reportItem.tap()
 
         let block = app.descendants(matching: .button)

@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import WebKit
 
 /// The browser bridge (`window.__forumindBrowse`): moves and marks posts on a
@@ -12,11 +13,13 @@ import WebKit
 /// The DOM is shared across worlds, so a post the moderation script hid
 /// (`data-forumind-hidden`) is never scrolled to, highlighted or returned.
 ///
-/// - `scrollToPost(n)`   "shown", "hidden" or "missing" (not rendered:
+/// - `scrollToPost(n, smooth)` "shown", "hidden" or "missing" (not rendered:
 ///                       Discourse cloaks far-off posts; the app then loads
 ///                       `/t/slug/id/N`)
-/// - `highlight([n])`    marks posts (re-applied when Discourse re-renders);
-///                       returns the numbers marked now
+/// - `highlight([n], flash)` marks posts (re-applied when Discourse
+///                       re-renders); returns the numbers marked now. `flash`
+///                       (a citation jump) strokes one post in, holds and
+///                       fades back to the mark, once, when it renders
 /// - `clearHighlight()`
 /// - `visible()`         posts in the viewport, `{number, username, excerpt}`
 /// - `postText(n)`       `{number, username, text}` of a rendered post, or null
@@ -36,7 +39,8 @@ enum BrowseScript {
       if (window.__forumindBrowse) return;
       const hiddenAttr = 'data-forumind-hidden';
       const mark = 'forumind-highlight';
-      const state = { numbers: [], topic: null, bottomInset: 0 };
+      const state = { numbers: [], topic: null, bottomInset: 0, flash: null };
+      const flashMark = 'forumind-flash';
       function topicID() {
         const match = location.pathname.match(/\\/t\\/(?:[^/]+\\/)?(\\d+)/);
         return match ? match[1] : null;
@@ -56,6 +60,37 @@ enum BrowseScript {
           '  background-color: rgba(123, 147, 255, 0.16) !important; } }'
         ].join('\\n');
         (document.head || document.documentElement).appendChild(style);
+      }
+      // Stroke in 0.2 s, hold 1.5 s, fade 0.6 s (2.3 s in all).
+      function ensureFlashStyle() {
+        if (document.getElementById('forumind-flash-style')) return;
+        const style = document.createElement('style');
+        style.id = 'forumind-flash-style';
+        style.textContent = [
+          'article.' + flashMark + ' { outline-style: solid; outline-width: var(--forumind-flash-width, 2px);',
+          '  outline-offset: calc(-1 * var(--forumind-flash-width, 2px)); outline-color: transparent;',
+          '  animation: forumind-flash 2.3s linear forwards; }',
+          '@keyframes forumind-flash { 0% { outline-color: transparent; }',
+          '  8.7% { outline-color: var(--forumind-flash-color); }',
+          '  73.9% { outline-color: var(--forumind-flash-color); }',
+          '  100% { outline-color: transparent; } }'
+        ].join('\\n');
+        (document.head || document.documentElement).appendChild(style);
+      }
+      function applyFlash() {
+        const flash = state.flash;
+        if (!flash || flash.done) return;
+        const article = shownPost(flash.number);
+        if (!article) return;
+        flash.done = true;
+        ensureFlashStyle();
+        const dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        article.style.setProperty('--forumind-flash-color', dark ? flash.dark : flash.light);
+        article.style.setProperty('--forumind-flash-width', flash.width + 'px');
+        article.classList.remove(flashMark);
+        void article.offsetWidth;
+        article.classList.add(flashMark);
+        setTimeout(() => article.classList.remove(flashMark), 2400);
       }
       const numberOf = article => parseInt(article.id.slice(5), 10);
       const isHidden = article => (article.closest('[data-post-number]') || article).hasAttribute(hiddenAttr);
@@ -118,6 +153,7 @@ enum BrowseScript {
           // Only when missing: re-adding would queue a mutation every frame.
           if (article && !article.classList.contains(mark)) article.classList.add(mark);
         });
+        applyFlash();
         reportSoon();
       }
       let scheduled = false;
@@ -150,20 +186,21 @@ enum BrowseScript {
         schedule();
       }
       window.__forumindBrowse = {
-        scrollToPost(number) {
+        scrollToPost(number, smooth) {
           const article = document.getElementById('post_' + number);
           if (!article) return 'missing';
           if (isHidden(article)) return 'hidden';
           const rect = article.getBoundingClientRect();
           if (rect.height === 0) return 'missing';
           const top = window.scrollY + rect.top - headerBottom() - 8;
-          window.scrollTo({ top: Math.max(0, top), behavior: 'auto' });
+          window.scrollTo({ top: Math.max(0, top), behavior: smooth ? 'smooth' : 'auto' });
           reportSoon();
           return 'shown';
         },
-        highlight(numbers) {
+        highlight(numbers, flash) {
           state.numbers = (numbers || []).filter(number => number > 0);
           state.topic = topicID();
+          if (flash && flash.number > 0) state.flash = { ...flash, done: false };
           apply();
           return highlighted();
         },
@@ -222,10 +259,12 @@ struct BrowseBridgeReport: Equatable {
 // MARK: - Typed bridge calls
 
 extension ForumBrowserModel {
-    /// Scrolls the rendered post into view under Discourse's header.
+    /// Scrolls the rendered post into view under Discourse's header; a
+    /// citation jump (`pendingJump`) scrolls smoothly unless Reduce Motion.
     func scrollToPost(_ number: Int) async -> BrowseScrollOutcome {
+        let smooth = pendingJump?.number == number && !UIAccessibility.isReduceMotionEnabled
         guard number >= 1,
-              let value = await callBridge("return b.scrollToPost(n);", arguments: ["n": number])
+              let value = await callBridge("return b.scrollToPost(n, smooth);", arguments: ["n": number, "smooth": smooth])
         else {
             return .unavailable
         }
@@ -236,8 +275,14 @@ extension ForumBrowserModel {
     /// `highlightAfterLoad`). Returns the numbers marked now; posts not
     /// rendered yet are marked when they appear.
     @discardableResult
-    func highlight(_ numbers: [Int]) async -> [Int] {
-        guard let json = await callBridge("return JSON.stringify(b.highlight(numbers));", arguments: ["numbers": numbers]),
+    func highlight(_ numbers: [Int], flash: PostFlash? = nil) async -> [Int] {
+        let flashArgument: [String: Any] = flash.map {
+            ["number": $0.number, "light": $0.lightColor, "dark": $0.darkColor, "width": Double($0.width)]
+        } ?? ["number": 0]
+        guard let json = await callBridge(
+            "return JSON.stringify(b.highlight(numbers, flash));",
+            arguments: ["numbers": numbers, "flash": flashArgument]
+        ),
               let marked = try? JSONDecoder().decode([Int].self, from: Data(json.utf8))
         else {
             return []
@@ -283,7 +328,13 @@ extension ForumBrowserModel {
     /// full page load (which starts a fresh bridge). Cleared by
     /// `clearHighlight()` or by leaving the topic.
     func highlightAfterLoad(_ numbers: [Int], topicID: String) {
-        pendingHighlight = PendingHighlight(topicID: topicID, numbers: numbers)
+        // A citation jump strokes its post once as it shows.
+        var flash: PostFlash?
+        if let jump = pendingJump, numbers == [jump.number] {
+            flash = PostFlash(number: jump.number)
+            pendingJump = nil
+        }
+        pendingHighlight = PendingHighlight(topicID: topicID, numbers: numbers, flash: flash)
         // Another topic is still showing while the load starts: the next
         // topic change applies it.
         if pageContext.topic?.topicID == topicID { applyPendingHighlight() }
@@ -298,7 +349,13 @@ extension ForumBrowserModel {
             if !isLoading { pendingHighlight = nil }
             return
         }
-        Task { await highlight(pending.numbers) }
+        Task {
+            let marked = await highlight(pending.numbers, flash: pending.flash)
+            // Flashed once it rendered: a later re-apply only marks.
+            if let flash = pending.flash, marked.contains(flash.number), pendingHighlight?.flash == flash {
+                pendingHighlight?.flash = nil
+            }
+        }
     }
 
     /// Runs `body` with `b` bound to the bridge, in the bridge's world. Nil
@@ -338,6 +395,7 @@ extension ForumBrowserModel {
 struct PendingHighlight: Equatable {
     var topicID: String
     var numbers: [Int]
+    var flash: PostFlash?
 }
 
 /// Resumes a continuation once: the bridge's answer or the timeout.
@@ -372,5 +430,28 @@ final class BrowseMessageHandler: NSObject, WKScriptMessageHandler {
         Task { @MainActor [weak browser] in
             browser?.handleBridgeReport(report)
         }
+    }
+}
+
+/// A citation jump in progress (AppModel.jumpToCitation): the next scroll to
+/// this post is smooth and its highlight flashes.
+struct PostJump: Equatable {
+    var number: Int
+}
+
+/// The citation jump's stroke (DCTheme.postHighlight*), resolved for the page.
+struct PostFlash: Equatable {
+    var number: Int
+    var lightColor: String
+    var darkColor: String
+    var width: CGFloat
+
+    @MainActor
+    init(number: Int) {
+        let highContrast = UIAccessibility.isDarkerSystemColorsEnabled
+        self.number = number
+        lightColor = DCTheme.postHighlightStroke.cssHex(dark: false, highContrast: highContrast)
+        darkColor = DCTheme.postHighlightStroke.cssHex(dark: true, highContrast: highContrast)
+        width = DCTheme.postHighlightStrokeWidth(highContrast: highContrast)
     }
 }

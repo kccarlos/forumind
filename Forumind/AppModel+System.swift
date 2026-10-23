@@ -18,6 +18,7 @@ extension AppModel: SystemEntryRouting {
     }
 
     func perform(_ action: SystemEntryAction) {
+        noteExternalEntry()
         switch action {
         case .summarize(let url):
             // The share extension's path: open the topic, then summarize
@@ -49,7 +50,7 @@ extension AppModel: SystemEntryRouting {
         agentSiteURL = siteURL
         assistantMode = .agent
         panelRoute = .topic
-        presentAssistant = true
+        requestAssistant()
         guard acceptsSystemWork, isProviderReady(for: .agent) else {
             // Kept as the draft: the user starts it once ready.
             agentGoalDraft = question

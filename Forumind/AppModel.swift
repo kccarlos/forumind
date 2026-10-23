@@ -31,6 +31,7 @@ import UserNotifications
 //                                   a run started from code (no panel, selection or draft
 //                                   change) that hands back `AgentRunOutcome`
 // - `cancelAgentRun(id:)`           stops a queued or running run
+// - `askScope`, `setAskScope(_:)`, `sendAsk()` the unified Ask box (AskBox.swift)
 // - `sessions` is keyed by topic key (`host[/basePath]/t/{id}`); per-topic calls take
 //   `topicKey:` (`setKept`, `deleteSession`, `setInstructions`, `isWatched`, `unwatch`,
 //   `markWatchedSeen`)
@@ -40,7 +41,7 @@ import UserNotifications
 // - `handle(_ request: IncomingLinkRequest)` share-extension / deep-link hand-off (deduped by id)
 // - `drainSharedInbox()`            deliver the App Group inbox (also runs on scene .active)
 // - `openShared(url:action:)`       open a shared link; "summary" | "chat" | "agent" | "open"
-// - `presentAssistant`              set when a hand-off wants the Assistant pane (UI resets it)
+// - `requestAssistant()`            a hand-off wants the Assistant pane (`assistantRequest`)
 // - `needsProviderSetup`            the role a hand-off needs a provider for (UI resets it)
 // - `handleDeepLink(_:)`            forumind://open?url=…&action=…
 //
@@ -163,7 +164,9 @@ final class AppModel: ObservableObject {
     @Published var summaryStreams: [UUID: String] = [:]
     @Published var chatStreams: [UUID: String] = [:]
     @Published var chatDraft = ""
-    @Published var presentedError: String?
+    /// Errors waiting for the root alert, oldest first: one shows at a time
+    /// and a newer one never replaces it (`presentError`).
+    @Published private(set) var errorQueue: [PresentedError] = []
     /// The developer's moderation list (last good copy; see Moderation.swift).
     @Published var remoteModeration: RemoteModerationList? = RemoteModerationCache.load() {
         didSet { applyModerationRules() }
@@ -175,9 +178,17 @@ final class AppModel: ObservableObject {
         didSet { deliverAgentRunOutcomes() }
     }
     @Published private(set) var watchedTopics: [WatchedTopic]
-    @Published var selectedAgentRunID: UUID?
+    @Published var selectedAgentRunID: UUID? {
+        // Picking or starting a run shows it (AskBox.swift).
+        didSet { agentComposesNewQuestion = false }
+    }
     @Published var agentGoalDraft = ""
     @Published var agentFollowUpDraft = ""
+    /// The Ask box's Whole forum scope starts a new run instead of following
+    /// up the selected one (its examples and recent runs show).
+    @Published var agentComposesNewQuestion = false
+    /// Bumped to focus the Ask box (⌘2, ⌘3).
+    @Published var askFocusRequest = 0
     @Published private(set) var notificationsAuthorized = false
     /// The user's forums (pinned and recent); see the API list above.
     @Published private(set) var forums: [Forum] {
@@ -195,22 +206,39 @@ final class AppModel: ObservableObject {
     @Published private(set) var pageContext = PageContext.empty
     /// Forum the next agent run targets; nil means `currentForum`.
     @Published var agentSiteURL: String?
-    /// A share/deep-link hand-off wants the Assistant pane shown.
-    @Published var presentAssistant = false
+    /// Bumped when a hand-off (shared link, Siri, Spotlight) wants the
+    /// Assistant shown (`requestAssistant()`); the root view shows it once
+    /// per new value.
+    @Published private(set) var assistantRequest = 0
     /// A hand-off needed this role's model, which is not ready yet.
     @Published var needsProviderSetup: ModelRole?
     /// Recent daily digests, newest first (AppModel+Digest.swift; device-local).
     @Published var digests: [DailyDigest] = []
     /// What making today's digest is doing (preparing, a card, an error).
     @Published var digestActivity: DigestActivity = .idle
-    /// The Today page is shown (Forums home, digest notification).
-    @Published var showsTodayPage = false
+    /// Pages pushed over Home (the Today page, an earlier digest, digest
+    /// settings); emptied when Home hides (AppModel+Browse.swift).
+    @Published var homePath: [HomeRoute] = []
+    /// Where this launch is in the launch rule (HomeState.swift); not
+    /// published, nothing draws it.
+    var launchPhase: LaunchPhase = .waiting
     /// The current list (search hits, research sources, focused posts) and
     /// the result cards' state (AppModel+Navigation.swift).
     @Published var browseCursor = BrowseCursor()
+    /// The last post citation (or solved hint) jumped to: drives the
+    /// selection haptic and the filled chip (AppModel+Navigation.swift).
+    @Published var citationJump: CitationJump?
     /// A Settings page an outside request wants shown (Start a Voice Chat
     /// without voice set up); RootView presents it and resets it.
     @Published var requestedSettingsPage: SettingsPage?
+
+    private static var loadsOnlySamplePage: Bool {
+        #if DEBUG
+        return AssistantDebug.isActive
+        #else
+        return false
+        #endif
+    }
 
     nonisolated static var suggestedForums: [SuggestedForum] {
         #if DEBUG
@@ -220,6 +248,12 @@ final class AppModel: ObservableObject {
     }
 
     let browser: ForumBrowserModel
+    /// Root sheets, covers and alerts, and the iPhone AI drawer
+    /// (PresentationRouter.swift).
+    let router = PresentationRouter()
+    /// Requests waiting for an answer on the AI data consent page
+    /// (AIDataConsent.swift).
+    let aiConsent = AIConsentGate()
     /// iCloud (CloudKit) sync (see CloudSyncController.swift).
     let cloudSync: CloudSyncController
 
@@ -240,7 +274,15 @@ final class AppModel: ObservableObject {
     var digestRunID: UUID?
     private var openTodayObserver: NSObjectProtocol?
     private let limiter = TaskLimiter(limit: 2)
-    private var runningTasks: [UUID: Task<Void, Never>] = [:]
+    /// The task of each job launched (waiting for a worker or running). The
+    /// token tells a job that was paused and launched again from the old
+    /// task still unwinding.
+    private var runningTasks: [UUID: (token: UUID, task: Task<Void, Never>)] = [:]
+    /// Extra time to finish work after the app leaves the foreground.
+    private let backgroundGrace: BackgroundGracing
+    /// The grace period, while the app is in the background with work
+    /// running; at its end the work pauses (`pauseActiveWork`).
+    private var backgroundWork: UIBackgroundTaskIdentifier?
     private var didRestoreTasks = false
     private var lastWatchCheck: Date?
     private var watchTimer: Task<Void, Never>?
@@ -301,6 +343,9 @@ final class AppModel: ObservableObject {
     /// the page context. Off by default (one more request per topic); the
     /// voice layer turns it on. Navigation actions fetch them either way.
     var prefetchesTopicFacts = false
+    /// The iPhone bar shows "Solved · answer at #N" from the facts, so the
+    /// browser UI fetches them for every opened topic (unit tests don't).
+    var barShowsTopicFacts = false
 
     /// Loader that runs forum requests in the authenticated web view context.
     var webViewResourceLoader: (@MainActor (URL) async throws -> ForumResourceResponse)? {
@@ -319,9 +364,11 @@ final class AppModel: ObservableObject {
         backgroundScheduler: BackgroundTaskScheduling = BGTaskScheduler.shared,
         podcastDirectory: URL? = nil,
         spotlightIndex: SpotlightIndexing? = nil,
-        topicActivityDonor: TopicActivityDonating? = nil
+        topicActivityDonor: TopicActivityDonating? = nil,
+        backgroundGrace: BackgroundGracing? = nil
     ) {
         self.store = store
+        self.backgroundGrace = backgroundGrace ?? ApplicationBackgroundGrace()
         spotlight = Self.makeSpotlightIndexer(index: spotlightIndex, store: store)
         self.topicActivityDonor = topicActivityDonor ?? Self.makeTopicActivityDonor(store: store)
         self.podcastDirectory = podcastDirectory ?? PodcastStore.defaultDirectory
@@ -375,7 +422,6 @@ final class AppModel: ObservableObject {
                 guard !$0.status.isTerminal else { return $0 }
                 var interrupted = $0
                 interrupted.status = .queued
-                interrupted.phase = "queued"
                 interrupted.statusText = String(localized: "Restoring interrupted work…", comment: "Status of AI work that was interrupted when the app quit and is starting again")
                 return interrupted
             }
@@ -421,7 +467,9 @@ final class AppModel: ObservableObject {
         // Ad/tracker blocking starts before the first page load.
         configureContentBlocking()
         applyModerationRules()
-        if self.browser.webView.url == nil {
+        // (DEBUG samples load only their own page: a restored forum's load
+        // failing late would replace it with the Forums home.)
+        if self.browser.webView.url == nil, !Self.loadsOnlySamplePage {
             self.browser.loadHome()
         }
         openURLObserver = NotificationCenter.default.addObserver(
@@ -431,12 +479,15 @@ final class AppModel: ObservableObject {
         ) { [weak self] notification in
             guard let url = notification.object as? URL else { return }
             Task { @MainActor [weak self] in
+                self?.noteExternalEntry()
                 self?.browser.load(url)
                 self?.panelRoute = .topic
             }
         }
         WatchBackgroundRefresh.perform = { [weak self] in
             await self?.checkWatchedTopics(reason: .background)
+            // On disk before the system suspends the app again.
+            await self?.flushPendingSaves()
         }
         loadDigests()
         // Podcast audio of deleted or week-old digests goes.
@@ -450,6 +501,7 @@ final class AppModel: ObservableObject {
         }
         DigestBackgroundPrefetch.perform = { [weak self] in
             await self?.performBackgroundDigestPrefetch()
+            await self?.flushPendingSaves()
         }
         if settings.dailyDigestEnabled { scheduleDigestPrefetch() }
         Task { [weak self] in
@@ -470,11 +522,24 @@ final class AppModel: ObservableObject {
         }
         // Sample only: never over the real digests or with a real key.
         if AssistantDebug.isActive, AssistantDebug.has("-dc-digest-sample") { seedDigestSample() }
+        // `-dc-no-forums`: the sample as a new user sees Home (never saved).
+        if AssistantDebug.isActive, AssistantDebug.has("-dc-no-forums") {
+            directory = ForumDirectory(forums: [])
+            currentForum = nil
+        }
         applyStateDebugScript()
         // A scripted voice run starts from the consent sheet.
         if VoiceDebug.isFake { settings.voiceConsent = [:] }
         #endif
+        // Launch: what grew while the app ran last (and data from before
+        // sessions were pruned at all) goes before anything reads it.
+        pruneSessions()
         self.cloudSync.attach(self)
+        // The consent backstop before every third-party AI request.
+        aiService.consentCheck = { [weak self] provider in
+            guard let self else { throw AssistantError.aiConsentRequired(provider) }
+            try self.settings.requireAIConsent(for: provider)
+        }
         // Launch: bring Spotlight up to date (only the difference, or
         // everything once after a new index version).
         spotlightDataDidChange()
@@ -523,6 +588,7 @@ final class AppModel: ObservableObject {
     /// opens the page and Assistant without starting a summary or pull.
     func handle(_ request: IncomingLinkRequest, autoRun: Bool = true) {
         guard handledShareIDs.insert(request.id).inserted else { return }
+        noteExternalEntry()
         openShared(url: request.url, action: request.action.rawValue, autoRun: autoRun)
     }
 
@@ -531,6 +597,28 @@ final class AppModel: ObservableObject {
     func drainSharedInbox() {
         let requests = SharedInbox.drainAll().filter { !handledShareIDs.contains($0.id) }
         if let latest = requests.last { handle(latest) }
+    }
+
+    /// The error the root alert shows.
+    var presentedError: String? { errorQueue.first?.message }
+
+    /// Queues an error for the root alert; a message already waiting is not
+    /// queued twice. For what the user just did: work the app started by
+    /// itself reports in Activity instead.
+    func presentError(_ message: String) {
+        guard !errorQueue.contains(where: { $0.message == message }) else { return }
+        errorQueue.append(PresentedError(message: message))
+    }
+
+    /// The root alert's OK: the next error (if any) shows.
+    func dismissPresentedError() {
+        guard !errorQueue.isEmpty else { return }
+        errorQueue.removeFirst()
+    }
+
+    /// Asks the root view to show the Assistant (once per call).
+    func requestAssistant() {
+        assistantRequest &+= 1
     }
 
     /// Opens a shared link. Once the page is detected as that topic (or, for
@@ -570,7 +658,7 @@ final class AppModel: ObservableObject {
         select(topic: context.topic)
         completePendingShare(with: context)
         pageUpdates.send(context)
-        if prefetchesTopicFacts, let topic = context.topic, context.state == .topic,
+        if prefetchesTopicFacts || barShowsTopicFacts, let topic = context.topic, context.state == .topic,
            topicOverviews[topic.topicKey] == nil {
             Task { [weak self] in _ = await self?.topicOverview(siteURL: topic.siteURL, topicID: topic.topicID) }
         }
@@ -615,7 +703,7 @@ final class AppModel: ObservableObject {
             agentSiteURL = context.siteURL
             assistantMode = .agent
             panelRoute = .topic
-            presentAssistant = true
+            requestAssistant()
             if !isProviderReady(for: .agent) { needsProviderSetup = .agent }
         case .summary, .chat:
             guard topicMatches else {
@@ -634,7 +722,7 @@ final class AppModel: ObservableObject {
             pendingShare = nil
             assistantMode = pending.action == .summary ? .summary : .chat
             panelRoute = .topic
-            presentAssistant = true
+            requestAssistant()
             guard isProviderReady(for: .assistant) else {
                 needsProviderSetup = .assistant
                 return
@@ -674,34 +762,24 @@ final class AppModel: ObservableObject {
         #else
         let resetForPullUITest = false
         #endif
-        if resetForPullUITest {
-            sessions[topic.topicKey] = TopicSession(
-                siteURL: topic.siteURL,
-                topicID: topic.topicID,
-                url: topic.url,
-                title: topic.title
-            )
-        } else if var existing = sessions[topic.topicKey] {
-            existing.url = topic.url
-            existing.title = topic.title
-            existing.lastAccessedAt = Date()
-            sessions[topic.topicKey] = existing
-        } else {
-            sessions[topic.topicKey] = TopicSession(
-                siteURL: topic.siteURL,
-                topicID: topic.topicID,
-                url: topic.url,
-                title: topic.title
-            )
+        var session = resetForPullUITest ? nil : sessions[topic.topicKey]
+        if session == nil {
+            session = TopicSession(siteURL: topic.siteURL, topicID: topic.topicID, url: topic.url, title: topic.title)
         }
+        session?.url = topic.url
+        session?.title = topic.title
+        // The page is in front of the user: the one place a visit is recorded.
+        session?.openedByUserAt = Date()
+        sessions[topic.topicKey] = session
         save()
     }
 
     /// Starts a summary; `batchLimit` overrides the hierarchical-summary batch
     /// size for this run only.
-    func startSummary(batchLimit: Int? = nil) {
+    /// `regenerate`: write it again even when no reply is new (Retry).
+    func startSummary(batchLimit: Int? = nil, regenerate: Bool = false) {
         guard let topic = currentTopic else {
-            presentedError = AssistantError.noTopic.localizedDescription
+            presentError(AssistantError.noTopic.localizedDescription)
             return
         }
         if activities.contains(where: {
@@ -710,19 +788,27 @@ final class AppModel: ObservableObject {
             panelRoute = .activity
             return
         }
-        enqueueSummary(for: topic, batchLimit: batchLimit)
+        enqueueSummary(for: topic, batchLimit: batchLimit, regenerate: regenerate)
     }
 
-    /// Queues a summary task for any topic (used by watched-topic refreshes).
+    /// Queues a summary task for any topic (used by watched-topic refreshes,
+    /// `origin: .automatic`).
     @discardableResult
-    func enqueueSummary(for topic: ForumTopic, batchLimit: Int? = nil) -> Bool {
+    func enqueueSummary(
+        for topic: ForumTopic,
+        batchLimit: Int? = nil,
+        regenerate: Bool = false,
+        origin: WorkOrigin = .user
+    ) -> Bool {
         guard !activities.contains(where: {
             $0.topicKey == topic.topicKey && $0.type == .summary && !$0.status.isTerminal
         }) else {
             return false
         }
         guard activeTaskCount < 50 else {
-            presentedError = String(localized: "The task queue is full. Cancel or wait for an existing task.")
+            if origin == .user {
+                presentError(String(localized: "The task queue is full. Cancel or wait for an existing task."))
+            }
             return false
         }
 
@@ -737,6 +823,8 @@ final class AppModel: ObservableObject {
             model: selection.model
         )
         record.batchLimit = batchLimit.map(SummaryBatchLimit.normalized)
+        record.origin = origin
+        if regenerate { record.regenerate = true }
         activities.insert(record, at: 0)
         save()
         launch(recordID: record.id)
@@ -977,7 +1065,7 @@ final class AppModel: ObservableObject {
             selectedAgentRunID = try enqueueAgentRun(goal: rawGoal, siteURL: siteURL)
             agentGoalDraft = ""
         } catch {
-            presentedError = error.localizedDescription
+            presentError(error.localizedDescription)
         }
     }
 
@@ -1100,7 +1188,7 @@ final class AppModel: ObservableObject {
             return
         }
         guard activeTaskCount < 50 else {
-            presentedError = String(localized: "The task queue is full. Cancel or wait for an existing task.")
+            presentError(String(localized: "The task queue is full. Cancel or wait for an existing task."))
             return
         }
         agentRuns[index].followUps.append(ChatMessage(role: .user, content: question))
@@ -1305,7 +1393,7 @@ final class AppModel: ObservableObject {
             }
         }
         // Without a connected provider the refresh would only fail (and alert).
-        if reason != .background, settings.watchAutoRefreshSummaries, isProviderReady(for: .assistant) {
+        if reason != .background, settings.watchAutoRefreshSummaries, canRunUnattended(.assistant) {
             for (watched, _) in arrivals
             where isWatched(topicKey: watched.topicKey) && sessions[watched.topicKey]?.hasSummary == true {
                 enqueueSummary(
@@ -1314,7 +1402,8 @@ final class AppModel: ObservableObject {
                         topicID: watched.topicID,
                         url: watched.url,
                         title: watched.title
-                    )
+                    ),
+                    origin: .automatic
                 )
             }
         }
@@ -1355,6 +1444,9 @@ final class AppModel: ObservableObject {
             openTodayFromNotification()
             resumeDigestIfNeeded()
             podcast.resumeIfNeeded()
+            workEnteredForeground()
+            // After the inbox and the digest have started: where the launch lands.
+            applyLaunchRuleIfNeeded()
         case .inactive:
             // Coalesced edits must not be lost if the app is closed next.
             flushPendingSaves()
@@ -1368,6 +1460,9 @@ final class AppModel: ObservableObject {
             pauseDigest()
             // Likewise the podcast's chapters; playback goes on.
             podcast.pauseGeneration()
+            // Summaries, chats and Ask the forum finish if they can in the
+            // time the system gives, else pause until the app is back.
+            workEnteredBackground()
             if settings.dailyDigestEnabled { scheduleDigestPrefetch() }
         @unknown default:
             break
@@ -1415,7 +1510,7 @@ final class AppModel: ObservableObject {
 
     func pullTopic() {
         guard let topic = currentTopic else {
-            presentedError = AssistantError.noTopic.localizedDescription
+            presentError(AssistantError.noTopic.localizedDescription)
             return
         }
         if activities.contains(where: {
@@ -1425,7 +1520,7 @@ final class AppModel: ObservableObject {
             return
         }
         guard activeTaskCount < 50 else {
-            presentedError = String(localized: "The task queue is full. Cancel or wait for an existing task.")
+            presentError(String(localized: "The task queue is full. Cancel or wait for an existing task."))
             return
         }
 
@@ -1450,17 +1545,17 @@ final class AppModel: ObservableObject {
               var session = sessions[topic.topicKey],
               !session.source.isEmpty
         else {
-            presentedError = String(localized: "Pull the post and responses or create a summary before asking a follow-up question.")
+            presentError(String(localized: "Pull the post and responses or create a summary before asking a follow-up question."))
             return
         }
         if activities.contains(where: {
             $0.topicKey == topic.topicKey && $0.type == .chat && !$0.status.isTerminal
         }) {
-            presentedError = String(localized: "Wait for the current answer or cancel it in Manage.")
+            presentError(String(localized: "Wait for the current answer or cancel it in Manage."))
             return
         }
         guard activeTaskCount < 50 else {
-            presentedError = String(localized: "The task queue is full. Cancel or wait for an existing task.")
+            presentError(String(localized: "The task queue is full. Cancel or wait for an existing task."))
             return
         }
 
@@ -1489,7 +1584,7 @@ final class AppModel: ObservableObject {
     }
 
     func cancel(record: WorkRecord) {
-        runningTasks[record.id]?.cancel()
+        runningTasks[record.id]?.task.cancel()
         runningTasks.removeValue(forKey: record.id)
         summaryStreams.removeValue(forKey: record.id)
         chatStreams.removeValue(forKey: record.id)
@@ -1498,7 +1593,6 @@ final class AppModel: ObservableObject {
         }
         mutateRecord(record.id) {
             $0.status = .cancelled
-            $0.phase = "cancelled"
             $0.statusText = String(localized: "Cancelled", comment: "Status of AI work the user cancelled")
             $0.completedAt = Date()
         }
@@ -1547,7 +1641,7 @@ final class AppModel: ObservableObject {
         guard !activities.contains(where: {
             $0.topicKey == topicKey && !$0.status.isTerminal
         }) else {
-            presentedError = String(localized: "Cancel this topic’s active tasks before deleting it.")
+            presentError(String(localized: "Cancel this topic’s active tasks before deleting it."))
             return
         }
         sessions.removeValue(forKey: topicKey)
@@ -1592,14 +1686,15 @@ final class AppModel: ObservableObject {
         settingsSaveTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: delay)
             guard !Task.isCancelled else { return }
-            self?.flushPendingSaves()
+            self?.save()
         }
     }
 
-    /// Writes coalesced settings edits now (scene inactive/background, tests).
+    /// Writes coalesced settings edits and waits until the snapshot is on
+    /// disk (scene inactive/background, background tasks, tests).
     func flushPendingSaves() {
-        guard settingsSaveTask != nil else { return }
-        save()
+        if settingsSaveTask != nil { save() }
+        store.flush()
     }
 
     /// Writes API keys that changed since the last write; returns false (and
@@ -1613,7 +1708,7 @@ final class AppModel: ObservableObject {
                 try keyStore.set(key, for: provider)
                 persistedAPIKeys[provider] = key
             } catch {
-                presentedError = error.localizedDescription
+                presentError(error.localizedDescription)
                 return false
             }
         }
@@ -1661,6 +1756,8 @@ final class AppModel: ObservableObject {
         fresh.acceptedTermsVersion = settings.acceptedTermsVersion
         fresh.blockedUsers = settings.blockedUsers
         fresh.filteredWords = settings.filteredWords
+        // So is what the person agreed to send where.
+        fresh.aiConsent = settings.aiConsent
         settings = fresh
         discoveredModels = [:]
         settingsStatus = ""
@@ -1876,7 +1973,6 @@ final class AppModel: ObservableObject {
             model: "test-model"
         )
         recent.status = .completed
-        recent.phase = "completed"
         recent.statusText = "Completed"
         recent.progress = 1
         recent.completedAt = now
@@ -1892,8 +1988,10 @@ final class AppModel: ObservableObject {
 
     private func launch(recordID: UUID) {
         guard runningTasks[recordID] == nil else { return }
-        runningTasks[recordID] = Task { [weak self] in
+        let token = UUID()
+        let task = Task { [weak self] in
             guard let self else { return }
+            defer { self.jobEnded(recordID: recordID, token: token) }
             guard let record = self.activities.first(where: { $0.id == recordID }) else {
                 return
             }
@@ -1904,10 +2002,90 @@ final class AppModel: ObservableObject {
                 return
             }
             defer {
-                Task { await self.limiter.release(topicID: record.topicKey) }
+                Task { await self.limiter.release(workID: record.id) }
             }
             guard !Task.isCancelled else { return }
-            await self.run(recordID: recordID)
+            await self.run(recordID: recordID, token: token)
+        }
+        runningTasks[recordID] = (token, task)
+    }
+
+    /// The task `token` launched is still the record's: not cancelled or
+    /// paused (and maybe launched again since).
+    private func isCurrentLaunch(_ recordID: UUID, token: UUID) -> Bool {
+        runningTasks[recordID]?.token == token
+    }
+
+    /// A job's task is done (finished, failed, cancelled or paused).
+    private func jobEnded(recordID: UUID, token: UUID) {
+        // A paused job launched again has a new task: leave that one.
+        if isCurrentLaunch(recordID, token: token) { runningTasks.removeValue(forKey: recordID) }
+        // Nothing runs any more (finished or paused): the grace period is
+        // not needed.
+        if backgroundWork != nil, runningTasks.isEmpty { endBackgroundWork() }
+    }
+
+    // MARK: Background
+
+    /// The app left the foreground: running work goes on for the grace
+    /// period the system gives, then pauses (`pauseActiveWork`).
+    private func workEnteredBackground() {
+        guard !runningTasks.isEmpty, backgroundWork == nil else { return }
+        let id = backgroundGrace.begin(name: "Forumind work") { [weak self] in
+            // On the main thread; the task must end before the handler returns.
+            MainActor.assumeIsolated {
+                self?.pauseActiveWork()
+                self?.endBackgroundWork()
+            }
+        }
+        if id == .invalid {
+            pauseActiveWork()
+        } else {
+            backgroundWork = id
+        }
+    }
+
+    /// Back in the foreground: paused work starts again.
+    private func workEnteredForeground() {
+        endBackgroundWork()
+        // At launch, `restorePendingTasksIfNeeded` (once the UI is up) does it.
+        guard didRestoreTasks else { return }
+        for record in activities where record.status == .queued && runningTasks[record.id] == nil {
+            mutateRecord(record.id) { $0.statusText = WorkRecord.waitingStatusText }
+            launch(recordID: record.id)
+        }
+    }
+
+    private func endBackgroundWork() {
+        guard let id = backgroundWork else { return }
+        backgroundWork = nil
+        backgroundGrace.end(id)
+    }
+
+    /// Puts every queued or running job back in the queue, as a relaunch
+    /// would (the pages it read are kept): the grace period ended, or a
+    /// job's request failed because the app is in the background. On disk
+    /// before the app is suspended.
+    func pauseActiveWork() {
+        for record in activities where !record.status.isTerminal {
+            pause(recordID: record.id)
+        }
+        save()
+        store.flush()
+    }
+
+    private func pause(recordID: UUID) {
+        runningTasks[recordID]?.task.cancel()
+        runningTasks.removeValue(forKey: recordID)
+        summaryStreams.removeValue(forKey: recordID)
+        chatStreams.removeValue(forKey: recordID)
+        Task { await limiter.cancel(workID: recordID) }
+        mutateRecord(recordID) {
+            $0.status = .queued
+            $0.statusText = String(localized: "Paused until Forumind is open again", comment: "Status of AI work stopped because the app went to the background; it continues when the app is opened")
+        }
+        if let record = activities.first(where: { $0.id == recordID }), record.type == .agent {
+            mutateAgentRun(for: record) { $0.status = .queued }
         }
     }
 
@@ -1967,7 +2145,9 @@ final class AppModel: ObservableObject {
         guard isLive(recordID) else { throw CancellationError() }
     }
 
-    private func run(recordID: UUID) async {
+    /// Runs a job. `token`: its launch; a task of a paused job still
+    /// unwinding must not touch the record a newer launch is running.
+    private func run(recordID: UUID, token: UUID) async {
         guard var record = activities.first(where: { $0.id == recordID }),
               record.status == .queued
         else {
@@ -1979,7 +2159,6 @@ final class AppModel: ObservableObject {
         record.model = context.configuration.model
         mutateRecord(recordID) {
             $0.status = .running
-            $0.phase = "fetching"
             $0.statusText = String(localized: "Reading forum responses…", comment: "Status while downloading a topic's replies")
             // A restored record starts over; progress then only moves forward.
             $0.progress = nil
@@ -1999,7 +2178,17 @@ final class AppModel: ObservableObject {
         save()
 
         do {
-            if record.type != .pull { try context.requireReadyProvider() }
+            if record.type != .pull {
+                try context.requireReadyProvider()
+                // Work the user started waits for the consent page; work the
+                // app started by itself never shows it.
+                try await authorizeSending(to: context.provider, mayAsk: record.origin == .user) {
+                    mutateRecord(recordID) {
+                        $0.statusText = String(localized: "Waiting for your OK to send forum content to \(context.provider.displayName)…", comment: "Status of AI work while the AI data consent page is up; the placeholder is an AI provider's name")
+                    }
+                }
+                try ensureLive(recordID)
+            }
             switch record.type {
             case .summary:
                 try await runSummary(recordID: recordID, record: record, context: context)
@@ -2015,30 +2204,37 @@ final class AppModel: ObservableObject {
             try ensureLive(recordID)
             mutateRecord(recordID) {
                 $0.status = .completed
-                $0.phase = "completed"
                 $0.statusText = String(localized: "Completed", comment: "Status of finished AI work")
                 $0.progress = 1
                 $0.completedAt = Date()
             }
         } catch is CancellationError {
-            mutateRecord(recordID) {
-                $0.status = .cancelled
-                $0.phase = "cancelled"
-                $0.statusText = String(localized: "Cancelled", comment: "Status of AI work the user cancelled")
-                $0.completedAt = Date()
-            }
-            if record.type == .agent {
-                mutateAgentRun(for: record) {
-                    $0.status = .cancelled
-                    $0.completedAt = Date()
-                }
-            }
-        } catch where !isLive(recordID) {
-            // Cancelled or deleted meanwhile; its request failing is expected.
-            if activities.first(where: { $0.id == recordID })?.status == .running {
+            // A paused job is back in the queue (or already running again):
+            // it stays there. `cancel(record:)` wrote its own status.
+            if isCurrentLaunch(recordID, token: token),
+               activities.first(where: { $0.id == recordID })?.status == .running {
                 mutateRecord(recordID) {
                     $0.status = .cancelled
-                    $0.phase = "cancelled"
+                    $0.statusText = String(localized: "Cancelled", comment: "Status of AI work the user cancelled")
+                    $0.completedAt = Date()
+                }
+                if record.type == .agent {
+                    mutateAgentRun(for: record) {
+                        $0.status = .cancelled
+                        $0.completedAt = Date()
+                    }
+                }
+            }
+        } catch where backgroundWork != nil && isLive(recordID) && NetworkFailure.isUnreachable(error) {
+            // The system cut the connection in the background: it waits for
+            // the app to come back instead of failing.
+            pause(recordID: recordID)
+        } catch where !isLive(recordID) {
+            // Cancelled or deleted meanwhile; its request failing is expected.
+            if isCurrentLaunch(recordID, token: token),
+               activities.first(where: { $0.id == recordID })?.status == .running {
+                mutateRecord(recordID) {
+                    $0.status = .cancelled
                     $0.statusText = String(localized: "Cancelled", comment: "Status of AI work the user cancelled")
                     $0.completedAt = Date()
                 }
@@ -2046,7 +2242,6 @@ final class AppModel: ObservableObject {
         } catch {
             mutateRecord(recordID) {
                 $0.status = .failed
-                $0.phase = "failed"
                 $0.statusText = String(localized: "Failed", comment: "Status of AI work that failed")
                 $0.error = error.localizedDescription
                 $0.completedAt = Date()
@@ -2058,11 +2253,14 @@ final class AppModel: ObservableObject {
                     $0.completedAt = Date()
                 }
             }
-            presentedError = error.localizedDescription
+            // Work the app started by itself shows its failure in Activity;
+            // a consent block shows in place (the not-ready card).
+            if record.origin == .user, !error.isAIConsentError { presentError(error.localizedDescription) }
         }
-        runningTasks.removeValue(forKey: recordID)
-        summaryStreams.removeValue(forKey: recordID)
-        chatStreams.removeValue(forKey: recordID)
+        if isCurrentLaunch(recordID, token: token) {
+            summaryStreams.removeValue(forKey: recordID)
+            chatStreams.removeValue(forKey: recordID)
+        }
         activities = Array(
             activities
                 .filter {
@@ -2084,16 +2282,7 @@ final class AppModel: ObservableObject {
             url: record.url,
             title: record.title
         )
-        let cookies = await browser.cookieHeader(forSite: record.siteURL)
-        let fetch = try await forumService.fetchTopic(
-            siteURL: record.siteURL,
-            topicID: record.topicID,
-            cachedPages: session.rawPages,
-            knownTotalPosts: session.totalPosts,
-            cookieHeader: cookies,
-            resourceLoader: webViewResourceLoader,
-            pace: context.forumRequestPace
-        ) { progress in
+        let fetch = try await fetchTopicPages(of: session, recordID: recordID, pace: context.forumRequestPace) { progress in
             await self.updateFetchProgress(recordID: recordID, progress: progress)
         }
 
@@ -2123,22 +2312,19 @@ final class AppModel: ObservableObject {
     }
 
     private func runSummary(recordID: UUID, record: WorkRecord, context: RunSettings) async throws {
+        #if DEBUG
+        if AssistantDebug.has("-dc-fake-summary") {
+            try await runFakeSummary(recordID: recordID, record: record)
+            return
+        }
+        #endif
         var session = sessions[record.topicKey] ?? TopicSession(
             siteURL: record.siteURL,
             topicID: record.topicID,
             url: record.url,
             title: record.title
         )
-        let cookies = await browser.cookieHeader(forSite: record.siteURL)
-        let fetch = try await forumService.fetchTopic(
-            siteURL: record.siteURL,
-            topicID: record.topicID,
-            cachedPages: session.rawPages,
-            knownTotalPosts: session.totalPosts,
-            cookieHeader: cookies,
-            resourceLoader: webViewResourceLoader,
-            pace: context.forumRequestPace
-        ) { progress in
+        let fetch = try await fetchTopicPages(of: session, recordID: recordID, pace: context.forumRequestPace) { progress in
             await self.updateFetchProgress(recordID: recordID, progress: progress)
         }
 
@@ -2155,6 +2341,7 @@ final class AppModel: ObservableObject {
         save()
 
         if fetch.unchanged,
+           record.regenerate != true,
            session.hasSummary,
            session.summaryPostCount == fetch.totalPosts {
             mutateRecord(recordID) {
@@ -2164,7 +2351,6 @@ final class AppModel: ObservableObject {
         }
 
         mutateRecord(recordID) {
-            $0.phase = "generating"
             $0.statusText = fetch.newPosts > 0 && session.hasSummary
                 ? String(localized: "Updating summary with \(fetch.newPosts) new posts…", comment: "Status while a saved summary is updated with the topic's new replies")
                 : String(localized: "Generating summary…")
@@ -2200,6 +2386,35 @@ final class AppModel: ObservableObject {
         sessions[record.topicKey] = session
     }
 
+    #if DEBUG
+    /// `-dc-fake-summary`: a summary run that reads nothing and calls no AI.
+    /// It streams the sample summary (with `#N` citations) one section at a
+    /// time, then saves it as the open topic's summary.
+    private func runFakeSummary(recordID: UUID, record: WorkRecord) async throws {
+        let text = SampleContent.current.metaSummary
+        let sections = text.components(separatedBy: "\n\n## ")
+        summaryStreams[recordID] = ""
+        try await Task.sleep(for: .seconds(1.2))
+        for (index, section) in sections.enumerated() {
+            guard activities.contains(where: { $0.id == recordID && !$0.status.isTerminal }) else { return }
+            summaryStreams[recordID, default: ""] += index == 0 ? section : "\n\n## " + section
+            try await Task.sleep(for: .milliseconds(500))
+        }
+        var session = sessions[record.topicKey] ?? TopicSession(
+            siteURL: record.siteURL, topicID: record.topicID, url: record.url, title: record.title
+        )
+        if session.source.isEmpty { session.source = "Sample post and replies for \(record.title)." }
+        session.summary = text
+        session.totalPosts = max(session.totalPosts ?? 0, 68)
+        session.summaryPostCount = session.totalPosts
+        session.provider = record.provider
+        session.model = record.model
+        session.summaryUpdatedAt = Date()
+        session.updatedAt = Date()
+        sessions[record.topicKey] = session
+    }
+    #endif
+
     private func runChat(recordID: UUID, record: WorkRecord, context: RunSettings) async throws {
         guard var session = sessions[record.topicKey],
               !session.source.isEmpty
@@ -2209,16 +2424,7 @@ final class AppModel: ObservableObject {
             )
         }
 
-        let cookies = await browser.cookieHeader(forSite: record.siteURL)
-        let fetch = try await forumService.fetchTopic(
-            siteURL: record.siteURL,
-            topicID: record.topicID,
-            cachedPages: session.rawPages,
-            knownTotalPosts: session.totalPosts,
-            cookieHeader: cookies,
-            resourceLoader: webViewResourceLoader,
-            pace: context.forumRequestPace
-        ) { progress in
+        let fetch = try await fetchTopicPages(of: session, recordID: recordID, pace: context.forumRequestPace) { progress in
             await self.updateFetchProgress(recordID: recordID, progress: progress)
         }
         // Cancelled (or its forum's data deleted) while the page fetch was
@@ -2233,7 +2439,6 @@ final class AppModel: ObservableObject {
         sessions[record.topicKey] = session
 
         mutateRecord(recordID) {
-            $0.phase = "generating"
             $0.statusText = String(localized: "Answering follow-up question…")
             // How long an answer takes is unknowable: indeterminate until done.
             $0.progress = nil
@@ -2301,7 +2506,6 @@ final class AppModel: ObservableObject {
         run.error = ""
         storeAgentRun(run)
         mutateRecord(recordID) {
-            $0.phase = "planning"
             $0.statusText = String(localized: "Planning…", comment: "Ask the forum: the AI is deciding its first step")
             $0.progress = WorkProgress.agent(completedSteps: 0, maxSteps: context.agentMaxSteps)
         }
@@ -2340,7 +2544,6 @@ final class AppModel: ObservableObject {
             run.transcript.append(ChatMessage(role: .assistant, content: Self.encode(action)))
             var step = AgentStep(tool: action.tool, arguments: action.arguments, thought: action.thought)
             mutateRecord(recordID) {
-                $0.phase = "running"
                 $0.statusText = String(localized: "Step \(stepsUsed): \(Self.describe(action))", comment: "Ask the forum progress: step number, then the tool being used (a technical name such as search_forum) and its argument")
                 $0.progress = WorkProgress.advanced(
                     from: $0.progress,
@@ -2504,6 +2707,11 @@ final class AppModel: ObservableObject {
             // topic instead.
             let summarizer = context.summarizer
             try RunSettings.requireReady(provider: summarizer.provider, configuration: summarizer.configuration)
+            try await authorizeSending(
+                to: summarizer.provider,
+                mayAsk: activities.first(where: { $0.id == recordID })?.origin == .user
+            )
+            try ensureLive(recordID)
             var session = try await readTopicForAgent(
                 action, run: &run, recordID: recordID, context: context,
                 progress: { stepProgress(0.1 + 0.3 * $0) }
@@ -2620,7 +2828,6 @@ final class AppModel: ObservableObject {
         }
         let siteURL = run.siteURL
         let topicKey = TopicIdentity.key(siteURL: siteURL, topicID: topicID)
-        let cookies = await browser.cookieHeader(forSite: siteURL)
         var session: TopicSession
         if let existing = sessions[topicKey] {
             session = existing
@@ -2628,7 +2835,7 @@ final class AppModel: ObservableObject {
             let overview = try await forumService.fetchOverview(
                 siteURL: siteURL,
                 topicID: topicID,
-                cookieHeader: cookies,
+                cookieHeader: await browser.cookieHeader(forSite: siteURL),
                 resourceLoader: webViewResourceLoader,
                 pace: context.forumRequestPace
             )
@@ -2642,15 +2849,7 @@ final class AppModel: ObservableObject {
         mutateRecord(recordID) {
             $0.statusText = String(localized: "Reading \(session.title)…", comment: "Status; the placeholder is a forum topic's title")
         }
-        let fetch = try await forumService.fetchTopic(
-            siteURL: siteURL,
-            topicID: topicID,
-            cachedPages: session.rawPages,
-            knownTotalPosts: session.totalPosts,
-            cookieHeader: cookies,
-            resourceLoader: webViewResourceLoader,
-            pace: context.forumRequestPace
-        ) { fetchProgress in
+        let fetch = try await fetchTopicPages(of: session, recordID: recordID, pace: context.forumRequestPace) { fetchProgress in
             await self.advanceProgress(recordID: recordID, to: progress(fetchProgress.fraction))
         }
         // Cancelled (or its forum's data deleted) while the page fetch was
@@ -2669,11 +2868,47 @@ final class AppModel: ObservableObject {
         return session
     }
 
+    /// Reads a job's topic, cached pages reused. Every new page goes into
+    /// the topic's session as it arrives, so a read that fails, is paused or
+    /// is killed keeps what it fetched; a later read fetches only the rest.
+    private func fetchTopicPages(
+        of session: TopicSession,
+        recordID: UUID,
+        pace: ForumRequestPace,
+        progress: @escaping @Sendable (ForumFetchProgress) async -> Void
+    ) async throws -> ForumFetchResult {
+        let cookies = await browser.cookieHeader(forSite: session.siteURL)
+        let template = session
+        return try await forumService.fetchTopic(
+            siteURL: session.siteURL,
+            topicID: session.topicID,
+            cachedPages: session.rawPages,
+            knownTotalPosts: session.totalPosts,
+            cookieHeader: cookies,
+            resourceLoader: webViewResourceLoader,
+            pace: pace,
+            progress: progress,
+            onPage: { page in await self.keepFetchedPage(page, recordID: recordID, into: template) }
+        )
+    }
+
+    /// A page a job fetched, into its topic's session (made from `template`
+    /// for a topic read for the first time). Not once the job ended (a
+    /// cancel) or its record is gone (its forum's data was deleted).
+    private func keepFetchedPage(_ page: RawForumPage, recordID: UUID, into template: TopicSession) {
+        guard activities.contains(where: { $0.id == recordID && !$0.status.isTerminal }) else { return }
+        var session = sessions[template.topicKey] ?? template
+        session.rawPages.removeAll { $0.page == page.page }
+        session.rawPages.append(page)
+        session.rawPages.sort { $0.page < $1.page }
+        sessions[template.topicKey] = session
+        save()
+    }
+
     private func updateFetchProgress(recordID: UUID, progress: ForumFetchProgress) {
         // A late page report of a cancelled job must not touch its record.
         guard isLive(recordID) else { return }
         mutateRecord(recordID) {
-            $0.phase = "fetching"
             $0.statusText = progress.message
             $0.progress = WorkProgress.advanced(
                 from: $0.progress,
@@ -2708,19 +2943,33 @@ final class AppModel: ObservableObject {
         activities[index].updatedAt = Date()
     }
 
-    private func pruneSessions() {
-        let unkept = sessions.values
-            .filter { $0.hasSummary && !$0.kept }
-            .sorted { $0.updatedAt > $1.updatedAt }
-        for session in unkept.dropFirst(40) {
-            sessions.removeValue(forKey: session.topicKey)
+    /// Drops old sessions and agent-read pages (SessionRetention.swift).
+    private func pruneSessions(now: Date = Date()) {
+        var protected = Set(watchedTopics.map(\.topicKey))
+        for record in activities where !record.status.isTerminal { protected.insert(record.topicKey) }
+        if let topicKey = currentTopic?.topicKey { protected.insert(topicKey) }
+        let plan = SessionRetention.plan(
+            sessions: sessions,
+            protected: protected,
+            citedByRuns: SessionRetention.topicKeys(citedBy: agentRuns),
+            now: now
+        )
+        guard !plan.isEmpty else { return }
+        var kept = sessions
+        for key in plan.remove { kept.removeValue(forKey: key) }
+        for key in plan.dropPages {
+            kept[key]?.rawPages = []
+            kept[key]?.source = ""
         }
+        sessions = kept
         // Pruned, not deleted: other devices keep their copies.
-        cloudSync.notePruned(kind: .session, ids: unkept.dropFirst(40).map(\.topicKey))
+        cloudSync.notePruned(kind: .session, ids: plan.remove)
     }
 
-    /// Writes the snapshot (and any changed API keys) now. Data changes save
-    /// at once; settings edits are coalesced through `saveSettings()`.
+    /// Saves the snapshot (and any changed API keys). Data changes save at
+    /// once; settings edits are coalesced through `saveSettings()`. The file
+    /// is written in the background (`PersistentStore.scheduleSave`);
+    /// `flushPendingSaves()` waits for it.
     func save() {
         settingsSaveTask?.cancel()
         settingsSaveTask = nil
@@ -2739,10 +2988,9 @@ final class AppModel: ObservableObject {
             watchedTopics: watchedTopics,
             forums: forums
         )
-        do {
-            try store.save(snapshot)
-        } catch {
-            presentedError = String(localized: "Unable to save app data: \(error.localizedDescription)", comment: "Error; the placeholder is the system's reason")
+        // Encoded and written off the main actor; rapid saves coalesce.
+        store.scheduleSave(snapshot) { [weak self] error in
+            self?.presentError(String(localized: "Unable to save app data: \(error.localizedDescription)", comment: "Error; the placeholder is the system's reason"))
         }
     }
 
@@ -2870,4 +3118,23 @@ private struct PendingShare {
     var autoRun = true
     /// The browser has reported the shared page itself (loading or loaded).
     var sawSharedPage = false
+}
+
+/// Extra time to run after the app leaves the foreground
+/// (`UIApplication.beginBackgroundTask`); tests fake it.
+@MainActor
+protocol BackgroundGracing {
+    /// `.invalid` when the system gives no time.
+    func begin(name: String, expiration: @escaping () -> Void) -> UIBackgroundTaskIdentifier
+    func end(_ id: UIBackgroundTaskIdentifier)
+}
+
+struct ApplicationBackgroundGrace: BackgroundGracing {
+    func begin(name: String, expiration: @escaping () -> Void) -> UIBackgroundTaskIdentifier {
+        UIApplication.shared.beginBackgroundTask(withName: name, expirationHandler: expiration)
+    }
+
+    func end(_ id: UIBackgroundTaskIdentifier) {
+        UIApplication.shared.endBackgroundTask(id)
+    }
 }

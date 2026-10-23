@@ -168,6 +168,7 @@ struct AssistantModeSwitcher: View {
             }
             .pickerStyle(.segmented)
         }
+        .sensoryFeedback(.selection, trigger: mode)
         .accessibilityIdentifier("assistantModePicker")
     }
 
@@ -185,7 +186,6 @@ struct AssistantModeSwitcher: View {
         let selected = mode == item
         return Button {
             guard !selected else { return }
-            DCHaptics.tap()
             withAnimation(DCMotion.respecting(reduceMotion, DCMotion.spring)) {
                 mode = item
             }
@@ -227,58 +227,122 @@ struct AssistantModeSwitcher: View {
 
 // MARK: - Provider setup
 
-/// Shown above the assistant while the mode's model can't run. When only
-/// that role is missing (the other one works), it says so.
+/// Shown in place of the assistant's content while the mode's model can't
+/// run (ModelSetup): what isn't ready, the one step that fixes it, and the
+/// ready favorites to switch to instead. Never a dead end: without a ready
+/// alternative, AI models… is still there.
 struct ProviderSetupCard: View {
     @ObservedObject var app: AppModel
     let role: ModelRole
-    let onSetUp: () -> Void
 
-    /// The other role works: only this one needs a model.
-    private var onlyThisRole: Bool { app.isProviderReady(for: role.other) }
+    private var selection: ModelSelection { app.selection(for: role) }
+    private var readiness: ModelReadiness { app.readiness(of: selection) }
+    private var action: ModelSetupAction { ModelSetupAction(readiness, provider: selection.provider) }
 
     private var title: String {
-        guard onlyThisRole else { return String(localized: "Connect an AI provider") }
-        switch role {
-        case .assistant: return String(localized: "Choose a model for summaries & chat", comment: "Assistant card when only the summaries & chat model isn't ready")
-        case .agent: return String(localized: "Choose a model for Ask the forum", comment: "Assistant card when only the Ask the forum model isn't ready")
-        }
-    }
-
-    private var detail: String {
-        guard onlyThisRole else {
-            return String(localized: "Summaries, chat and Ask the forum use your own key. It stays in the Keychain.")
-        }
-        return String(
-            localized: "\(app.providerSummary(for: role)) isn’t ready. Pick a model or add its key in Settings › AI models.",
-            comment: "Assistant card when one model role isn't ready. The placeholder is a provider and model, e.g. DeepSeek · deepseek-chat."
+        String(
+            localized: "\(app.providerSummary(for: role)) isn’t ready",
+            comment: "Model not ready card title. The placeholder is a provider and model, e.g. Google Gemini · gemini-flash."
         )
     }
 
-    var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Image(systemName: "key.horizontal.fill")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 36, height: 36)
-                .background(DCTheme.brandGradient, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-                Text(detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            Button("Set up", action: onSetUp)
-                .buttonStyle(DCActionButtonStyle(prominent: true))
-                .accessibilityIdentifier("providerSetupButton")
+    private var detail: String {
+        var lines: [String] = []
+        if case .appleIntelligence(let reason) = readiness {
+            lines.append(reason.title)
+        } else if readiness == .aiConsentDeclined {
+            lines.append(String(localized: "You chose not to send forum content to \(selection.provider.displayName). Allow it, or switch to another model.", comment: "Model not ready card: consent was declined. The placeholder is a provider name."))
+        } else {
+            lines.append(String(localized: "Pick a model or add its key in Settings › AI models.", comment: "Model not ready card: how to fix it"))
         }
-        .dcCard(tint: DCTheme.brandPurple)
+        // The other role still works on another model: say so.
+        let other = app.selection(for: role.other)
+        if other != selection, app.isReady(other) {
+            lines.append(String(
+                localized: "\(role.other.title) still works with \(other.provider.displayName).",
+                comment: "Model not ready card: the other role's model is fine. Placeholders: the role (Summaries & chat, or Ask the forum) and a provider name."
+            ))
+        }
+        return lines.joined(separator: " ")
+    }
+
+    var body: some View {
+        let alternatives = app.readyAlternatives(for: role)
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.headline)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(detail)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button(action: perform) {
+                Text(action.title)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(DCActionButtonStyle(prominent: true))
+            .accessibilityIdentifier("providerSetupButton")
+            if !alternatives.isEmpty {
+                Text("Or switch to one that’s ready", comment: "Model not ready card: heading above the ready favorite models")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                ForEach(alternatives) { favorite in
+                    Button {
+                        app.activateFavorite(favorite, for: role)
+                    } label: {
+                        HStack(spacing: 8) {
+                            Text(favorite.title)
+                                .font(.subheadline)
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Spacer(minLength: 8)
+                            Text(ModelReadiness.ready.title)
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(DCTheme.success)
+                        }
+                        .padding(.horizontal, 14)
+                        .frame(minHeight: DCTheme.controlHeight)
+                        .background(DCTheme.surface, in: RoundedRectangle(cornerRadius: DCTheme.controlCornerRadius, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: DCTheme.controlCornerRadius, style: .continuous)
+                                .stroke(DCTheme.border)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint(Text("Switches to this model", comment: "Accessibility hint of a ready model in the model not ready card"))
+                    .accessibilityIdentifier("readyModel-\(favorite.id)")
+                }
+            }
+            if action != .aiModels {
+                Button("AI models…", action: openAIModels)
+                    .font(.subheadline)
+                    .frame(minHeight: DCTheme.controlHeight)
+                    .accessibilityIdentifier("providerSetupSettings")
+            }
+        }
+        .padding(16)
+        .background(DCTheme.newRepliesBadgeBackground.opacity(0.6), in: RoundedRectangle(cornerRadius: DCTheme.cardCornerRadius, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: DCTheme.cardCornerRadius, style: .continuous)
+                .stroke(DCTheme.warning.opacity(0.3))
+        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("providerSetupCard")
+    }
+
+    private func perform() {
+        switch action {
+        case .addKey, .chooseModel: app.router.item = .providerSetup(role)
+        case .aiModels: openAIModels()
+        case .allow(let provider): app.aiConsent.ask(provider)
+        }
+    }
+
+    /// Settings › AI models, through the router (as the model pill's menu).
+    private func openAIModels() {
+        app.requestedSettingsPage = .provider
     }
 }
 
@@ -688,14 +752,9 @@ struct ForumHomeState: View {
     @ObservedObject var app: AppModel
     let forum: Forum
     @FocusState private var focused: Bool
+    @Environment(\.composerFocusChanged) private var composerFocusChanged
 
-    /// Example goals; sent to the model as the user's question, so they are
-    /// in the app's language (the answer follows the question's language).
-    private let examples = [
-        String(localized: "What are people discussing this week?", comment: "Example question for the forum research agent"),
-        String(localized: "Most helpful answers about getting started", comment: "Example question for the forum research agent"),
-        String(localized: "Common problems people report lately", comment: "Example question for the forum research agent")
-    ]
+    private var examples: [String] { AgentExamples.questions }
 
     private var canAsk: Bool {
         !app.agentGoalDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -723,6 +782,7 @@ struct ForumHomeState: View {
                             .stroke(focused ? DCTheme.agentTint : DCTheme.border, lineWidth: focused ? 1.5 : 1)
                     }
                     .focused($focused)
+                    .onChange(of: focused) { composerFocusChanged(focused) }
                     .submitLabel(.send)
                     .accessibilityIdentifier("forumHomeGoalInput")
 
@@ -805,7 +865,7 @@ struct ForumHomeState: View {
         var parts: [String] = []
         if session.hasSummary { parts.append(String(localized: "Summary", comment: "Assistant mode: the topic's AI summary")) }
         if !session.history.isEmpty { parts.append(String(localized: "\(session.history.count) messages", comment: "Number of chat messages")) }
-        parts.append(session.lastAccessedAt.formatted(.relative(presentation: .named)))
+        parts.append(session.lastSeenAt.formatted(.relative(presentation: .named)))
         return parts.joined(separator: " · ")
     }
 

@@ -552,6 +552,31 @@ final class PodcastTests: XCTestCase {
         XCTAssertEqual(app.podcast.episode?.language, AppLanguage.current)
     }
 
+    /// Make / Play tapped again while the episode is being made plays it
+    /// and leaves the run alone: the chapter in progress is not made again.
+    func testRepeatedMakeWhileMakingNeitherRestartsNorRepeatsAChapter() async throws {
+        let harness = makeHarness()
+        let app = harness.app
+        connect(app)
+        let digest = completeDigest(cards: 1)
+        app.digests = [digest]
+        let engine = GatedSpeechEngine()
+        app.podcast.makeEngine = { _, _, _ in engine }
+        harness.ai.answers = [#"{"turns":[{"speaker":"A","text":"Hi."},{"speaker":"B","text":"Hello."}]}"#]
+
+        app.podcast.make(play: true)
+        try await waitUntil { engine.waiting }
+        app.podcast.make(play: true)
+        app.podcast.make(play: true)
+        app.podcast.make()
+        XCTAssertEqual(app.podcast.player.playlist?.id, digest.id.uuidString)
+        engine.gated = false
+        engine.release()
+        try await waitUntil { app.podcast.episode?.isComplete == true && !app.podcast.activity.isRunning }
+        XCTAssertEqual(engine.attempts, 3, "intro, the topic, outro: each made once")
+        XCTAssertEqual(harness.ai.calls.count, 1, "the topic was scripted once")
+    }
+
     func testPlayTodaysPodcastPlaysAnEpisodeThatExists() async throws {
         let harness = makeHarness()
         let app = harness.app
@@ -768,6 +793,8 @@ final class PodcastTests: XCTestCase {
         )
         app.usesDirectForumRequests = true
         app.browser.onPageContextChanged = nil
+        // Consent has its own tests (AIDataConsentTests).
+        app.allowAllAIProviders()
         addTeardownBlock { @MainActor in
             app.podcast.pauseGeneration()
             app.podcast.player.unload()
@@ -832,6 +859,29 @@ final class FakeSpeechEngine: PodcastSpeechEngine {
 
     func synthesize(_ turns: [PodcastTurn], to url: URL) async throws -> TimeInterval {
         spoken.append(turns)
+        try WAVFile.data(PCMAudio(samples: Data(count: 1_600), sampleRate: 8_000)).write(to: url)
+        return 0.1
+    }
+}
+
+/// Holds each chapter (while `gated`) until `release()`.
+@MainActor
+final class GatedSpeechEngine: PodcastSpeechEngine {
+    private(set) var attempts = 0
+    var gated = true
+    private var continuation: CheckedContinuation<Void, Never>?
+    var waiting: Bool { continuation != nil }
+    var fileExtension: String { "wav" }
+
+    func release() {
+        continuation?.resume()
+        continuation = nil
+    }
+
+    func synthesize(_ turns: [PodcastTurn], to url: URL) async throws -> TimeInterval {
+        attempts += 1
+        if gated { await withCheckedContinuation { continuation = $0 } }
+        try Task.checkCancellation()
         try WAVFile.data(PCMAudio(samples: Data(count: 1_600), sampleRate: 8_000)).write(to: url)
         return 0.1
     }

@@ -490,24 +490,6 @@ struct PodcastDisclosure: View {
     }
 }
 
-/// Presents the consent sheet when the podcast asks for it. `isEnabled`
-/// keeps a presenter quiet while another one (the Today page's) is up.
-struct PodcastConsentPresenter: ViewModifier {
-    @ObservedObject var podcast: PodcastController
-    var isEnabled = true
-
-    func body(content: Content) -> some View {
-        content.sheet(item: isEnabled ? $podcast.consentProvider : .constant(nil)) { provider in
-            PodcastConsentSheet(
-                provider: provider,
-                onAgree: { podcast.agree(provider) },
-                onDeviceVoices: { podcast.useOnDeviceVoices() },
-                onCancel: { podcast.declineConsent() }
-            )
-        }
-    }
-}
-
 // MARK: - Settings
 
 /// The podcast part of Settings › Daily digest.

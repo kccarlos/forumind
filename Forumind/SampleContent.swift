@@ -109,16 +109,16 @@ extension SampleContent {
         ## Original post
         The Discourse team merged the separate **New** and **Unread** lists into one *unified new view*, \
         with tabs to narrow it to new topics or new replies. It is on by default for new sites and \
-        opt-in for existing ones.
+        opt-in for existing ones #1.
 
         ## What people are saying
-        - **Most like it**: one place to catch up, and the counts in the sidebar finally match.
-        - **Keyboard users** asked for a shortcut to switch tabs; `g n` still opens the view.
-        - **Admins** want a per-group default so staff can keep the old lists for a while.
+        - **Most like it**: one place to catch up, and the counts in the sidebar finally match #3 #7.
+        - **Keyboard users** asked for a shortcut to switch tabs; `g n` still opens the view #9.
+        - **Admins** want a per-group default so staff can keep the old lists for a while #12.
 
         ## Tips from the thread
-        1. Enable it under *Admin → Settings → experimental new new view groups* first.
-        2. Tell members that “Dismiss” now clears both topics and replies.
+        1. Enable it under *Admin → Settings → experimental new new view groups* first #12.
+        2. Tell members that “Dismiss” now clears both topics and replies #20.
 
         > “It took a day to get used to, now I can’t go back.” — a site admin
 
@@ -231,16 +231,16 @@ extension SampleContent {
         metaSummary: """
         ## 原帖概要
         管理团队把原来分开的**新话题**和**未读**两个列表合并成一个*统一的“新内容”视图*，\
-        并提供标签页，可以只看新话题或只看新回复。新站点默认开启，老站点可以自行选择开启。
+        并提供标签页，可以只看新话题或只看新回复。新站点默认开启，老站点可以自行选择开启 #1。
 
         ## 大家怎么说
-        - **多数人喜欢**：一个地方就能跟上所有进度，侧边栏的计数也终于对得上了。
-        - **键盘用户**希望有切换标签页的快捷键；`g n` 仍然可以打开这个视图。
-        - **管理员**希望能按用户组设置默认值，让工作人员先继续用旧列表一段时间。
+        - **多数人喜欢**：一个地方就能跟上所有进度，侧边栏的计数也终于对得上了 #3 #7。
+        - **键盘用户**希望有切换标签页的快捷键；`g n` 仍然可以打开这个视图 #9。
+        - **管理员**希望能按用户组设置默认值，让工作人员先继续用旧列表一段时间 #12。
 
         ## 帖子里的建议
-        1. 先在*管理 → 设置 → experimental new new view groups* 中为部分用户组开启。
-        2. 提醒成员：“忽略”现在会同时清除新话题和新回复。
+        1. 先在*管理 → 设置 → experimental new new view groups* 中为部分用户组开启 #12。
+        2. 提醒成员：“忽略”现在会同时清除新话题和新回复 #20。
 
         > “适应了一天，现在已经回不去了。” — 一位站点管理员
 
@@ -352,16 +352,16 @@ extension SampleContent {
         metaSummary: """
         ## 原文重點
         管理團隊把原本分開的**新話題**和**未讀**兩個列表合併成一個*統一的「新內容」檢視*，\
-        並提供分頁，可以只看新話題或只看新回覆。新網站預設開啟，既有網站可以自行選擇開啟。
+        並提供分頁，可以只看新話題或只看新回覆。新網站預設開啟，既有網站可以自行選擇開啟 #1。
 
         ## 大家怎麼說
-        - **多數人喜歡**：一個地方就能掌握所有進度，側邊欄的數字也終於對得上了。
-        - **鍵盤使用者**希望有切換分頁的快速鍵；`g n` 仍然可以打開這個檢視。
-        - **管理員**希望能依群組設定預設值，讓工作人員先繼續用舊列表一段時間。
+        - **多數人喜歡**：一個地方就能掌握所有進度，側邊欄的數字也終於對得上了 #3 #7。
+        - **鍵盤使用者**希望有切換分頁的快速鍵；`g n` 仍然可以打開這個檢視 #9。
+        - **管理員**希望能依群組設定預設值，讓工作人員先繼續用舊列表一段時間 #12。
 
         ## 討論串裡的建議
-        1. 先在*管理 → 設定 → experimental new new view groups* 中為部分群組開啟。
-        2. 提醒成員：「略過」現在會同時清除新話題和新回覆。
+        1. 先在*管理 → 設定 → experimental new new view groups* 中為部分群組開啟 #12。
+        2. 提醒成員：「略過」現在會同時清除新話題和新回覆 #20。
 
         > 「適應了一天，現在已經回不去了。」— 一位網站管理員
 

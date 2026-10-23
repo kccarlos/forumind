@@ -62,8 +62,10 @@ final class CloudSyncTests: XCTestCase {
         return Device(app: app, sync: sync, transport: transport, providerKeys: providerKeys, directory: directory)
     }
 
+    /// After leaving the foreground (the snapshot is on disk).
     private func relaunch(_ device: Device) -> Device {
-        launch(directory: device.directory, providerKeys: device.providerKeys, user: device.transport.user)
+        device.app.flushPendingSaves()
+        return launch(directory: device.directory, providerKeys: device.providerKeys, user: device.transport.user)
     }
 
     private func sync(_ devices: Device...) async {
@@ -95,7 +97,7 @@ final class CloudSyncTests: XCTestCase {
         session.totalPosts = 10
         session.createdAt = date
         session.updatedAt = date
-        session.lastAccessedAt = date
+        session.openedByUserAt = date
         return session
     }
 
@@ -1143,6 +1145,7 @@ final class CloudSyncTests: XCTestCase {
         XCTAssertEqual(a.app.sessions[key]?.kept, true)
 
         // The flag is per device and survives a relaunch.
+        a.app.flushPendingSaves()
         let relaunched = launch(directory: a.directory, providerKeys: a.providerKeys, defaults: defaults)
         XCTAssertFalse(relaunched.sync.isEnabled)
         XCTAssertEqual(relaunched.sync.status, .off)

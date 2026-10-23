@@ -113,7 +113,7 @@ enum StoredSnapshot {
             var siteURL: String?
             var topicID: String
             var title: String
-            var lastAccessedAt: Date?
+            var openedByUserAt: Date?
         }
         var sessions: [Session]?
         var forums: [Forum]?
@@ -144,8 +144,11 @@ enum StoredSnapshot {
     static func topics() -> [TopicEntity] {
         guard let snapshot = decode(Topics.self) else { return [] }
         let names = Dictionary((snapshot.forums ?? []).map { ($0.siteURL, $0.displayName) }, uniquingKeysWith: { first, _ in first })
+        // Topics the user opened, newest first (never ones only the agent read).
         return (snapshot.sessions ?? [])
-            .sorted { ($0.lastAccessedAt ?? .distantPast) > ($1.lastAccessedAt ?? .distantPast) }
+            .compactMap { session in session.openedByUserAt.map { (session, $0) } }
+            .sorted { $0.1 > $1.1 }
+            .map(\.0)
             .compactMap { session in
                 guard let siteURL = session.siteURL, let name = names[siteURL] else { return nil }
                 return TopicEntity(

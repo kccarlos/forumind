@@ -70,7 +70,6 @@ struct ResultCardsOverlay: View {
                                 isCurrent: cursor.index == index,
                                 tint: tint
                             ) {
-                                DCHaptics.tap()
                                 Task { await app.openCard(index, includeContent: false) }
                             }
                             .id(index)
@@ -88,6 +87,7 @@ struct ResultCardsOverlay: View {
                 }
             }
         }
+        .sensoryFeedback(.selection, trigger: cursor.index)
         .frame(maxWidth: DCTheme.contentMaxWidth)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: DCTheme.cardCornerRadius, style: .continuous))
         .overlay {

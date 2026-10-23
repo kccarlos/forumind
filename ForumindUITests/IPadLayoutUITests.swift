@@ -67,7 +67,7 @@ final class IPadLayoutUITests: DCUITestCase {
     func testRotatingOnTheForumsHomeKeepsTheAppRunning() throws {
         try skipUnlessPad("iPad layout")
         let app = launch(["-dc-sample", "-dc-forums-home"], orientation: .landscapeLeft)
-        let home = any(app, "forumsHome")
+        let home = any(app, "home")
         XCTAssertTrue(waitOrDump(home, timeout: 20, in: app))
         RunLoop.current.run(until: Date().addingTimeInterval(3))
         for _ in 0..<2 {
@@ -155,9 +155,9 @@ final class IPadLayoutUITests: DCUITestCase {
         XCTAssertTrue(modes.waitForExistence(timeout: 5), "⌘. should return to the assistant.")
 
         app.typeKey("h", modifierFlags: [.command, .shift])
-        XCTAssertTrue(any(app, "forumsHome").waitForExistence(timeout: 5), "⌘⇧H should show the Forums home.")
+        XCTAssertTrue(any(app, "home").waitForExistence(timeout: 5), "⌘⇧H should show the Forums home.")
         app.typeKey("[", modifierFlags: .command)
-        XCTAssertTrue(waitForGone(any(app, "forumsHome"), timeout: 5), "⌘[ should go back to the page.")
+        XCTAssertTrue(waitForGone(any(app, "home"), timeout: 5), "⌘[ should go back to the page.")
     }
 
     // MARK: Forums home
@@ -167,7 +167,7 @@ final class IPadLayoutUITests: DCUITestCase {
     func testRemovingAPinnedForumFromItsContextMenu() throws {
         try skipUnlessPad("iPad context menu popover")
         let app = launch(["-dc-sample", "-dc-forums-home"], orientation: .landscapeLeft)
-        let home = any(app, "forumsHome")
+        let home = any(app, "home")
         XCTAssertTrue(waitOrDump(home, timeout: 20, in: app))
         let tiles = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'pinnedForum-'"))
         let tile = tiles.firstMatch

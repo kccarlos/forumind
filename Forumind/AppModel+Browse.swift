@@ -1,10 +1,13 @@
 import Foundation
 import SwiftUI
 
-// MARK: - Browsing and the Forums home (UI engineer A)
+// MARK: - Browsing and Home (UI engineer A)
 //
-// - `goHome()`                     current forum's /latest, else the Forums home
-// - `showForumsHome()`             Forums home over the current page
+// - `goHome()`                     current forum's /latest, else Home
+// - `showForumsHome()`             Home over the current page (HomeView.swift)
+// - `showsTodayPage`               the Today page pushed over Home
+// - `todayModuleState`             the Today module's state (HomeState.swift)
+// - `applyLaunchRuleIfNeeded()`    the first activation: Home or the last forum
 // - `suggestedForumsToOffer`       suggested forums not added yet
 // - `pinSuggested(_:)`             pins a suggested forum at once, then fetches its name/icon
 // - `askForum(_:)`                 opens the forum and the Agent ("Ask the forum") for it
@@ -20,6 +23,82 @@ extension AppModel {
 
     func showForumsHome() {
         browser.showForumsHome()
+    }
+
+    /// The Today page, pushed over Home (Home's Today module, a digest
+    /// notification, the Open Today and Play Today intents). Setting it
+    /// false goes back to Home.
+    var showsTodayPage: Bool {
+        get { browser.showsForumsHome && homePath.first == .today }
+        set {
+            if newValue {
+                browser.showForumsHome()
+                if homePath != [.today] { homePath = [.today] }
+            } else if !homePath.isEmpty {
+                homePath = []
+            }
+        }
+    }
+
+    /// Home hid (a page loaded, Back): the pages pushed over it go too.
+    func homeVisibilityChanged() {
+        if !browser.showsForumsHome, !homePath.isEmpty { homePath = [] }
+    }
+
+    var todayModuleState: TodayModuleState {
+        let digest = todaysDigest
+        return TodayModuleState.resolve(
+            digest: digest,
+            digestActivity: digestActivity,
+            providerReady: isProviderReady(for: .assistant),
+            episode: podcast.episode?.digestID == digest?.id ? podcast.episode : nil,
+            podcastActivity: podcast.activity
+        )
+    }
+
+    // MARK: Launch rule (§7.2)
+
+    /// A link, notification, Siri, Spotlight or the share extension opened
+    /// something: before the rule has run, the page is left to it.
+    func noteExternalEntry() {
+        if launchPhase == .waiting { launchPhase = .openedExternally }
+    }
+
+    /// Once, on the first activation (after the share inbox and today's
+    /// digest have started): Home or the last forum, which the browser has
+    /// been loading since launch. A request from outside always wins.
+    func applyLaunchRuleIfNeeded(now: Date = Date()) {
+        guard launchPhase != .settled, settings.hasCompletedOnboarding else { return }
+        let openedExternally = launchPhase == .openedExternally
+        launchPhase = .settled
+        #if DEBUG
+        // UI tests and samples land where their arguments say, unless they
+        // ask for the rule (`-dc-launch automatic|home|lastForum`).
+        let arguments = ProcessInfo.processInfo.arguments
+        let override = AssistantDebug.value("-dc-launch").flatMap(LaunchDestination.init(rawValue:))
+        if override == nil, arguments.contains(where: { $0.hasPrefix("-dc-") || $0.hasPrefix("-ui-test-") }) { return }
+        let setting = override ?? settings.launchDestination
+        #else
+        let setting = settings.launchDestination
+        #endif
+        podcast.refresh()
+        let defaults = UserDefaults.standard
+        let decision = LaunchRule.decide(
+            setting: setting,
+            openedExternally: openedExternally,
+            todayHasSomething: todayModuleState.hasSomething,
+            lastHomeAutoShownDay: defaults.string(forKey: LaunchRule.lastHomeAutoShownDayKey),
+            now: now
+        )
+        switch decision {
+        case .external, .lastForum:
+            break
+        case .home(let marksDay):
+            if marksDay { defaults.set(DailyDigest.dayKey(for: now), forKey: LaunchRule.lastHomeAutoShownDayKey) }
+            // Over the restored forum's first load, which would otherwise
+            // dismiss it as it starts.
+            browser.showForumsHome(overPendingLoad: true)
+        }
     }
 
     /// Suggested forums the user has not added yet.
@@ -42,7 +121,7 @@ extension AppModel {
         agentSiteURL = forum.siteURL
         assistantMode = .agent
         panelRoute = .topic
-        presentAssistant = true
+        requestAssistant()
         if !isProviderReady(for: .agent) { needsProviderSetup = .agent }
     }
 
@@ -69,7 +148,9 @@ extension AppModel {
     /// - `-dc-seed-forums`   pins three forums and adds two recents (icons fetched
     ///                       live unless `-dc-no-forum-icons`)
     /// - `-dc-no-forum-icons` letter monograms instead of forum icons (ForumIconPolicy)
-    /// - `-dc-forums-home`   starts on the Forums home even when a forum was restored
+    /// - `-dc-forums-home`   starts on Home even when a forum was restored
+    /// - `-dc-launch <destination>` applies the launch rule (automatic | home |
+    ///                       lastForum) although this is a `-dc-` launch
     /// - `-dc-open <url>`    opens a page on launch
     /// - `-dc-show-switcher` opens the forum switcher after launch (ContentView)
     /// - `-dc-browse-post`, `-dc-browse-find`, `-dc-browse-debug` post-level
@@ -96,12 +177,8 @@ extension AppModel {
            let url = URL(string: arguments[index + 1]) {
             browser.load(url)
         } else if arguments.contains("-dc-forums-home") {
-            // After the restored forum's first navigation starts (which
-            // would otherwise dismiss it).
-            Task { @MainActor [weak self] in
-                try? await Task.sleep(for: .seconds(2))
-                self?.browser.showForumsHome()
-            }
+            // Kept over the restored forum's first load.
+            browser.showForumsHome(overPendingLoad: true)
         }
     }
 }

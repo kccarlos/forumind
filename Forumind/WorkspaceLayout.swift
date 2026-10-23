@@ -300,7 +300,7 @@ struct WorkspaceCommands: Commands {
                 Button("Forward") { WorkspaceCommand.forward.post() }
                     .keyboardShortcut("]", modifiers: .command)
                 Divider()
-                Button("All Forums") { WorkspaceCommand.forumsHome.post() }
+                Button("Home") { WorkspaceCommand.forumsHome.post() }
                     .keyboardShortcut("h", modifiers: [.command, .shift])
             }
         }
@@ -308,9 +308,9 @@ struct WorkspaceCommands: Commands {
             Group {
                 Button("Summary") { WorkspaceCommand.summary.post() }
                     .keyboardShortcut("1", modifiers: .command)
-                Button("Chat") { WorkspaceCommand.chat.post() }
+                Button("This Topic") { WorkspaceCommand.chat.post() }
                     .keyboardShortcut("2", modifiers: .command)
-                Button("Ask the Forum") { WorkspaceCommand.agent.post() }
+                Button("Whole Forum") { WorkspaceCommand.agent.post() }
                     .keyboardShortcut("3", modifiers: .command)
             }
         }

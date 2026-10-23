@@ -6,16 +6,22 @@ import UIKit
 struct AgentView: View {
     @ObservedObject var app: AppModel
     var showsProviderCard = false
-    var onSetUpProvider: () -> Void = {}
+    /// The iPhone drawer: its Ask box (AskBox.swift) asks and follows up, so
+    /// the goal box and the follow-up composer stay out; an empty state
+    /// offers examples and the recent runs on the forum.
+    var usesAskBox = false
     /// Opens a topic the agent read in the browser.
     let onOpenTopic: (URL) -> Void
     @FocusState private var goalFocused: Bool
     @FocusState private var followUpFocused: Bool
+    @Environment(\.composerFocusChanged) private var composerFocusChanged
     /// nil follows the run: open while it works, closed once it has an answer.
     @State private var stepsExpanded: Bool?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var run: AgentRun? { app.selectedAgentRun }
+    private var run: AgentRun? {
+        usesAskBox && app.asksNewForumQuestion ? nil : app.selectedAgentRun
+    }
 
     private var activeRecord: WorkRecord? {
         guard let run else { return nil }
@@ -35,10 +41,14 @@ struct AgentView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
                         if showsProviderCard {
-                            ProviderSetupCard(app: app, role: .agent, onSetUp: onSetUpProvider)
+                            ProviderSetupCard(app: app, role: .agent)
                         }
 
-                        goalComposer
+                        if usesAskBox {
+                            askBoxHeader
+                        } else {
+                            goalComposer
+                        }
 
                         if let run {
                             runHeader(run)
@@ -57,6 +67,8 @@ struct AgentView: View {
                                     .dcCard(tint: DCTheme.danger)
                                     .accessibilityIdentifier("agentRunError")
                             }
+                        } else if usesAskBox {
+                            askBoxEmptyState
                         } else {
                             emptyState
                         }
@@ -94,7 +106,7 @@ struct AgentView: View {
                 }
             }
 
-            if let run, run.status.isTerminal {
+            if !usesAskBox, let run, run.status.isTerminal {
                 followUpComposer(run)
                     .padding(.horizontal, 12)
                     .padding(.top, 8)
@@ -176,6 +188,7 @@ struct AgentView: View {
                 .stroke(goalFocused ? DCTheme.agentTint : DCTheme.border, lineWidth: goalFocused ? 1.5 : 1)
         }
         .focused($goalFocused)
+        .onChange(of: goalFocused) { composerFocusChanged(goalFocused) }
         .accessibilityIdentifier("agentGoalInput")
     }
 
@@ -282,6 +295,8 @@ struct AgentView: View {
         } label: {
             Label("History", systemImage: "clock.arrow.circlepath")
                 .font(.footnote.weight(.semibold))
+                .frame(minHeight: DCTheme.controlHeight)
+                .contentShape(Rectangle())
         }
         .accessibilityIdentifier("agentHistoryMenu")
     }
@@ -313,6 +328,123 @@ struct AgentView: View {
                 .frame(width: 20)
                 .accessibilityHidden(true)
             Text(text).font(.subheadline)
+        }
+    }
+
+    // MARK: With the Ask box
+
+    /// History (until the History page, Phase 7) and New question / back
+    /// to the answer.
+    @ViewBuilder
+    private var askBoxHeader: some View {
+        let hasRuns = !app.agentRuns.isEmpty
+        if hasRuns {
+            HStack(spacing: 8) {
+                historyMenu
+                Spacer(minLength: 4)
+                if run != nil {
+                    Button {
+                        withAnimation(DCMotion.respecting(reduceMotion)) { app.startNewAgentQuestion() }
+                    } label: {
+                        Label("New question", systemImage: "square.and.pencil")
+                            .font(.footnote.weight(.semibold))
+                            .frame(minHeight: DCTheme.controlHeight)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.borderless)
+                    .tint(DCTheme.agentTint)
+                    .accessibilityIdentifier("agentNewQuestion")
+                } else if app.agentComposesNewQuestion {
+                    Button {
+                        withAnimation(DCMotion.respecting(reduceMotion)) { app.showSelectedAgentRun() }
+                    } label: {
+                        Label("Last answer", systemImage: "arrow.uturn.backward")
+                            .font(.footnote.weight(.semibold))
+                            .frame(minHeight: DCTheme.controlHeight)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.borderless)
+                    .tint(DCTheme.agentTint)
+                    .accessibilityIdentifier("agentShowLastAnswer")
+                }
+            }
+        }
+    }
+
+    /// Empty Whole forum: example questions, the recent runs on this forum,
+    /// then how it works and its budget.
+    private var askBoxEmptyState: some View {
+        let runs = Array(app.agentRuns.filter { $0.siteURL == forum?.siteURL }.prefix(3))
+        return VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 10) {
+                DCSectionHeader(title: forum.map {
+                    String(localized: "Ask \($0.displayName)", comment: "Heading above example questions for Ask the forum; the placeholder is a forum name")
+                } ?? String(localized: "Ask the forum"))
+                ForEach(AgentExamples.questions, id: \.self) { example in
+                    Button {
+                        DCHaptics.tap()
+                        app.agentGoalDraft = example
+                        app.askFocusRequest += 1
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "sparkle")
+                                .foregroundStyle(DCTheme.agentTint)
+                                .accessibilityHidden(true)
+                            Text(example)
+                                .font(.subheadline)
+                                .foregroundStyle(.primary)
+                                .multilineTextAlignment(.leading)
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, 12)
+                        .frame(minHeight: DCTheme.controlHeight)
+                        .background(DCTheme.agentTint.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Fills the question box")
+                    .accessibilityIdentifier("agentExample")
+                }
+            }
+            if !runs.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    DCSectionHeader(title: String(localized: "Recent questions", comment: "Section header: the latest Ask the forum runs on this forum"))
+                    ForEach(runs) { previous in
+                        Button {
+                            withAnimation(DCMotion.respecting(reduceMotion)) { app.openAgentRun(id: previous.id) }
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: statusIcon(previous.status))
+                                    .font(.footnote.weight(.bold))
+                                    .foregroundStyle(statusColor(previous.status))
+                                    .frame(width: 28, height: 28)
+                                    .background(statusColor(previous.status).opacity(0.14), in: Circle())
+                                    .accessibilityHidden(true)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(previous.goal)
+                                        .font(.subheadline.weight(.medium))
+                                        .foregroundStyle(.primary)
+                                        .lineLimit(2)
+                                        .multilineTextAlignment(.leading)
+                                    Text(previous.createdAt.formatted(.relative(presentation: .named)))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer(minLength: 4)
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .frame(minHeight: DCTheme.controlHeight)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("agentRecentRun")
+                    }
+                }
+            }
+            emptyState
+            budgetText
         }
     }
 
@@ -563,6 +695,13 @@ struct AgentView: View {
                     ShareLink(item: answer) {
                         Label("Share", systemImage: "square.and.arrow.up")
                     }
+                    Button {
+                        app.report(app.aiOutputReport(for: run, answer: answer))
+                    } label: {
+                        Label(String(localized: "Report This Answer…", comment: "Assistant menu: report the AI's latest chat answer"), systemImage: "flag")
+                    }
+                    .disabled(answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityIdentifier("reportAgentAnswer")
                     if run.status.isTerminal {
                         Button(role: .destructive) {
                             app.deleteAgentRun(id: run.id)
@@ -692,6 +831,7 @@ struct AgentView: View {
                 .padding(.leading, 14)
                 .padding(.vertical, 11)
                 .focused($followUpFocused)
+                .onChange(of: followUpFocused) { composerFocusChanged(followUpFocused) }
                 .accessibilityIdentifier("agentFollowUpInput")
                 .onSubmit { send(run) }
 

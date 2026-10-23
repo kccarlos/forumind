@@ -330,7 +330,7 @@ final class ForumPacingTests: XCTestCase {
         XCTAssertTrue(app.enqueueSummary(for: topic))
         try await waitUntil { PacingURLStub.times.count == 1 }  // topic JSON; page 1 waits
         let record = try XCTUnwrap(app.activities.first)
-        XCTAssertEqual(record.phase, "fetching")
+        XCTAssertEqual(record.status, .running)
         XCTAssertEqual(record.statusText, "Reading response page 1 of 3…")
 
         app.cancel(record: record)

@@ -1,11 +1,10 @@
 import Foundation
-import WebKit
 
 // MARK: - AppModel API for the daily digest (model: DailyDigest.swift)
 //
 // - `digests` / `todaysDigest` / `earlierDigests`   newest first, at most 7, device-local
 // - `digestActivity`                  preparing, summarizing a card, or unreachable
-// - `showsTodayPage`                  the Today page (Forums home, notification tap)
+// - `showsTodayPage`                  the Today page pushed over Home (notification tap, intents)
 // - `makeTodaysDigest(replacing:)`    the Today page's button (works with the daily switch off)
 // - `resumeDigestIfNeeded()`          Today page and foreground: continue today's digest, or
 //                                     make it when the daily switch is on
@@ -107,6 +106,7 @@ extension AppModel {
     func openTodayFromNotification() {
         guard WatchNotifier.pendingTodayOpen else { return }
         WatchNotifier.pendingTodayOpen = false
+        noteExternalEntry()
         showsTodayPage = true
     }
 
@@ -246,12 +246,12 @@ extension AppModel {
     /// no new posts reuse their summary); otherwise it continues it.
     func makeTodaysDigest(replacing: Bool = false) {
         if let today = todaysDigest, !replacing {
-            if !today.isComplete, digestTask == nil, isProviderReady(for: .assistant) {
+            if !today.isComplete, digestTask == nil, canRunUnattended(.assistant) {
                 startDigestRun { model, runID in await model.runDigest(id: today.id, runID: runID) }
             }
             return
         }
-        guard isProviderReady(for: .assistant) else { return }
+        guard canRunUnattended(.assistant) else { return }
         if digestTask != nil { pauseDigest() }
         digestActivity = .preparing
         startDigestRun { model, runID in
@@ -262,13 +262,14 @@ extension AppModel {
 
     /// The Today page and the app coming to the foreground: continues
     /// today's unfinished digest, or makes it when the daily switch is on.
-    /// Nothing starts without a ready assistant model.
+    /// Nothing starts without a ready assistant model whose provider may
+    /// receive forum content (the digest never shows the consent page).
     func resumeDigestIfNeeded() {
         #if DEBUG
         // The sample's placeholder key must never reach a provider.
         if AssistantDebug.isActive { return }
         #endif
-        guard digestTask == nil, settings.hasCompletedOnboarding, isProviderReady(for: .assistant) else { return }
+        guard digestTask == nil, settings.hasCompletedOnboarding, canRunUnattended(.assistant) else { return }
         if let today = todaysDigest {
             guard !today.isComplete else { return }
             makeTodaysDigest()
@@ -432,7 +433,8 @@ extension AppModel {
                 card.state = .done
             } catch {
                 guard isCurrentDigestRun(runID) else { return }
-                if Self.isOffline(error) {
+                // No connection: the digest waits instead of failing every card.
+                if NetworkFailure.isUnreachable(error) {
                     mutateDigestCard(card.id, in: id) { $0.state = .pending }
                     digestActivity = .unreachable
                     saveDigests()
@@ -534,21 +536,6 @@ extension AppModel {
             return
         }
         mutation(&digests[digestIndex].cards[cardIndex])
-    }
-
-    /// No connection: the digest waits instead of failing every card. A
-    /// request made inside the forum page fails as a JavaScript `fetch`
-    /// rejection ("Load failed") instead of a URLError.
-    nonisolated static func isOffline(_ error: Error) -> Bool {
-        if let webError = error as? WKError, webError.code == .javaScriptExceptionOccurred {
-            let message = webError.userInfo["WKJavaScriptExceptionMessage"] as? String ?? ""
-            return message.contains("Load failed") || message.contains("NetworkError")
-        }
-        guard let urlError = error as? URLError else { return false }
-        return [
-            .notConnectedToInternet, .networkConnectionLost, .cannotFindHost, .cannotConnectToHost,
-            .timedOut, .dataNotAllowed, .internationalRoamingOff
-        ].contains(urlError.code)
     }
 
     // MARK: Sample

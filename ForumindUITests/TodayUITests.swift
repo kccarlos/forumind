@@ -1,6 +1,6 @@
 import XCTest
 
-/// The daily digest's Today page on sample data (`-dc-sample
+/// The daily digest's Today page (pushed over Home) on sample data (`-dc-sample
 /// -dc-digest-sample`): no network, no AI key, nothing saved.
 final class TodayUITests: DCUITestCase {
     func testTodayPageShowsTheDigestCardsAndTheirPostLinks() throws {
@@ -26,10 +26,10 @@ final class TodayUITests: DCUITestCase {
         XCTAssertTrue(reveal(waiting, in: app))
         XCTAssertTrue(app.staticTexts["Waiting to be summarized"].exists || !isEnglish(app))
 
-        // Done closes the page.
-        let done = app.buttons["todayDone"]
-        XCTAssertTrue(waitForHittable(done))
-        done.tap()
+        // Back returns to Home.
+        let back = app.navigationBars["Today"].buttons.element(boundBy: 0)
+        XCTAssertTrue(waitForHittable(back))
+        back.tap()
         XCTAssertTrue(waitForGone(watched, timeout: 5))
         XCTAssertTrue(entry.waitForExistence(timeout: 5))
     }
@@ -72,50 +72,22 @@ final class TodayUITests: DCUITestCase {
         let before = status.label
         next.tap()
         XCTAssertTrue(wait(timeout: 10) { status.label != before }, "Next chapter changed nothing: \(before)")
-        XCTAssertTrue(app.buttons["todayDone"].exists)
+        XCTAssertTrue(app.buttons["todayMenu"].exists)
     }
 
     private func isEnglish(_ app: XCUIApplication) -> Bool {
         Locale.preferredLanguages.first?.hasPrefix("en") ?? true
     }
 
-    /// The forum switcher's All Forums.
-    private func showForumsHome(in app: XCUIApplication) {
-        let switcher = app.buttons["forumSwitcher"]
-        if waitForHittable(switcher) {
-            switcher.tap()
-            let allForums = app.buttons["switcherAllForums"]
-            if allForums.waitForExistence(timeout: 5) { allForums.tap() }
-        }
-    }
-
-    /// From launch to the Today page, via the Forums home's Today row.
+    /// From launch to the Today page, via Home's Today module.
     @discardableResult
     private func openToday(in app: XCUIApplication) -> XCUIElement {
-        let home = any(app, "forumsHome")
-        // The sample opens on the Assistant; on a slow launch the home under
-        // it isn't in the tree yet, so show the browser first then.
-        if !home.waitForExistence(timeout: 10) { showBrowser(in: app) }
-        if !home.waitForExistence(timeout: 10) { showForumsHome(in: app) }
-        XCTAssertTrue(home.waitForExistence(timeout: 10), "The Forums home did not appear.")
-        // `-dc-forums-home` re-shows the home 2 s after launch; a restored
-        // forum that finishes loading later replaces it, so bring it back
-        // from the forum switcher.
-        RunLoop.current.run(until: Date().addingTimeInterval(2.5))
-        if !home.waitForExistence(timeout: 3) { showForumsHome(in: app) }
-        XCTAssertTrue(home.waitForExistence(timeout: 10))
-
-        // The sample opens on the Assistant in the single-pane layout.
-        showBrowser(in: app)
-
-        // The Today row sits at the top of the Forums home.
-        let entry = any(app, "todayEntry")
-        XCTAssertTrue(entry.waitForExistence(timeout: 10), "The Forums home has no Today row.")
-        // The web view under the Forums home stays in the accessibility tree
-        // and can make the row read as not hittable; tap its center.
+        openHome(in: app)
+        let entry = app.buttons["homeTodayOpen"]
+        XCTAssertTrue(entry.waitForExistence(timeout: 10), "Home has no Today module.")
         if !waitForHittable(entry, timeout: 3) { attachTree(app) }
-        entry.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-
+        entry.tap()
+        XCTAssertTrue(any(app, "todayPage").waitForExistence(timeout: 10), "The Today page was not pushed.")
         return entry
     }
 }

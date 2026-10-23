@@ -60,11 +60,16 @@ enum SpotlightCatalog {
 
     /// The topics to index: sessions of forums in the user's list (a forum
     /// removed from the list takes its topics out of Spotlight), summaries
-    /// first, then the most recently read.
+    /// first, then the topics the user opened most recently (never ones only
+    /// the agent read).
     static func entries(sessions: [TopicSession], forums: [Forum], limit: Int = maximumEntries) -> [SpotlightEntry] {
         let forumsBySite = Dictionary(forums.map { ($0.siteURL, $0) }, uniquingKeysWith: { first, _ in first })
         let entries: [SpotlightEntry] = sessions.compactMap { session in
-            guard let forum = forumsBySite[session.siteURL] else { return nil }
+            guard let forum = forumsBySite[session.siteURL],
+                  session.hasSummary || session.openedByUserAt != nil
+            else {
+                return nil
+            }
             let title = session.title.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !title.isEmpty else { return nil }
             return SpotlightEntry(
@@ -74,7 +79,7 @@ enum SpotlightCatalog {
                 forumName: forum.displayName,
                 excerpt: session.hasSummary ? excerpt(of: session.summary) : "",
                 url: session.url,
-                lastUsed: max(session.lastAccessedAt, session.summaryUpdatedAt ?? .distantPast),
+                lastUsed: max(session.openedByUserAt ?? .distantPast, session.summaryUpdatedAt ?? .distantPast),
                 iconURL: forum.iconURL
             )
         }

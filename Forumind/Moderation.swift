@@ -30,6 +30,8 @@ enum ModerationTerms {
     /// Bump when the terms change materially; everyone accepts again.
     static let currentVersion = 1
     static let url = URL(string: "https://github.com/kccarlos/forumind/blob/main/TERMS.md")!
+    /// The app's privacy policy (Settings › Data & privacy).
+    static let privacyURL = URL(string: "https://github.com/kccarlos/forumind/blob/main/PRIVACY.md")!
     /// Receives content reports. Reports are reviewed within 24 hours.
     static let reportEmail = "kccarlos.opensource@gmail.com"
 }
@@ -227,12 +229,32 @@ struct VisiblePost: Codable, Equatable, Identifiable {
     var id: Int { number }
 }
 
+/// Text the AI wrote that someone reports (App Review 1.2).
+struct AIOutput: Equatable {
+    enum Feature: String {
+        case summary
+        case chatAnswer = "chat answer"
+        case askAnswer = "Ask the forum answer"
+    }
+
+    var feature: Feature
+    /// "Provider · model", as the app shows it.
+    var model: String
+    var text: String
+    /// Ask the forum: the question it answered.
+    var question: String?
+
+    /// How much of the text goes in the report email.
+    static let reportTextLimit = 4_000
+}
+
 /// What a report is about.
 struct ReportTarget: Identifiable, Equatable {
     enum Kind: Equatable {
         case topic
         case post(number: Int, username: String)
         case user(username: String)
+        case aiOutput(AIOutput)
     }
 
     var siteURL: String
@@ -246,6 +268,7 @@ struct ReportTarget: Identifiable, Equatable {
         case .topic: "topic|\(topicURL?.absoluteString ?? siteURL)"
         case .post(let number, _): "post|\(topicURL?.absoluteString ?? siteURL)|\(number)"
         case .user(let username): "user|\(siteURL)|\(username)"
+        case .aiOutput(let output): "ai|\(topicURL?.absoluteString ?? siteURL)|\(output.feature.rawValue)|\(output.text.hashValue)"
         }
     }
 }
@@ -257,9 +280,17 @@ enum ReportReason: String, CaseIterable, Identifiable {
     case sexual
     case violence
     case illegal
+    /// AI output only.
+    case inaccurate
     case other
 
     var id: String { rawValue }
+
+    /// The reasons offered for `kind`, the likeliest first.
+    static func reasons(for kind: ReportTarget.Kind) -> [ReportReason] {
+        if case .aiOutput = kind { return [.inaccurate, .harassment, .hate, .sexual, .violence, .illegal, .other] }
+        return allCases.filter { $0 != .inaccurate }
+    }
 
     var title: String {
         switch self {
@@ -269,6 +300,7 @@ enum ReportReason: String, CaseIterable, Identifiable {
         case .sexual: String(localized: "Sexual content", comment: "Content report reason")
         case .violence: String(localized: "Violence or threats", comment: "Content report reason")
         case .illegal: String(localized: "Illegal content", comment: "Content report reason")
+        case .inaccurate: String(localized: "Inaccurate or misleading", comment: "Content report reason for text the AI wrote")
         case .other: String(localized: "Something else", comment: "Content report reason")
         }
     }
@@ -283,6 +315,7 @@ enum ModerationReport {
         case .topic: what = "topic"
         case .post(let number, let username): what = "post #\(number) by @\(username)"
         case .user(let username): what = "user @\(username)"
+        case .aiOutput(let output): what = "AI \(output.feature.rawValue)"
         }
         return "Forumind \(blocked ? "block" : "report"): \(what) on \(ForumSite.host(of: target.siteURL))"
     }
@@ -308,6 +341,10 @@ enum ModerationReport {
             lines.append("Post: #\(number) by @\(username)")
         case .user(let username):
             lines.append("User: @\(username)")
+        case .aiOutput(let output):
+            if let question = output.question { lines.append("Question: \(question)") }
+            lines.append("AI output: \(output.feature.rawValue)")
+            lines.append("Model: \(output.model)")
         }
         if let reason { lines.append("Reason: \(reason.rawValue)") }
         let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -316,9 +353,22 @@ enum ModerationReport {
             lines.append("Details:")
             lines.append(trimmed)
         }
+        if case .aiOutput(let output) = target.kind {
+            let text = output.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            lines.append("")
+            lines.append("AI text:")
+            lines.append(text.count > AIOutput.reportTextLimit ? String(text.prefix(AIOutput.reportTextLimit)) + " […]" : text)
+        }
         lines.append("")
         lines.append("App version: \(appVersion)")
         return lines.joined(separator: "\n")
+    }
+
+    static func draft(for target: ReportTarget, reason: ReportReason?, note: String, blocked: Bool) -> MailDraft {
+        MailDraft(
+            subject: subject(for: target, blocked: blocked),
+            body: body(for: target, reason: reason, note: note, blocked: blocked)
+        )
     }
 
     static func mailtoURL(subject: String, body: String) -> URL? {

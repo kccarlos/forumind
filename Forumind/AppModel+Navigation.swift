@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import SwiftUI
 
 // MARK: - Post-level browsing (the navigation layer)
 //
@@ -201,6 +202,24 @@ extension AppModel {
             shown: title.map { "\(quoted($0)): \(shown)" } ?? shown,
             content: text.map(BrowseText.content(of:))
         )
+    }
+
+    /// A post citation (`#37` in the drawer) or the solved hint, §4.5: the
+    /// drawer steps down from large so the page shows, the page scrolls to
+    /// the post (loading it first when it is outside the loaded range) and
+    /// strokes it once.
+    func jumpToCitation(_ number: Int) {
+        if router.drawerPhase == .shown, router.drawerDetent == .large {
+            withAnimation(DCMotion.respecting(UIAccessibility.isReduceMotionEnabled, DCMotion.smooth)) {
+                router.drawerDetent = .medium
+            }
+        }
+        citationJump = CitationJump(number: number, serial: (citationJump?.serial ?? 0) + 1)
+        browser.pendingJump = PostJump(number: number)
+        Task {
+            await goToPost(number)
+            if browser.pendingJump?.number == number { browser.pendingJump = nil }
+        }
     }
 
     /// A post of the current topic.

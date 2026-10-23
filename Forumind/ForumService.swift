@@ -48,11 +48,18 @@ final class ForumRedirectGuard: NSObject, URLSessionTaskDelegate, @unchecked Sen
 /// pace to use, so a running job keeps the one it started with.
 final class ForumService {
     private let session: URLSession
-    private let pageSize = 100
+    private let pageSize = RawForumPage.size
+    /// `429`s retried per request.
     private let maximumRetries = 6
+    /// Dropped connections, timeouts and gateway errors retried per request,
+    /// after 1, 2 and 4 seconds.
+    private let maximumTransientRetries = 3
     /// Shared by every request this service makes, so pacing covers all
     /// jobs, agent tools and watch checks on the same forum together.
     let pacer: ForumRequestPacer
+    /// Longest wait for a request made inside the forum page (whose script
+    /// gives up after 60 s itself); after it the request goes out directly.
+    var resourceLoaderTimeout: Duration = .seconds(75)
 
     init(session: URLSession = .shared, pacer: ForumRequestPacer = ForumRequestPacer()) {
         self.session = session
@@ -67,7 +74,8 @@ final class ForumService {
         cookieHeader: String?,
         resourceLoader: (@MainActor (URL) async throws -> ForumResourceResponse)? = nil,
         pace: ForumRequestPace = .default,
-        progress: @escaping @Sendable (ForumFetchProgress) async -> Void
+        progress: @escaping @Sendable (ForumFetchProgress) async -> Void,
+        onPage: (@Sendable (RawForumPage) async -> Void)? = nil
     ) async throws -> ForumFetchResult {
         let topicJSON = try await fetchTopicJSON(
             siteURL: siteURL,
@@ -147,8 +155,13 @@ final class ForumService {
                     }
 
                     var pages: [RawForumPage] = []
-                    for try await page in group {
+                    for try await fetched in group {
+                        var page = fetched
+                        page.topicPostCount = totalPosts
                         pages.append(page)
+                        // Kept by the caller as it arrives: a read that fails,
+                        // is paused or killed later does not fetch it again.
+                        await onPage?(page)
                         completed += 1
                         await progress(
                             ForumFetchProgress(
@@ -663,7 +676,9 @@ final class ForumService {
         resourceLoader: (@MainActor (URL) async throws -> ForumResourceResponse)?,
         pace: ForumRequestPace
     ) async throws -> Data {
-        for attempt in 0...maximumRetries {
+        var rateLimited = 0
+        var transient = 0
+        while true {
             try Task.checkCancellation()
             let host = try await pacer.acquire(for: url, pace: pace)
             let outcome: Outcome
@@ -674,6 +689,14 @@ final class ForumService {
                     resourceLoader: resourceLoader
                 )
             } catch {
+                if !Task.isCancelled, transient < maximumTransientRetries,
+                   NetworkFailure.classify(error) == .transient {
+                    // A dropped or slow connection: try again shortly (the
+                    // pause is the host's, like a 429's).
+                    transient += 1
+                    await pacer.release(host, backOff: pow(2, Double(transient - 1)))
+                    continue
+                }
                 await pacer.release(host)
                 throw error
             }
@@ -683,18 +706,23 @@ final class ForumService {
                 await pacer.release(host)
                 return data
             case .failure(let status, let detail, let retryAfter):
-                if status == 429 && attempt < maximumRetries {
+                if status == 429 && rateLimited < maximumRetries {
                     // The back-off is in place before the slot passes on:
                     // a request waiting for it must not start inside it.
-                    let wait = Double(retryAfter ?? "") ?? pow(2, Double(attempt + 1))
+                    rateLimited += 1
+                    let wait = Double(retryAfter ?? "") ?? pow(2, Double(rateLimited))
                     await pacer.release(host, backOff: min(60, max(1, wait)))
+                    continue
+                }
+                if NetworkFailure.gatewayStatuses.contains(status), transient < maximumTransientRetries {
+                    transient += 1
+                    await pacer.release(host, backOff: pow(2, Double(transient - 1)))
                     continue
                 }
                 await pacer.release(host)
                 throw AssistantError.http(status, String(detail.prefix(300)))
             }
         }
-        throw AssistantError.invalidResponse
     }
 
     private enum Outcome {
@@ -708,15 +736,27 @@ final class ForumService {
         resourceLoader: (@MainActor (URL) async throws -> ForumResourceResponse)?
     ) async throws -> Outcome {
         if let resourceLoader {
-            let response = try await resourceLoader(url)
-            if (200..<300).contains(response.statusCode) {
-                return .success(response.data)
+            do {
+                // WebKit's script calls ignore task cancellation: a cancel
+                // or a stalled page must still free the pacer's slot and
+                // the job's worker at once.
+                let response = try await withPromptCancellation(timeout: resourceLoaderTimeout) {
+                    try await resourceLoader(url)
+                }
+                if (200..<300).contains(response.statusCode) {
+                    return .success(response.data)
+                }
+                return .failure(
+                    status: response.statusCode,
+                    detail: String(data: response.data, encoding: .utf8) ?? response.statusText,
+                    retryAfter: response.retryAfter
+                )
+            } catch {
+                // The page could not make the request (its fetch failed or
+                // timed out, the page went away): the forum directly, with
+                // its cookies, below.
+                if error is CancellationError || Task.isCancelled { throw error }
             }
-            return .failure(
-                status: response.statusCode,
-                detail: String(data: response.data, encoding: .utf8) ?? response.statusText,
-                retryAfter: response.retryAfter
-            )
         }
 
         var request = URLRequest(url: url)
@@ -809,5 +849,84 @@ enum DiscourseHTML {
         }
         result += nsText.substring(from: cursor)
         return result
+    }
+}
+
+// MARK: - Prompt cancellation
+
+/// Runs `operation`, but returns as soon as the calling task is cancelled
+/// (`CancellationError`) or `timeout` passes (`URLError(.timedOut)`), even
+/// when `operation` ignores cancellation. The operation is cancelled then and
+/// its late result dropped.
+func withPromptCancellation<Value>(
+    timeout: Duration,
+    _ operation: @escaping @Sendable () async throws -> Value
+) async throws -> Value {
+    let gate = ResumeOnce<Value>()
+    return try await withTaskCancellationHandler {
+        try await withCheckedThrowingContinuation { continuation in
+            guard gate.install(continuation) else { return }
+            let work = Task {
+                do {
+                    gate.finish(.success(try await operation()))
+                } catch {
+                    gate.finish(.failure(error))
+                }
+            }
+            let timer = Task {
+                try? await Task.sleep(for: timeout)
+                guard !Task.isCancelled else { return }
+                gate.finish(.failure(URLError(.timedOut)))
+            }
+            gate.whenFinished {
+                work.cancel()
+                timer.cancel()
+            }
+        }
+    } onCancel: {
+        gate.finish(.failure(CancellationError()))
+    }
+}
+
+/// Resumes a continuation with the first result only; a result that comes
+/// before the continuation is installed is kept for it.
+private final class ResumeOnce<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Value, Error>?
+    private var result: Result<Value, Error>?
+    private var cleanup: (() -> Void)?
+
+    /// False when a result (a cancel) was already there: nothing to start.
+    func install(_ continuation: CheckedContinuation<Value, Error>) -> Bool {
+        let early: Result<Value, Error>? = lock.withLock {
+            if result == nil { self.continuation = continuation }
+            return result
+        }
+        guard let early else { return true }
+        continuation.resume(with: early)
+        return false
+    }
+
+    func finish(_ value: Result<Value, Error>) {
+        let (waiting, cleanup): (CheckedContinuation<Value, Error>?, (() -> Void)?) = lock.withLock {
+            guard result == nil else { return (nil, nil) }
+            result = value
+            defer {
+                continuation = nil
+                self.cleanup = nil
+            }
+            return (continuation, self.cleanup)
+        }
+        waiting?.resume(with: value)
+        cleanup?()
+    }
+
+    /// Runs `cleanup` once there is a result (now, if there is one).
+    func whenFinished(_ cleanup: @escaping () -> Void) {
+        let finished: Bool = lock.withLock {
+            if result == nil { self.cleanup = cleanup }
+            return result != nil
+        }
+        if finished { cleanup() }
     }
 }

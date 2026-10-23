@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// Settings › AI models: the model for each role (Summaries & chat, Ask the
-/// forum), each provider's key and address, and favorite models.
+/// Settings › AI models (ModelSettings): the model for each role (Summaries
+/// & chat, Ask the forum), favorite models, and each provider's key and
+/// address with its state.
 struct SettingsProviderPage: View {
     @ObservedObject var app: AppModel
 
@@ -17,26 +18,30 @@ struct SettingsProviderPage: View {
                     .accessibilityIdentifier("modelRole-\(role.rawValue)")
                 }
                 if !app.rolesShareModel {
-                    Menu {
-                        ForEach(ModelRole.allCases) { role in
-                            Button(String(
-                                localized: "Use \(app.providerSummary(for: role)) for both",
-                                comment: "Settings › AI models: gives both roles this model. The placeholder is a provider and model, e.g. OpenRouter · kimi-k2."
-                            )) {
-                                DCHaptics.tap()
-                                app.useSameModel(as: role)
-                            }
+                    // One button per direction: "Use X for both".
+                    ForEach(ModelRole.allCases) { role in
+                        Button {
+                            DCHaptics.tap()
+                            app.useSameModel(as: role)
+                        } label: {
+                            Label(
+                                String(
+                                    localized: "Use \(app.providerSummary(for: role)) for both",
+                                    comment: "Settings › AI models: gives both roles this model. The placeholder is a provider and model, e.g. OpenRouter · kimi-k2."
+                                ),
+                                systemImage: "arrow.left.arrow.right"
+                            )
                         }
-                    } label: {
-                        Label("Use the same model for both", systemImage: "equal.circle")
+                        .accessibilityIdentifier("useSameModel-\(role.rawValue)")
                     }
-                    .accessibilityIdentifier("useSameModel")
                 }
             } header: {
                 Text("Models")
             } footer: {
                 Text("Use a fast, low-cost model for summaries and chat, and a stronger reasoning model for Ask the forum.")
             }
+
+            FavoriteModelsSection(app: app)
 
             Section {
                 ForEach(providers) { provider in
@@ -52,8 +57,6 @@ struct SettingsProviderPage: View {
             } footer: {
                 Text("Keys and server addresses belong to a provider; both models use them.")
             }
-
-            FavoriteModelsSection(app: app)
         }
         .formStyle(.grouped)
         .accessibilityIdentifier("aiModelsPage")
@@ -92,7 +95,8 @@ struct ModelRoleRow: View {
     }
 }
 
-/// A provider's row: which roles use it and whether it has a key.
+/// A provider's row: which roles use it, and its state (Built in, Key
+/// added, No key, On your computer).
 private struct ProviderRow: View {
     @ObservedObject var app: AppModel
     let provider: AIProvider
@@ -102,109 +106,174 @@ private struct ProviderRow: View {
             ProviderBadge(provider: provider, size: 29)
             VStack(alignment: .leading, spacing: 2) {
                 Text(provider.displayName)
-                Text(detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                let roles = app.settings.roles(using: provider)
+                if !roles.isEmpty {
+                    Text(roles.map(\.title).joined(separator: " · "))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
+            Spacer(minLength: DCTheme.spacingS)
+            Text(state.text)
+                .font(.footnote.weight(state.tint == nil ? .regular : .semibold))
+                .foregroundStyle(state.tint ?? .secondary)
+                .multilineTextAlignment(.trailing)
         }
         .accessibilityElement(children: .combine)
     }
 
-    private var detail: String {
-        var parts = app.settings.roles(using: provider).map(\.title)
+    private var state: (text: String, tint: Color?) {
         if provider.isAppleIntelligence {
-            parts.append(app.appleIntelligenceStatus.title)
-        } else if provider.requiresAPIKey {
-            parts.append(app.settings.configuration(for: provider).apiKey.isEmpty
-                ? String(localized: "No API key", comment: "Settings › AI models, provider row: no key saved for this provider")
-                : String(localized: "Key saved", comment: "Settings › AI models, provider row: a key is saved for this provider"))
-        } else {
-            parts.append(String(localized: "On your computer", comment: "Settings › AI models, provider row: a model server on the user's own computer"))
+            // A device without Apple Intelligence says why.
+            if let reason = app.appleIntelligenceStatus.reason {
+                return (reason.title, ModelFavorites.hidesAppleIntelligence(app.appleIntelligenceStatus) ? nil : DCTheme.warning)
+            }
+            return (String(localized: "Built in", comment: "Settings › AI models, provider row: Apple Intelligence is part of the system"), nil)
         }
-        return parts.joined(separator: " · ")
+        if provider.requiresAPIKey {
+            return app.settings.configuration(for: provider).apiKey.isEmpty
+                ? (String(localized: "No key", comment: "Settings › AI models, provider row: no key saved for this provider"), DCTheme.warning)
+                : (String(localized: "Key added", comment: "Settings › AI models, provider row: a key is saved for this provider"), DCTheme.success)
+        }
+        return (String(localized: "On your computer", comment: "Settings › AI models, provider row: a model server on the user's own computer"), nil)
     }
 }
 
-/// Favorites are provider + model pairs, shared by both roles. Tapping one
-/// offers the role(s) to use it for; removing one leaves the roles as they are.
+/// Favorites are provider + model pairs, shared by both roles, in the
+/// user's order (Apple Intelligence like any other). Tap one to pick the
+/// role to use it for, hold to use it for both, swipe to remove; removing
+/// one leaves the roles as they are.
 private struct FavoriteModelsSection: View {
     @ObservedObject var app: AppModel
+    @State private var choosing: FavoriteModel?
+
+    /// Roles whose model isn't starred yet, one button per distinct model.
+    private var unstarred: [ModelRole] {
+        var seen: [ModelSelection] = []
+        return ModelRole.allCases.filter { role in
+            let selection = app.selection(for: role)
+            guard FavoriteModel(selection: selection) != nil, !app.isFavorite(selection),
+                  !seen.contains(selection) else { return false }
+            seen.append(selection)
+            return true
+        }
+    }
 
     var body: some View {
         Section {
             if app.settings.favoriteModels.isEmpty {
-                Text("Star a model on a role’s page to switch to it quickly here and in the assistant.")
+                Text("Star a model to switch to it quickly here and in the assistant.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-            } else {
-                ForEach(app.settings.favoriteModels) { favorite in
-                    Menu {
-                        ForEach(ModelRole.allCases) { role in
-                            Button {
-                                DCHaptics.tap()
-                                app.activateFavorite(favorite, for: role)
-                            } label: {
-                                Text(String(localized: "Use for \(role.title)", comment: "Favorite model menu: use it for a role. The placeholder is Summaries & chat, or Ask the forum."))
-                            }
-                        }
-                        Button {
-                            DCHaptics.tap()
-                            app.selectModel(ModelSelection(provider: favorite.provider, model: favorite.model), for: .both)
-                        } label: {
-                            Text("Use for both")
-                        }
-                        Button(role: .destructive) {
-                            app.removeFavorite(favorite)
-                        } label: {
-                            Label("Remove from favorites", systemImage: "star.slash")
-                        }
-                    } label: {
-                        FavoriteModelRow(app: app, favorite: favorite)
-                    }
-                    .swipeActions {
-                        Button("Remove", role: .destructive) { app.removeFavorite(favorite) }
-                    }
+            }
+            ForEach(app.settings.favoriteModels) { favorite in
+                row(favorite)
+            }
+            ForEach(unstarred) { role in
+                Button {
+                    DCHaptics.tap()
+                    app.addCurrentFavorite(for: role)
+                } label: {
+                    Label(
+                        String(
+                            localized: "Star \(ModelPill.label(for: app.selection(for: role)))",
+                            comment: "Settings › AI models: adds a role's current model to the favorites. The placeholder is a model name."
+                        ),
+                        systemImage: "star"
+                    )
                 }
+                .accessibilityIdentifier("starCurrentModel-\(role.rawValue)")
             }
         } header: {
             Text("Favorite models")
         } footer: {
             if !app.settings.favoriteModels.isEmpty {
-                Text("Tap to use a favorite. Swipe left to remove.")
+                Text("Tap to use for one model, or hold to use for both. Swipe left to remove.")
             }
         }
+        .confirmationDialog(
+            choosing?.title ?? "",
+            isPresented: Binding(get: { choosing != nil }, set: { if !$0 { choosing = nil } }),
+            titleVisibility: .visible,
+            presenting: choosing
+        ) { favorite in
+            ForEach(ModelRole.allCases) { role in
+                Button(String(localized: "Use for \(role.title)", comment: "Favorite model menu: use it for a role. The placeholder is Summaries & chat, or Ask the forum.")) {
+                    DCHaptics.tap()
+                    app.activateFavorite(favorite, for: role)
+                }
+            }
+            Button("Use for both") { useForBoth(favorite) }
+            Button("Remove from favorites", role: .destructive) { app.removeFavorite(favorite) }
+        }
+    }
+
+    @ViewBuilder
+    private func row(_ favorite: FavoriteModel) -> some View {
+        let hidden = favorite.provider.isAppleIntelligence && ModelFavorites.hidesAppleIntelligence(app.appleIntelligenceStatus)
+        FavoriteModelRow(app: app, favorite: favorite, hidden: hidden)
+            .contentShape(Rectangle())
+            .onTapGesture { if !hidden { choosing = favorite } }
+            .onLongPressGesture { if !hidden { useForBoth(favorite) } }
+            .accessibilityAddTraits(hidden ? [] : .isButton)
+            .accessibilityAction { if !hidden { choosing = favorite } }
+            .accessibilityAction(named: Text("Use for both")) { if !hidden { useForBoth(favorite) } }
+            .swipeActions {
+                Button("Remove", role: .destructive) { app.removeFavorite(favorite) }
+            }
+            .accessibilityIdentifier("favoriteModel-\(favorite.id)")
+    }
+
+    private func useForBoth(_ favorite: FavoriteModel) {
+        DCHaptics.tap()
+        app.selectModel(favorite.selection, for: .both)
     }
 }
 
 private struct FavoriteModelRow: View {
     @ObservedObject var app: AppModel
     let favorite: FavoriteModel
+    /// Apple Intelligence on a device that can't run it: kept (favorites
+    /// sync) but greyed out with the reason.
+    var hidden = false
 
     private var roles: [ModelRole] {
-        ModelRole.allCases.filter {
-            app.selection(for: $0) == ModelSelection(provider: favorite.provider, model: favorite.model)
-        }
+        ModelRole.allCases.filter { favorite.matches(app.selection(for: $0)) }
     }
 
+    private var readiness: ModelReadiness { app.readiness(of: favorite.selection) }
+
     var body: some View {
-        HStack {
+        HStack(spacing: DCTheme.spacingM) {
+            Image(systemName: "star.fill")
+                .foregroundStyle(DCTheme.warning)
+                .imageScale(.small)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text(favorite.model)
-                    .foregroundStyle(.primary)
+                Text(favorite.title)
+                    .foregroundStyle(hidden ? .secondary : .primary)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                Text(([favorite.provider.displayName] + roles.map(\.title)).joined(separator: " · "))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                if hidden, let reason = app.appleIntelligenceStatus.reason {
+                    Text(String(localized: "Hidden on this device: \(reason.title)", comment: "Settings › AI models: the Apple Intelligence favorite isn't offered on this device. The placeholder is the reason, e.g. Device not supported."))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if !roles.isEmpty {
+                    Text(roles.map(\.title).joined(separator: " · "))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
-            Spacer()
-            if !roles.isEmpty {
-                Image(systemName: "checkmark").foregroundStyle(DCTheme.brandBlue)
+            Spacer(minLength: DCTheme.spacingS)
+            if !hidden {
+                Text(readiness.title)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(readiness == .ready ? DCTheme.success : DCTheme.warning)
             }
         }
-        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -273,19 +342,20 @@ struct ModelRolePage: View {
                     AppleIntelligenceStatusView(app: app)
                 } else {
                     ModelField(app: app, scope: scope)
-                    Button {
-                        DCHaptics.tap()
-                        if app.isFavorite(selection) {
-                            app.removeFavorite(FavoriteModel(provider: provider, model: selection.model))
-                        } else {
-                            app.addCurrentFavorite(for: role)
-                        }
-                    } label: {
-                        Label(app.isFavorite(selection) ? "Remove from favorites" : "Add to favorites", systemImage: app.isFavorite(selection) ? "star.fill" : "star")
-                    }
-                    .disabled(selection.model.trimmingCharacters(in: .whitespaces).isEmpty)
-                    .accessibilityIdentifier("toggleFavoriteModel")
                 }
+                // Apple Intelligence is starred like any other provider.
+                Button {
+                    DCHaptics.tap()
+                    if app.isFavorite(selection) {
+                        app.removeFavorite(matching: selection)
+                    } else {
+                        app.addCurrentFavorite(for: role)
+                    }
+                } label: {
+                    Label(app.isFavorite(selection) ? "Remove from favorites" : "Add to favorites", systemImage: app.isFavorite(selection) ? "star.fill" : "star")
+                }
+                .disabled(FavoriteModel(selection: selection) == nil)
+                .accessibilityIdentifier("toggleFavoriteModel")
             } header: {
                 Text("Model")
             } footer: {
@@ -298,14 +368,14 @@ struct ModelRolePage: View {
 
             if !app.settings.favoriteModels.isEmpty {
                 Section {
-                    ForEach(app.settings.favoriteModels) { favorite in
+                    ForEach(app.visibleFavorites) { favorite in
                         Button {
                             DCHaptics.tap()
                             app.activateFavorite(favorite, for: role)
                         } label: {
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(favorite.model)
+                                    Text(ModelPill.label(for: favorite.selection))
                                         .foregroundStyle(.primary)
                                         .lineLimit(1)
                                         .truncationMode(.middle)
@@ -314,7 +384,7 @@ struct ModelRolePage: View {
                                         .foregroundStyle(.secondary)
                                 }
                                 Spacer()
-                                if ModelSelection(provider: favorite.provider, model: favorite.model) == selection {
+                                if favorite.matches(selection) {
                                     Image(systemName: "checkmark").foregroundStyle(DCTheme.brandBlue)
                                 }
                             }

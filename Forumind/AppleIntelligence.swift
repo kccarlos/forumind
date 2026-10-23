@@ -220,10 +220,6 @@ enum AppleIntelligenceBudget {
         return 3 - 2 * wideShare
     }
 
-    static func estimatedTokens(_ text: String, charactersPerToken: Double) -> Int {
-        Int((Double(text.count) / max(0.5, charactersPerToken)).rounded(.up))
-    }
-
     /// Tokens kept free for the reply (larger windows, e.g. Private Cloud
     /// Compute, allow longer replies).
     static func reservedOutputTokens(contextTokens: Int) -> Int {
@@ -505,6 +501,8 @@ extension AppModel {
             ModelSelection(provider: .appleIntelligence, model: AIProvider.appleIntelligence.defaultModel),
             for: .both
         )
+        // Starred, so the model menus list it like any favorite.
+        addCurrentFavorite(for: .assistant)
     }
 }
 
