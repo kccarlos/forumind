@@ -95,17 +95,26 @@ extension AppModel: SystemEntryRouting {
         }
         // Only the app's own store feeds the real index: never tests,
         // previews or the screenshot samples.
-        guard store.usesDefaultLocation, !isRunningTests, !AssistantDebug.isActive else {
+        guard store.usesDefaultLocation, !isRunningTests, !isSampleRun else {
             return SpotlightIndexer(index: DisabledSpotlightIndex(), baseline: InMemorySpotlightBaseline())
         }
         return SpotlightIndexer(index: SystemSpotlightIndex(), baseline: UserDefaultsSpotlightBaseline())
     }
 
     static func makeTopicActivityDonor(store: PersistentStore) -> TopicActivityDonating {
-        guard store.usesDefaultLocation, !isRunningTests, !AssistantDebug.isActive else {
+        guard store.usesDefaultLocation, !isRunningTests, !isSampleRun else {
             return DisabledTopicActivityDonor()
         }
         return SystemTopicActivityDonor()
+    }
+
+    /// A DEBUG sample or screenshot launch (never in Release builds).
+    private static var isSampleRun: Bool {
+        #if DEBUG
+        AssistantDebug.isActive
+        #else
+        false
+        #endif
     }
 
     /// The unit-test host: XCTest is loaded, or about to be (the test
