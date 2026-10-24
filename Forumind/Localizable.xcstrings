@@ -330,6 +330,22 @@
         }
       }
     },
+    "%@ · voice ready" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · 语音可用"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · 語音可用"
+          }
+        }
+      }
+    },
     "%@, current forum" : {
       "comment" : "Accessibility value of a pinned forum tile; the placeholder is the forum's host",
       "localizations" : {
@@ -1584,6 +1600,22 @@
         }
       }
     },
+    "A Chinese-language community for technology, AI and open source." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关于技术、AI 与开源的中文社区。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "關於技術、AI 與開源的中文社群。"
+          }
+        }
+      }
+    },
     "A change applies to your next question. The search running now keeps %@." : {
       "comment" : "Ask the forum model menu while a search runs. The placeholder is the running search's model.",
       "localizations" : {
@@ -1707,6 +1739,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "每次對話 %lld 分鐘後結束。可在「設定 › 語音」中更改。"
+          }
+        }
+      }
+    },
+    "A summary of what’s new in your watched topics and top topics." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你关注的主题和热门主题的最新动态摘要。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你關注的主題和熱門主題的最新動態摘要。"
           }
         }
       }
@@ -4283,6 +4331,22 @@
         }
       }
     },
+    "Built in and private. No key." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "内置且私密，无需密钥。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "內建且私密，無需金鑰。"
+          }
+        }
+      }
+    },
     "Built in and private. Runs on this device or on Apple’s Private Cloud Compute; nothing goes anywhere else. No key, no bill." : {
       "localizations" : {
         "zh-Hans" : {
@@ -4491,6 +4555,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "幾秒鐘掌握任何 Discourse 論壇的討論"
+          }
+        }
+      }
+    },
+    "Change it in Settings › Daily digest & podcast." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可在“设置 › 每日摘要与播客”中更改。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可在「設定 › 每日摘要與播客」中更改。"
           }
         }
       }
@@ -4924,6 +5004,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "從列表中選擇"
+          }
+        }
+      }
+    },
+    "Choose your AI" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择你的 AI"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選擇你的 AI"
           }
         }
       }
@@ -5825,6 +5921,22 @@
         }
       }
     },
+    "Credit cards, travel rewards and personal finance in the US, in Chinese." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "美国信用卡、旅行积分与个人理财的中文社区。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "美國信用卡、旅行積分與個人理財的中文社群。"
+          }
+        }
+      }
+    },
     "Current page" : {
       "localizations" : {
         "zh-Hans" : {
@@ -5870,6 +5982,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "每日摘要"
+          }
+        }
+      }
+    },
+    "Daily digest off" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每日摘要已关闭"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每日摘要已關閉"
+          }
+        }
+      }
+    },
+    "Daily digest on" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每日摘要已开启"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每日摘要已開啟"
           }
         }
       }
@@ -6404,6 +6548,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "每一章是一次文字轉語音請求，費用計入你的金鑰，或佔用其免費額度。改用本裝置的聲音則免費且可離線使用。"
+          }
+        }
+      }
+    },
+    "Each digest and podcast sends a few requests to your AI provider. Google Gemini’s free tier covers it; other providers bill per request." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每份摘要和播客会向你的 AI 提供商发送几次请求。Google Gemini 的免费额度可覆盖；其他提供商按请求计费。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每份摘要和播客會向你的 AI 供應商發送幾次請求。Google Gemini 的免費額度可涵蓋；其他供應商按請求計費。"
           }
         }
       }
@@ -6962,6 +7122,22 @@
         }
       }
     },
+    "Fast. Voice and podcast voices need it." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "速度快。语音和播客声音需要它。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "速度快。語音和播客聲音需要它。"
+          }
+        }
+      }
+    },
     "Favorite models" : {
       "localizations" : {
         "zh-Hans" : {
@@ -7106,6 +7282,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "第一則新回覆"
+          }
+        }
+      }
+    },
+    "First time only: swipe the row of apps to the end, tap **More**, turn on **Forumind** and add it to Favorites." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仅首次需要：将应用行滑到末尾，点按**更多**，打开 **Forumind** 并添加到“个人收藏”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "僅首次需要：將 App 列滑到最後，點一下**更多**，開啟 **Forumind** 並加入「個人收藏」。"
           }
         }
       }
@@ -7427,6 +7619,22 @@
         }
       }
     },
+    "Forumind doesn’t include its own AI. Pick one; you can change it any time in Settings." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Forumind 不自带 AI。请选择一个，之后可随时在“设置”中更改。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Forumind 不內建 AI。請選擇一個，之後可隨時在「設定」中更改。"
+          }
+        }
+      }
+    },
     "Forumind needs the microphone to hear you. Turn it on in Settings › Privacy & Security › Microphone." : {
       "comment" : "Voice error. The path names the iOS Settings app's pages.",
       "localizations" : {
@@ -7555,6 +7763,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你造訪過的論壇。向左滑動可釘選或移除。"
+          }
+        }
+      }
+    },
+    "Forums, summaries and chats follow you across your devices, end-to-end encrypted in your own iCloud." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "论坛、摘要和聊天会通过你自己的 iCloud 端到端加密，在你的设备间同步。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "論壇、摘要和聊天會透過你自己的 iCloud 端對端加密，在你的裝置間同步。"
           }
         }
       }
@@ -8107,6 +8331,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Cursor 程式碼編輯器的說明、問題回報和使用技巧。"
+          }
+        }
+      }
+    },
+    "Here is what you set up." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这是你的设置。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這是你的設定。"
           }
         }
       }
@@ -9020,6 +9260,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "小林"
+          }
+        }
+      }
+    },
+    "Let Forumind catch you up each morning. All of this is off until you turn it on, and you can change it in Settings." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "让 Forumind 每天早上帮你了解最新动态。这些功能默认关闭，可在“设置”中更改。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "讓 Forumind 每天早上幫你掌握最新動態。這些功能預設關閉，可在「設定」中更改。"
           }
         }
       }
@@ -10848,6 +11104,22 @@
         }
       }
     },
+    "Notify me when it’s ready" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "准备好时通知我"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "準備好時通知我"
+          }
+        }
+      }
+    },
     "Notify when it’s ready to make" : {
       "localizations" : {
         "zh-Hans" : {
@@ -11149,6 +11421,22 @@
         }
       }
     },
+    "One notification a day." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每天一条通知。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每天一則通知。"
+          }
+        }
+      }
+    },
     "Only where it needs to go" : {
       "localizations" : {
         "zh-Hans" : {
@@ -11374,6 +11662,22 @@
         }
       }
     },
+    "Open a topic and tap the AI button." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开一个主题并点按 AI 按钮。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打開一個主題並點按 AI 按鈕。"
+          }
+        }
+      }
+    },
     "Open a topic and tap the assistant to summarize it, chat about it, or ask the forum." : {
       "localizations" : {
         "zh-Hans" : {
@@ -11515,6 +11819,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "由 NVIDIA 代管的開放模型，一開始有免費額度。"
+          }
+        }
+      }
+    },
+    "Open pages from Safari or Chrome" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从 Safari 或 Chrome 打开页面"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "從 Safari 或 Chrome 開啟頁面"
           }
         }
       }
@@ -12413,6 +12733,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Podcast"
+          }
+        }
+      }
+    },
+    "Podcast every day" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每天生成播客"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每天產生播客"
           }
         }
       }
@@ -13634,6 +13970,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "最近的問題"
+          }
+        }
+      }
+    },
+    "Recommended" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "推荐"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "推薦"
           }
         }
       }
@@ -17080,6 +17432,22 @@
         }
       }
     },
+    "Tap a post number to jump to it." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "点按帖子编号即可跳转。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "點按貼文編號即可跳轉。"
+          }
+        }
+      }
+    },
     "Tap to enter a forum address" : {
       "localizations" : {
         "zh-Hans" : {
@@ -17158,6 +17526,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "使用條款"
+          }
+        }
+      }
+    },
+    "Test & Continue" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "测试并继续"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "測試並繼續"
           }
         }
       }
@@ -18726,6 +19110,22 @@
         }
       }
     },
+    "Try It in Safari" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Safari 中试试"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Safari 中試試"
+          }
+        }
+      }
+    },
     "Try again" : {
       "localizations" : {
         "zh-Hans" : {
@@ -18754,6 +19154,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "仍要嘗試 — 重新檢查頁面"
+          }
+        }
+      }
+    },
+    "Try first" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "先试试"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "先試試"
           }
         }
       }
@@ -18907,6 +19323,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在 LM Studio 中開啟「Serve on Local Network」，並使用你電腦的網路位址（例如 http://192.168.1.20:1234/v1）。"
+          }
+        }
+      }
+    },
+    "Two hosts talk through the digest." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "两位主持人讲解摘要。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "兩位主持人講解摘要。"
           }
         }
       }
@@ -20600,6 +21032,22 @@
         }
       }
     },
+    "With a daily podcast" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "含每日播客"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "含每日播客"
+          }
+        }
+      }
+    },
     "Withdraw" : {
       "localizations" : {
         "zh-Hans" : {
@@ -20926,6 +21374,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你的資料只屬於你"
+          }
+        }
+      }
+    },
+    "Your day" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的一天"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的一天"
           }
         }
       }

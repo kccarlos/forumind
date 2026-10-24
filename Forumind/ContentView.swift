@@ -153,7 +153,8 @@ struct ContentView: View {
             },
             openDigestLink: openDigestLink,
             openHistory: { openPanelRoute(.history) },
-            openSettings: { openPanelRoute(.settings) }
+            openSettings: { openPanelRoute(.settings) },
+            showShareHowTo: { app.router.item = .shareHowTo }
         )
     }
 
@@ -266,8 +267,7 @@ struct BrowserActions {
     /// Home's top bar.
     var openHistory: () -> Void = {}
     var openSettings: () -> Void = {}
-    /// Phase 9: the Share how-to page ("Share from Safari or Chrome" on
-    /// Home with no forums). nil until it exists: the card only explains.
+    /// The Share how-to page ("Share from Safari or Chrome" on Home).
     var showShareHowTo: (() -> Void)?
 }
 

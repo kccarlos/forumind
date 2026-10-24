@@ -83,6 +83,20 @@ enum ForumDirectoryError: LocalizedError, Equatable {
 struct ForumDirectory: Equatable {
     var forums: [Forum] = []
 
+    /// Offered first in the walkthrough when the app language is Chinese.
+    static let suggestedChinese: [SuggestedForum] = [
+        SuggestedForum(
+            name: "美卡论坛",
+            siteURL: "https://www.uscardforum.com",
+            description: String(localized: "Credit cards, travel rewards and personal finance in the US, in Chinese.", comment: "Description of a suggested forum")
+        ),
+        SuggestedForum(
+            name: "LINUX DO",
+            siteURL: "https://linux.do",
+            description: String(localized: "A Chinese-language community for technology, AI and open source.", comment: "Description of a suggested forum")
+        )
+    ]
+
     static let suggested: [SuggestedForum] = [
         SuggestedForum(
             name: "Discourse Meta",

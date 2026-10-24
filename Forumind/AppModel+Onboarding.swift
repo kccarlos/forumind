@@ -14,17 +14,17 @@ import SwiftUI
 // - `applyOnboardingDebugArguments()` DEBUG launch arguments for screenshots
 
 /// One page of the first-launch walkthrough.
-enum OnboardingStep: Int, CaseIterable, Identifiable, Hashable {
+enum OnboardingStep: Int, CaseIterable, Identifiable, Hashable, Comparable {
     case welcome
-    case features
     case provider
     case forums
-    case sync
-    case share
+    case daily
     case privacy
     case done
 
     var id: Int { rawValue }
+
+    static func < (lhs: OnboardingStep, rhs: OnboardingStep) -> Bool { lhs.rawValue < rhs.rawValue }
 
     static var first: OnboardingStep { .welcome }
     static var last: OnboardingStep { .done }
@@ -39,23 +39,21 @@ enum OnboardingStep: Int, CaseIterable, Identifiable, Hashable {
         Double(rawValue) / Double(Self.allCases.count - 1)
     }
 
-    /// Short title used for accessibility ("Step 3 of 8: Connect an AI provider").
+    /// Short title used for accessibility ("Step 2 of 6: Connect an AI provider").
     var title: String {
         switch self {
         case .welcome: String(localized: "Welcome")
-        case .features: String(localized: "What it does")
         case .provider: String(localized: "Connect an AI provider")
         case .forums: String(localized: "Choose your forums")
-        case .sync: String(localized: "Sync across your devices")
-        case .share: String(localized: "Share from Safari or Chrome")
+        case .daily: String(localized: "Your day")
         case .privacy: String(localized: "Your privacy")
         case .done: String(localized: "You’re all set")
         }
     }
 
-    /// "Step 3 of 8": matches the progress dots (which include Welcome and Done).
+    /// "Step 3 of 6": matches the progress dots (which include Welcome and Done).
     var stepLabel: String {
-        String(localized: "Step \(rawValue + 1) of \(Self.allCases.count)", comment: "Walkthrough progress, e.g. Step 3 of 8")
+        String(localized: "Step \(rawValue + 1) of \(Self.allCases.count)", comment: "Walkthrough progress, e.g. Step 3 of 6")
     }
 
     var accessibilityLabel: String {
@@ -65,7 +63,7 @@ enum OnboardingStep: Int, CaseIterable, Identifiable, Hashable {
     /// Steps the user may skip past (optional setup).
     var allowsSkip: Bool {
         switch self {
-        case .provider, .forums: true
+        case .provider, .forums, .daily: true
         default: false
         }
     }
@@ -77,6 +75,12 @@ enum OnboardingStep: Int, CaseIterable, Identifiable, Hashable {
         case .done: String(localized: "Finish")
         default: String(localized: "Continue")
         }
+    }
+
+    /// Where the top "Skip" goes: the Terms of Use can't be skipped, so it
+    /// stops at Privacy first, then finishes.
+    var skipTarget: OnboardingStep {
+        self < .privacy ? .privacy : .done
     }
 
     /// Steps with text fields, where swiping between pages is disabled so
@@ -92,6 +96,22 @@ enum OnboardingStep: Int, CaseIterable, Identifiable, Hashable {
         }
         let lowered = value.lowercased()
         return allCases.first { String(describing: $0) == lowered }
+    }
+}
+
+extension AppModel {
+    /// "Try It in Safari" on the Share how-to opens this page.
+    nonisolated static let shareTryURL = URL(string: "https://meta.discourse.org/latest")!
+
+    /// Whether the app is showing in Chinese (the walkthrough's forum order).
+    nonisolated static var appLanguageIsChinese: Bool {
+        Bundle.main.preferredLocalizations.first?.hasPrefix("zh") == true
+    }
+
+    /// The walkthrough's forum suggestions: with a Chinese app language the
+    /// Chinese-language forums come first.
+    nonisolated static func onboardingSuggestions(chineseFirst: Bool = appLanguageIsChinese) -> [SuggestedForum] {
+        chineseFirst ? ForumDirectory.suggestedChinese + suggestedForums : suggestedForums
     }
 }
 

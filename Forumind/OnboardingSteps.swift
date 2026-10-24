@@ -126,9 +126,9 @@ struct OnboardingWelcomePage: View {
             .opacity(appeared ? 1 : 0)
             .offset(y: appeared || reduceMotion ? 0 : 12)
             HStack(spacing: DCTheme.spacingS) {
-                DCPill(text: String(localized: "Summaries"), systemImage: "sparkles", tint: DCTheme.summaryTint)
-                DCPill(text: String(localized: "Chat"), systemImage: "bubble.left.and.bubble.right.fill", tint: DCTheme.chatTint)
-                DCPill(text: String(localized: "Ask the forum"), systemImage: "text.magnifyingglass", tint: DCTheme.agentTint)
+                DCPill(text: String(localized: "Read", comment: "Walkthrough welcome: read forums"), systemImage: "book.fill", tint: DCTheme.summaryTint)
+                DCPill(text: String(localized: "Ask", comment: "Walkthrough welcome: ask questions"), systemImage: "sparkles", tint: DCTheme.chatTint)
+                DCPill(text: String(localized: "Listen", comment: "Walkthrough welcome: listen to the podcast"), systemImage: "headphones", tint: DCTheme.agentTint)
             }
             .opacity(appeared ? 1 : 0)
         }
@@ -147,85 +147,74 @@ struct OnboardingWelcomePage: View {
     }
 }
 
-// MARK: 2. What it does
-
-struct OnboardingFeaturesPage: View {
-    var body: some View {
-        OnboardingPage {
-            OnboardingHeader(
-                eyebrow: String(localized: "What it does"),
-                title: String(localized: "Three ways to get to the point"),
-                subtitle: String(localized: "Open any topic and the assistant is one tap away.")
-            )
-            VStack(spacing: DCTheme.spacingM) {
-                featureCard(
-                    symbol: "sparkles",
-                    tint: DCTheme.summaryTint,
-                    title: String(localized: "Summaries"),
-                    detail: String(localized: "The original post, how people responded, and the key takeaways, even on topics with thousands of replies."),
-                    example: String(localized: "“Most replies agree the new version fixes it…”")
-                )
-                featureCard(
-                    symbol: "bubble.left.and.bubble.right.fill",
-                    tint: DCTheme.chatTint,
-                    title: String(localized: "Chat about a topic"),
-                    detail: String(localized: "Ask follow-up questions about the page you’re reading. Answers stay grounded in the discussion."),
-                    example: String(localized: "“What workaround did people suggest?”")
-                )
-                featureCard(
-                    symbol: "text.magnifyingglass",
-                    tint: DCTheme.agentTint,
-                    title: String(localized: "Ask the forum"),
-                    detail: String(localized: "Ask a question and it searches the forum, reads the best topics, and answers with cited sources like [S1]."),
-                    example: String(localized: "“What’s the best way to self-host this?”")
-                )
-            }
-        }
-    }
-
-    private func featureCard(symbol: String, tint: Color, title: String, detail: String, example: String) -> some View {
-        VStack(alignment: .leading, spacing: DCTheme.spacingM) {
-            HStack(spacing: DCTheme.spacingM) {
-                OnboardingIconTile(symbol: symbol, tint: tint, size: 40, filled: true)
-                Text(title).font(.headline)
-                Spacer(minLength: 0)
-            }
-            Text(detail)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Text(example)
-                .font(.footnote.italic())
-                .foregroundStyle(tint)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(tint.opacity(0.1), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .dcCard(tint: tint)
-        .accessibilityElement(children: .combine)
-    }
-}
-
 // MARK: 3. Connect an AI provider
 
 struct OnboardingProviderPage: View {
     @ObservedObject var app: AppModel
     @Binding var state: ProviderTestState
 
+    private var current: AIProvider { app.selection(for: .assistant).provider }
+
     var body: some View {
         OnboardingPage {
             OnboardingHeader(
                 eyebrow: OnboardingStep.provider.stepLabel,
-                title: String(localized: "Connect an AI provider"),
-                subtitle: app.appleIntelligenceStatus.isAvailable
-                    ? String(localized: "Apple Intelligence is built into this device: private, no account, no key. Or connect a provider you already use. You can change this any time in Settings.")
-                    : String(localized: "Forumind doesn’t include its own AI. Connect one you use, or sign up for one. You can change this any time in Settings.")
+                title: String(localized: "Choose your AI"),
+                subtitle: String(localized: "Forumind doesn’t include its own AI. Pick one; you can change it any time in Settings.")
             )
+            VStack(spacing: DCTheme.spacingS) {
+                choice(.gemini, recommended: true,
+                       detail: String(localized: "Fast. Voice and podcast voices need it.", comment: "Walkthrough: why Google Gemini is recommended"))
+                if app.appleIntelligenceStatus.isAvailable {
+                    choice(.appleIntelligence, recommended: false,
+                           detail: String(localized: "Built in and private. No key.", comment: "Walkthrough: Apple Intelligence"))
+                }
+            }
             // One model for everything to start; Settings › AI models can
-            // give Ask the forum its own later.
+            // give Ask the forum its own later. The form's menu lists the
+            // other providers.
             ProviderSetupForm(app: app, scope: .both, state: $state)
         }
+        .onAppear {
+            if !app.isProviderReady, !app.appleIntelligenceStatus.isAvailable, current != .gemini {
+                app.selectProvider(.gemini, for: .both)
+            }
+        }
+    }
+
+    private func choice(_ provider: AIProvider, recommended: Bool, detail: String) -> some View {
+        let isOn = current == provider
+        return Button {
+            DCHaptics.tap()
+            app.selectProvider(provider, for: .both)
+        } label: {
+            HStack(spacing: DCTheme.spacingM) {
+                ProviderBadge(provider: provider)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(provider.displayName).font(.body.weight(.semibold)).foregroundStyle(.primary)
+                        if recommended {
+                            Text("Recommended", comment: "Walkthrough: badge on the suggested AI provider")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(DCTheme.brandBlue)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(DCTheme.brandBlue.opacity(0.12), in: Capsule())
+                        }
+                    }
+                    Text(detail).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.leading)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isOn ? DCTheme.brandBlue : Color.secondary)
+            }
+            .contentShape(Rectangle())
+            .dcCard()
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(isOn ? .isSelected : [])
+        .accessibilityIdentifier("onboardingProvider-\(provider.rawValue)")
     }
 }
 
@@ -241,15 +230,16 @@ struct OnboardingForumsPage: View {
     @FocusState private var addressFocused: Bool
 
     /// Suggested forums plus any forums the user already has or just added.
-    private var rows: [(siteURL: String, name: String, detail: String, iconURL: URL?)] {
+    private var rows: [(siteURL: String, name: String, detail: String)] {
         var seen = Set<String>()
-        var result: [(siteURL: String, name: String, detail: String, iconURL: URL?)] = []
+        var result: [(siteURL: String, name: String, detail: String)] = []
+        let suggestions = AppModel.onboardingSuggestions()
         for forum in app.forums where seen.insert(forum.siteURL).inserted {
-            let suggested = AppModel.suggestedForums.first { $0.siteURL == forum.siteURL }
-            result.append((forum.siteURL, forum.displayName, suggested?.description ?? forum.host, forum.iconURL))
+            let suggested = suggestions.first { $0.siteURL == forum.siteURL }
+            result.append((forum.siteURL, forum.displayName, suggested?.description ?? forum.host))
         }
-        for suggested in AppModel.suggestedForums where seen.insert(suggested.siteURL).inserted {
-            result.append((suggested.siteURL, suggested.name, suggested.description, nil))
+        for suggested in suggestions where seen.insert(suggested.siteURL).inserted {
+            result.append((suggested.siteURL, suggested.name, suggested.description))
         }
         return result
     }
@@ -294,7 +284,7 @@ struct OnboardingForumsPage: View {
         #endif
     }
 
-    private func forumRow(_ row: (siteURL: String, name: String, detail: String, iconURL: URL?)) -> some View {
+    private func forumRow(_ row: (siteURL: String, name: String, detail: String)) -> some View {
         let isOn = selected.contains(row.siteURL)
         return Button {
             DCHaptics.tap()
@@ -303,7 +293,7 @@ struct OnboardingForumsPage: View {
             }
         } label: {
             HStack(spacing: DCTheme.spacingM) {
-                OnboardingForumIcon(siteURL: row.siteURL, name: row.name, iconURL: row.iconURL, size: 40)
+                OnboardingForumIcon(siteURL: row.siteURL, name: row.name, size: 40)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(row.name)
                         .font(.body.weight(.semibold))
@@ -411,7 +401,8 @@ struct OnboardingForumsPage: View {
     }
 }
 
-/// Forum icon, falling back to a colored monogram.
+/// Forum icon, falling back to a colored letter tile (the walkthrough passes
+/// no `iconURL`: forums' logos aren't shown there).
 struct OnboardingForumIcon: View {
     let siteURL: String
     let name: String
@@ -441,15 +432,78 @@ struct OnboardingForumIcon: View {
     }
 }
 
-// MARK: 5. Sync across your devices
+// MARK: 4. Your day
 
-/// Informational: sync is on by default wherever iCloud is available.
-struct OnboardingSyncPage: View {
+/// Optional daily digest and podcast; everything is off until chosen.
+struct OnboardingDailyPage: View {
     @ObservedObject var app: AppModel
+
+    var body: some View {
+        OnboardingPage {
+            OnboardingHeader(
+                eyebrow: OnboardingStep.daily.stepLabel,
+                title: String(localized: "Your day"),
+                subtitle: String(localized: "Let Forumind catch you up each morning. All of this is off until you turn it on, and you can change it in Settings.", comment: "Walkthrough: daily digest step")
+            )
+            VStack(spacing: 0) {
+                toggleRow(
+                    symbol: "newspaper.fill", tint: DCTheme.summaryTint,
+                    title: String(localized: "Daily digest", comment: "Walkthrough toggle"),
+                    detail: String(localized: "A summary of what’s new in your watched topics and top topics.", comment: "Walkthrough toggle"),
+                    isOn: $app.settings.dailyDigestEnabled, id: "onboardingDigest"
+                )
+                Divider().padding(.leading, 56)
+                toggleRow(
+                    symbol: "bell.fill", tint: DCTheme.warning,
+                    title: String(localized: "Notify me when it’s ready", comment: "Walkthrough toggle"),
+                    detail: String(localized: "One notification a day.", comment: "Walkthrough toggle"),
+                    isOn: $app.settings.dailyDigestNotifies, id: "onboardingDigestNotifies"
+                )
+                .disabled(!app.settings.dailyDigestEnabled)
+                Divider().padding(.leading, 56)
+                toggleRow(
+                    symbol: "headphones", tint: DCTheme.agentTint,
+                    title: String(localized: "Podcast every day", comment: "Walkthrough toggle"),
+                    detail: String(localized: "Two hosts talk through the digest.", comment: "Walkthrough toggle"),
+                    isOn: $app.settings.podcastDailyEnabled, id: "onboardingPodcastDaily"
+                )
+            }
+            .dcCard()
+            Label {
+                Text("Each digest and podcast sends a few requests to your AI provider. Google Gemini’s free tier covers it; other providers bill per request.", comment: "Walkthrough: cost of the daily digest")
+            } icon: {
+                Image(systemName: "info.circle")
+            }
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func toggleRow(symbol: String, tint: Color, title: String, detail: String, isOn: Binding<Bool>, id: String) -> some View {
+        Toggle(isOn: isOn) {
+            HStack(spacing: DCTheme.spacingM) {
+                OnboardingIconTile(symbol: symbol, tint: tint, size: 32)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.subheadline.weight(.semibold))
+                    Text(detail).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
+        .tint(DCTheme.brandBlue)
+        .padding(.vertical, 8)
+        .accessibilityIdentifier(id)
+    }
+}
+
+// MARK: 5. Privacy and sync
+
+/// The iCloud Sync switch on the privacy step (on by default wherever iCloud
+/// is available).
+struct OnboardingSyncCard: View {
     @ObservedObject private var sync: CloudSyncController
 
     init(app: AppModel) {
-        self.app = app
         self.sync = app.cloudSync
     }
 
@@ -457,95 +511,56 @@ struct OnboardingSyncPage: View {
     private var isEnabled: Bool { SyncDebug.isEnabled(actual: sync.isEnabled) }
 
     var body: some View {
-        OnboardingPage {
-            OnboardingHeader(
-                eyebrow: String(localized: "Automatic"),
-                title: String(localized: "Sync across your devices"),
-                subtitle: String(localized: "Your forums, summaries and chats sync across your iPhone and iPad through iCloud — end-to-end encrypted.")
-            )
-            VStack(alignment: .leading, spacing: DCTheme.spacingL) {
-                OnboardingFeatureRow(
-                    symbol: "icloud.fill",
-                    tint: SettingsPage.sync.tint,
-                    title: String(localized: "Nothing to set up"),
-                    detail: String(localized: "Sign in to the same Apple Account on each device and your data follows you.")
-                )
-                OnboardingFeatureRow(
-                    symbol: "lock.fill",
-                    tint: DCTheme.brandPurple,
-                    title: String(localized: "End-to-end encrypted"),
-                    detail: String(localized: "Stored in your own iCloud account with keys only your devices have. No server of ours in between.")
-                )
-                OnboardingFeatureRow(
-                    symbol: "key.fill",
-                    tint: DCTheme.chatTint,
-                    title: String(localized: "API keys come along"),
-                    detail: String(localized: "Your keys sync with iCloud Keychain. You can turn that off in Settings › iCloud Sync.")
-                )
-            }
-            .dcCard()
-
-            VStack(alignment: .leading, spacing: DCTheme.spacingM) {
-                Toggle(isOn: Binding(get: { isEnabled }, set: { sync.setEnabled($0) })) {
+        VStack(alignment: .leading, spacing: DCTheme.spacingM) {
+            Toggle(isOn: Binding(get: { isEnabled }, set: { sync.setEnabled($0) })) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text("Sync with iCloud")
                         .font(.subheadline.weight(.semibold))
-                }
-                .tint(SettingsPage.sync.tint)
-                .accessibilityIdentifier("onboardingSyncToggle")
-                if isEnabled {
-                    let presentation = SyncStatusPresentation(status)
-                    HStack(alignment: .top, spacing: DCTheme.spacingM) {
-                        OnboardingIconTile(symbol: presentation.symbol, tint: presentation.tint, size: 32)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(presentation.title)
-                                .font(.subheadline.weight(.semibold))
-                            if let detail = presentation.detail {
-                                Text(detail)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                        }
-                        Spacer(minLength: 0)
-                    }
-                    .accessibilityElement(children: .combine)
-                    .accessibilityIdentifier("onboardingSyncStatus")
-                } else {
-                    Text("Turn it on any time in Settings › iCloud Sync.")
+                    Text("Forums, summaries and chats follow you across your devices, end-to-end encrypted in your own iCloud.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
-            .dcCard()
+            .tint(SettingsPage.sync.tint)
+            .accessibilityIdentifier("onboardingSyncToggle")
+            if isEnabled {
+                let presentation = SyncStatusPresentation(status)
+                HStack(alignment: .top, spacing: DCTheme.spacingM) {
+                    OnboardingIconTile(symbol: presentation.symbol, tint: presentation.tint, size: 32)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(presentation.title)
+                            .font(.subheadline.weight(.semibold))
+                        if let detail = presentation.detail {
+                            Text(detail)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("onboardingSyncStatus")
+            }
         }
+        .dcCard()
     }
 }
 
-// MARK: 6. Share from Safari or Chrome
+// MARK: Share from Safari or Chrome
 
-struct OnboardingSharePage: View {
-    var body: some View {
-        OnboardingPage {
-            OnboardingHeader(
-                eyebrow: String(localized: "Tip"),
-                title: String(localized: "Share from Safari or Chrome"),
-                subtitle: String(localized: "Reading a forum in another browser? Send the page to Forumind in a couple of taps.")
-            )
-            ShareHowToGuide()
-        }
-    }
-}
-
-/// Illustrated share-sheet walkthrough, also shown in Settings › Help.
+/// The Share how-to page (Home, Settings › Help, the last step). The share
+/// extension's four actions are listed as `ShareSheetView` has them.
 struct ShareHowToGuide: View {
+    @Environment(\.openURL) private var openURL
+
     var body: some View {
         VStack(alignment: .leading, spacing: DCTheme.spacingL) {
             ShareSheetIllustration()
             VStack(alignment: .leading, spacing: DCTheme.spacingM) {
                 ShareStepRow(number: 1, symbol: "square.and.arrow.up", text: "Open a forum topic in Safari or Chrome and tap **Share**. In Chrome, tap **⋯**, then **Share…**")
-                ShareStepRow(number: 2, symbol: "arrow.left.and.right", text: "Swipe the row of app icons to the end and tap **More**.")
-                ShareStepRow(number: 3, symbol: "switch.2", text: "Tap **Edit**, turn on **Forumind**, and add it to Favorites so it’s always near the front.")
-                ShareStepRow(number: 4, symbol: "hand.tap.fill", text: "Tap **Forumind**, then pick what you want:")
+                ShareStepRow(number: 2, symbol: "switch.2", text: "First time only: swipe the row of apps to the end, tap **More**, turn on **Forumind** and add it to Favorites.")
+                ShareStepRow(number: 3, symbol: "hand.tap.fill", text: "Tap **Forumind**, then pick what you want:")
             }
             ShareActionsIllustration()
                 .padding(.leading, 40)
@@ -553,6 +568,42 @@ struct ShareHowToGuide: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            Button {
+                openURL(AppModel.shareTryURL)
+            } label: {
+                Label("Try It in Safari", systemImage: "safari")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(DCActionButtonStyle(prominent: false))
+            .accessibilityIdentifier("shareHowToTrySafari")
+        }
+    }
+}
+
+/// The Share how-to as a sheet (Home card, last walkthrough step).
+struct ShareHowToSheet: View {
+    let onDone: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: DCTheme.spacingL) {
+                    OnboardingHeader(
+                        eyebrow: String(localized: "Tip"),
+                        title: String(localized: "Share from Safari or Chrome"),
+                        subtitle: String(localized: "Reading a forum in another browser? Send the page to Forumind in a couple of taps.")
+                    )
+                    ShareHowToGuide()
+                    Button("Done", action: onDone)
+                        .buttonStyle(DCPrimaryButtonStyle())
+                        .accessibilityIdentifier("shareHowToDone")
+                }
+                .padding(DCTheme.spacingL)
+                .frame(maxWidth: DCTheme.contentMaxWidth, alignment: .leading)
+                .frame(maxWidth: .infinity)
+            }
+            .background(DCTheme.pageBackground)
+            .navigationBarTitleDisplayMode(.inline)
         }
     }
 }
@@ -683,9 +734,10 @@ struct ShareActionsIllustration: View {
     }
 }
 
-// MARK: 7. Privacy
+// (continued) Privacy
 
 struct OnboardingPrivacyPage: View {
+    @ObservedObject var app: AppModel
     @Binding var termsAgreed: Bool
 
     var body: some View {
@@ -699,6 +751,7 @@ struct OnboardingPrivacyPage: View {
                 PrivacyPoints()
             }
             .dcCard()
+            OnboardingSyncCard(app: app)
             Text("Terms of Use")
                 .font(.title3.weight(.bold))
                 .accessibilityAddTraits(.isHeader)
@@ -743,11 +796,11 @@ struct PrivacyPoints: View {
     }
 }
 
-// MARK: 8. Done
+// MARK: 6. Done
 
 struct OnboardingDonePage: View {
     @ObservedObject var app: AppModel
-    let providerState: ProviderTestState
+    var showShareHowTo: () -> Void = {}
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var appeared = false
 
@@ -768,7 +821,7 @@ struct OnboardingDonePage: View {
                 .accessibilityHidden(true)
             OnboardingHeader(
                 title: String(localized: "You’re all set"),
-                subtitle: String(localized: "Open a topic and tap the assistant to summarize it, chat about it, or ask the forum."),
+                subtitle: String(localized: "Here is what you set up."),
                 alignment: .center
             )
             VStack(spacing: 0) {
@@ -778,7 +831,7 @@ struct OnboardingDonePage: View {
                         ? String(localized: "AI provider: \(app.settings.assistantModel.provider.displayName)", comment: "Walkthrough checklist. The placeholder is the provider's name, e.g. OpenRouter.")
                         : String(localized: "AI provider not connected"),
                     detail: app.isProviderReady
-                        ? (app.settings.assistantModel.provider.isAppleIntelligence ? app.appleIntelligenceStatus.title : app.selectedConfiguration.model)
+                        ? aiDetail
                         : String(localized: "Add one any time in Settings › AI models.", comment: "Walkthrough checklist; Settings › AI models names the app's own Settings page")
                 )
                 Divider().padding(.leading, 48)
@@ -788,15 +841,50 @@ struct OnboardingDonePage: View {
                     detail: app.pinnedForums.isEmpty ? String(localized: "Pick from suggestions or add any forum by address.") : app.pinnedForums.map(\.displayName).joined(separator: ", ")
                 )
                 Divider().padding(.leading, 48)
+                checklistRow(
+                    done: app.settings.dailyDigestEnabled,
+                    title: app.settings.dailyDigestEnabled ? String(localized: "Daily digest on", comment: "Walkthrough checklist") : String(localized: "Daily digest off", comment: "Walkthrough checklist"),
+                    detail: app.settings.podcastDailyEnabled ? String(localized: "With a daily podcast", comment: "Walkthrough checklist") : String(localized: "Change it in Settings › Daily digest & podcast.", comment: "Walkthrough checklist")
+                )
+                Divider().padding(.leading, 48)
                 OnboardingDoneSyncRow(app: app)
             }
             .dcCard()
+            VStack(alignment: .leading, spacing: DCTheme.spacingS) {
+                Text("Try first", comment: "Walkthrough: first things to try")
+                    .font(.subheadline.weight(.semibold))
+                ShareStepRow(number: 1, symbol: "sparkles", text: "Open a topic and tap the AI button.")
+                ShareStepRow(number: 2, symbol: "number", text: "Tap a post number to jump to it.")
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .dcCard()
+            Button(action: showShareHowTo) {
+                HStack {
+                    Image(systemName: "square.and.arrow.up")
+                    Text("Open pages from Safari or Chrome")
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right").font(.footnote.weight(.semibold))
+                }
+                .font(.subheadline.weight(.semibold))
+                .contentShape(Rectangle())
+                .dcCard()
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("onboardingShareHowTo")
         }
         .onAppear {
             withAnimation(reduceMotion ? .easeOut(duration: 0.2) : DCMotion.spring.delay(0.1)) {
                 appeared = true
             }
         }
+    }
+
+    /// "Google Gemini · voice ready" and the like.
+    private var aiDetail: String {
+        let provider = app.settings.assistantModel.provider
+        if provider.isAppleIntelligence { return app.appleIntelligenceStatus.title }
+        if provider == .gemini { return String(localized: "\(app.selectedConfiguration.model) · voice ready", comment: "Walkthrough checklist: the model name, then that voice works with this provider") }
+        return app.selectedConfiguration.model
     }
 
     private var pinnedTitle: String {

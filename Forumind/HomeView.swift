@@ -497,8 +497,7 @@ private struct HomeList: View {
         .padding(.vertical, DCTheme.spacingS)
     }
 
-    /// "Share from Safari or Chrome". Phase 9's Share how-to page hangs off
-    /// `actions.showShareHowTo`; until then the card only explains.
+    /// "Share from Safari or Chrome": opens the Share how-to page.
     private var shareCard: some View {
         Section {
             Button {

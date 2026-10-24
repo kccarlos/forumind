@@ -2,46 +2,65 @@ import XCTest
 @testable import Forumind
 
 final class OnboardingTests: XCTestCase {
-    func testStepsRunInOrderFromWelcomeToDone() {
-        XCTAssertEqual(OnboardingStep.allCases.count, 8)
+    func testStepsRunInOrder() {
+        XCTAssertEqual(OnboardingStep.allCases, [.welcome, .provider, .forums, .daily, .privacy, .done])
         XCTAssertEqual(OnboardingStep.first, .welcome)
         XCTAssertEqual(OnboardingStep.last, .done)
-        var visited: [OnboardingStep] = [.welcome]
-        var step = OnboardingStep.welcome
-        while let next = step.next {
-            visited.append(next)
-            step = next
-        }
-        XCTAssertEqual(visited, [.welcome, .features, .provider, .forums, .sync, .share, .privacy, .done])
         XCTAssertNil(OnboardingStep.done.next)
         XCTAssertNil(OnboardingStep.welcome.previous)
         XCTAssertEqual(OnboardingStep.forums.previous, .provider)
+        XCTAssertEqual(OnboardingStep.daily.next, .privacy)
     }
 
-    func testOnlySetupStepsCanBeSkipped() {
-        XCTAssertEqual(OnboardingStep.allCases.filter(\.allowsSkip), [.provider, .forums])
+    func testOnlyOptionalStepsCanBeSkipped() {
+        XCTAssertEqual(OnboardingStep.allCases.filter(\.allowsSkip), [.provider, .forums, .daily])
         XCTAssertEqual(OnboardingStep.allCases.filter(\.hasTextInput), [.provider, .forums])
+    }
+
+    func testSkipStopsAtPrivacyThenFinishes() {
+        for step in [OnboardingStep.welcome, .provider, .forums, .daily] {
+            XCTAssertEqual(step.skipTarget, .privacy, "\(step)")
+        }
+        XCTAssertEqual(OnboardingStep.privacy.skipTarget, .done)
     }
 
     func testProgressAndLabels() {
         XCTAssertEqual(OnboardingStep.welcome.progress, 0)
         XCTAssertEqual(OnboardingStep.done.progress, 1)
-        XCTAssertEqual(OnboardingStep.provider.accessibilityLabel, "Step 3 of 8: Connect an AI provider")
+        XCTAssertEqual(OnboardingStep.provider.accessibilityLabel, "Step 2 of 6: Connect an AI provider")
         XCTAssertEqual(OnboardingStep.welcome.continueTitle, "Get started")
         XCTAssertEqual(OnboardingStep.done.continueTitle, "Finish")
-        XCTAssertEqual(OnboardingStep.share.continueTitle, "Continue")
+        XCTAssertEqual(OnboardingStep.daily.continueTitle, "Continue")
     }
 
-    func testParsesDebugStepArgument() {
+    func testParseStepNumbersAndNames() {
         XCTAssertEqual(OnboardingStep.parse("1"), .welcome)
-        XCTAssertEqual(OnboardingStep.parse("4"), .forums)
-        XCTAssertEqual(OnboardingStep.parse("5"), .sync)
-        XCTAssertEqual(OnboardingStep.parse("8"), .done)
-        XCTAssertNil(OnboardingStep.parse("9"))
-        XCTAssertEqual(OnboardingStep.parse("sync"), .sync)
+        XCTAssertEqual(OnboardingStep.parse("3"), .forums)
+        XCTAssertEqual(OnboardingStep.parse("4"), .daily)
+        XCTAssertEqual(OnboardingStep.parse("6"), .done)
+        XCTAssertNil(OnboardingStep.parse("7"))
         XCTAssertNil(OnboardingStep.parse("0"))
+        XCTAssertEqual(OnboardingStep.parse("daily"), .daily)
         XCTAssertEqual(OnboardingStep.parse("Privacy"), .privacy)
-        XCTAssertNil(OnboardingStep.parse("nope"))
+        XCTAssertNil(OnboardingStep.parse("sync"))
+    }
+
+    func testChineseLanguageSuggestsTheChineseForumsFirst() {
+        let chinese = AppModel.onboardingSuggestions(chineseFirst: true).map(\.siteURL)
+        XCTAssertEqual(Array(chinese.prefix(2)), ["https://www.uscardforum.com", "https://linux.do"])
+        XCTAssertEqual(chinese.count, AppModel.suggestedForums.count + 2)
+        let english = AppModel.onboardingSuggestions(chineseFirst: false)
+        XCTAssertEqual(english, AppModel.suggestedForums)
+        XCTAssertTrue(ForumDirectory.suggestedChinese.allSatisfy { ForumSite.normalizeSiteURL($0.siteURL) == $0.siteURL })
+    }
+
+    func testConsentIsAskedOnlyForThirdPartyProviders() {
+        XCTAssertTrue(AIProvider.gemini.requiresDataConsent)
+        XCTAssertTrue(AIProvider.openRouter.requiresDataConsent)
+        XCTAssertFalse(AIProvider.appleIntelligence.requiresDataConsent)
+        XCTAssertFalse(AIProvider.ollama.requiresDataConsent)
+        XCTAssertEqual(AppSettings().aiConsentState(for: .gemini), .undecided)
+        XCTAssertEqual(AppSettings().aiConsentState(for: .appleIntelligence), .notNeeded)
     }
 
     func testEveryProviderHasGuidance() {

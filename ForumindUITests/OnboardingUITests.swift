@@ -10,21 +10,17 @@ final class OnboardingUITests: DCUITestCase {
         let next = app.buttons["onboardingContinue"]
         let skipStep = app.buttons["onboardingSkipStep"]
 
-        // Welcome → What it does.
+        // Welcome → Choose your AI.
         XCTAssertTrue(waitForHittable(next))
         XCTAssertFalse(skipStep.exists, "Welcome has nothing to skip.")
         next.tap()
         assertStep(2, progress)
 
-        // What it does → Connect an AI provider.
-        XCTAssertTrue(waitForHittable(next))
-        next.tap()
-        assertStep(3, progress)
-
-        // Provider: skip for now (no key is entered or tested).
+        // Provider: Gemini is offered first; skip for now (nothing is tested).
+        XCTAssertTrue(any(app, "onboardingProvider-gemini").waitForExistence(timeout: 5), "Google Gemini is not offered first.")
         XCTAssertTrue(waitForHittable(skipStep))
         skipStep.tap()
-        assertStep(4, progress)
+        assertStep(3, progress)
         XCTAssertTrue(
             app.descendants(matching: .any)
                 .matching(NSPredicate(format: "identifier BEGINSWITH 'onboardingForum-'"))
@@ -35,27 +31,24 @@ final class OnboardingUITests: DCUITestCase {
         // Forums: skip for now (pins nothing).
         XCTAssertTrue(waitForHittable(skipStep))
         skipStep.tap()
+        assertStep(4, progress)
+
+        // Your day: everything is off by default; skip.
+        XCTAssertTrue(any(app, "onboardingDigest").waitForExistence(timeout: 5))
+        XCTAssertTrue(waitForHittable(skipStep))
+        skipStep.tap()
         assertStep(5, progress)
 
-        // Sync across your devices: informational, with the iCloud toggle
-        // (on by default; left untouched).
+        // Privacy needs the Terms of Use accepted; the iCloud toggle is here.
         XCTAssertTrue(app.switches["onboardingSyncToggle"].waitForExistence(timeout: 5))
-        XCTAssertFalse(skipStep.exists, "Only the provider and forums steps can be skipped.")
-        XCTAssertTrue(waitForHittable(next))
-        next.tap()
-        assertStep(6, progress)
-
-        // Share → Privacy → Done. Privacy needs the Terms of Use accepted.
-        XCTAssertTrue(waitForHittable(next))
-        next.tap()
-        assertStep(7, progress)
+        XCTAssertFalse(skipStep.exists, "Only the provider, forums and daily steps can be skipped.")
         XCTAssertFalse(next.isEnabled, "Continue works before the Terms of Use are accepted.")
         acceptTerms(app)
         XCTAssertTrue(waitForHittable(next))
         next.tap()
 
         // Done: "Browse (all) forums" is offered whether or not forums were pinned before.
-        assertStep(8, progress)
+        assertStep(6, progress)
         let browse = app.buttons["onboardingBrowseForums"]
         XCTAssertTrue(waitForHittable(browse), "The last step did not appear.")
         XCTAssertFalse(app.buttons["onboardingSkipAll"].isEnabled, "Skip is hidden on the last step.")
@@ -67,16 +60,16 @@ final class OnboardingUITests: DCUITestCase {
     }
 
     func testSkipStopsAtTheTermsThenJumpsToTheLastStep() throws {
-        let app = launch(["-dc-onboarding-step", "features"])
+        let app = launch(["-dc-onboarding-step", "daily"])
 
         let skipAll = app.buttons["onboardingSkipAll"]
         XCTAssertTrue(waitForHittable(skipAll, timeout: 20), "Skip is missing on a middle step.")
         skipAll.tap()
         // The Terms of Use can't be skipped.
-        assertStep(7, any(app, "onboardingProgress"))
+        assertStep(5, any(app, "onboardingProgress"))
         XCTAssertFalse(app.buttons["onboardingContinue"].isEnabled)
         skipAll.tap()
-        assertStep(7, any(app, "onboardingProgress"))
+        assertStep(5, any(app, "onboardingProgress"))
         acceptTerms(app)
         skipAll.tap()
         let browse = app.buttons["onboardingBrowseForums"]
@@ -94,23 +87,46 @@ final class OnboardingUITests: DCUITestCase {
 
         let progress = any(app, "onboardingProgress")
         XCTAssertTrue(progress.waitForExistence(timeout: 20))
-        assertStep(4, progress)
+        assertStep(3, progress)
         let back = app.buttons["onboardingBack"]
         XCTAssertTrue(waitForHittable(back))
         back.tap()
-        assertStep(3, progress)
+        assertStep(2, progress)
         // Leave the walkthrough completed for the other tests (Skip stops
         // at the Terms of Use first).
-        app.buttons["onboardingSkipAll"].tap()
+        let skipAll = app.buttons["onboardingSkipAll"]
+        XCTAssertTrue(waitForHittable(skipAll))
+        skipAll.tap()
+        assertStep(5, progress)
         acceptTerms(app)
-        app.buttons["onboardingSkipAll"].tap()
+        XCTAssertTrue(waitForHittable(skipAll))
+        skipAll.tap()
         let browse = app.buttons["onboardingBrowseForums"]
         XCTAssertTrue(waitForHittable(browse))
         browse.tap()
         XCTAssertTrue(waitForGone(any(app, "onboarding"), timeout: 10))
     }
 
-    /// The progress dots read "Step N of 8: <title>".
+    func testDoneStepOpensTheShareHowToPage() throws {
+        let app = launch(["-dc-onboarding-step", "done"])
+
+        let row = app.buttons["onboardingShareHowTo"]
+        let browse = app.buttons["onboardingBrowseForums"]
+        XCTAssertTrue(waitForHittable(row, timeout: 20), "The Safari or Chrome row is missing.")
+        // Scroll the row clear of the bottom buttons before tapping it.
+        for _ in 0..<4 where row.frame.maxY > browse.frame.minY - 8 { app.swipeUp() }
+        row.tap()
+        let done = app.buttons["shareHowToDone"]
+        for _ in 0..<4 where !(done.waitForExistence(timeout: 3) && done.isHittable) { app.swipeUp() }
+        XCTAssertTrue(waitForHittable(done), "The Share how-to page did not open.")
+        done.tap()
+        // Leave the walkthrough completed for the other tests.
+        XCTAssertTrue(waitForHittable(browse))
+        browse.tap()
+        XCTAssertTrue(waitForGone(any(app, "onboarding"), timeout: 10))
+    }
+
+    /// The progress dots read "Step N of 6: <title>".
     private func assertStep(
         _ number: Int,
         _ progress: XCUIElement,

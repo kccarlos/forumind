@@ -37,6 +37,8 @@ enum RootPresentation: Identifiable, Equatable {
     case reportAIOutput(ReportTarget)
     case translatePosts
     case addForum
+    /// "Share from Safari or Chrome" (Home card).
+    case shareHowTo
     /// The Today podcast's player (NowPlaying.swift).
     case nowPlaying
     case voiceConsent(VoiceProvider)
@@ -61,6 +63,7 @@ enum RootPresentation: Identifiable, Equatable {
         case .reportAIOutput(let target): "reportAIOutput-\(target.id)"
         case .translatePosts: "translatePosts"
         case .addForum: "addForum"
+        case .shareHowTo: "shareHowTo"
         case .nowPlaying: "nowPlaying"
         case .voiceConsent(let provider): "voiceConsent-\(provider.id)"
         case .podcastConsent(let provider): "podcastConsent-\(provider.id)"
@@ -517,6 +520,8 @@ struct RouterHost: ViewModifier {
             AIOutputReportSheet(target: target)
         case .translatePosts:
             PostsTranslationSheet(app: app)
+        case .shareHowTo:
+            ShareHowToSheet(onDone: { router.item = nil })
         case .addForum:
             AddForumSheet(app: app, onAdded: onForumAdded)
         case .nowPlaying:

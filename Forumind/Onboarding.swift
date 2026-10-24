@@ -34,6 +34,9 @@ struct OnboardingFlow: View {
     @State private var selectedForums: Set<String>
     /// The Terms of Use toggle on the privacy step (required to continue).
     @State private var termsAgreed: Bool
+    /// The AI data consent page, shown after a third-party provider tests fine.
+    @State private var consentProvider: AIProvider?
+    @State private var showingShareHowTo = false
     @FocusState private var focused: Bool
     @State private var keyboardVisible = false
 
@@ -54,7 +57,7 @@ struct OnboardingFlow: View {
             OnboardingBackdrop()
             if usesCard {
                 content
-                    .frame(maxWidth: 580, maxHeight: 860)
+                    .frame(maxWidth: 520, maxHeight: 860)
                     .background(
                         DCTheme.pageBackground,
                         in: RoundedRectangle(cornerRadius: 28, style: .continuous)
@@ -70,6 +73,23 @@ struct OnboardingFlow: View {
                 content
             }
         }
+        // Pages over the walkthrough are overlays, not nested sheets: the
+        // walkthrough is itself the root cover.
+        .overlay {
+            if let provider = consentProvider {
+                AIDataConsentPage(
+                    provider: provider,
+                    onAllow: { answerConsent(provider, allow: true) },
+                    onDecline: { answerConsent(provider, allow: false) }
+                )
+                .transition(.move(edge: .bottom))
+            } else if showingShareHowTo {
+                ShareHowToSheet(onDone: { showingShareHowTo = false })
+                    .transition(.move(edge: .bottom))
+            }
+        }
+        .animation(DCMotion.respecting(reduceMotion, DCMotion.smooth), value: consentProvider)
+        .animation(DCMotion.respecting(reduceMotion, DCMotion.smooth), value: showingShareHowTo)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("onboarding")
     }
@@ -121,9 +141,14 @@ struct OnboardingFlow: View {
 
             Button("Skip") {
                 DCHaptics.tap()
-                // The Terms of Use can't be skipped.
-                if termsAgreed { app.acceptTerms() }
-                go(to: termsAgreed ? .done : .privacy)
+                // The Terms of Use can't be skipped: Skip stops at Privacy,
+                // and from there finishes once they are accepted.
+                if step < .privacy {
+                    go(to: .privacy)
+                } else if termsAgreed {
+                    app.acceptTerms()
+                    go(to: .done)
+                }
             }
             .font(.subheadline.weight(.semibold))
             .frame(minWidth: DCTheme.controlHeight, minHeight: DCTheme.controlHeight)
@@ -147,7 +172,7 @@ struct OnboardingFlow: View {
                     Text(primaryTitle)
                 }
                 .buttonStyle(DCPrimaryButtonStyle())
-                .disabled(step == .privacy && !termsAgreed)
+                .disabled((step == .privacy && !termsAgreed) || (step == .provider && providerState == .testing))
                 .accessibilityIdentifier("onboardingContinue")
 
                 if step.allowsSkip {
@@ -184,6 +209,7 @@ struct OnboardingFlow: View {
     private var primaryTitle: String {
         switch step {
         case .provider where app.isProviderReady && providerState == .success: String(localized: "Continue")
+        case .provider: String(localized: "Test & Continue", comment: "Walkthrough button: test the AI provider, then go on")
         case .forums where !selectedForums.isEmpty:
             String(localized: "Continue with \(selectedForums.count) forums", comment: "Walkthrough button: continue with the number of forums the user picked.")
         default: step.continueTitle
@@ -243,13 +269,11 @@ struct OnboardingFlow: View {
     private func page(for step: OnboardingStep) -> some View {
         switch step {
         case .welcome: OnboardingWelcomePage()
-        case .features: OnboardingFeaturesPage()
         case .provider: OnboardingProviderPage(app: app, state: $providerState)
         case .forums: OnboardingForumsPage(app: app, selected: $selectedForums)
-        case .sync: OnboardingSyncPage(app: app)
-        case .share: OnboardingSharePage()
-        case .privacy: OnboardingPrivacyPage(termsAgreed: $termsAgreed)
-        case .done: OnboardingDonePage(app: app, providerState: providerState)
+        case .daily: OnboardingDailyPage(app: app)
+        case .privacy: OnboardingPrivacyPage(app: app, termsAgreed: $termsAgreed)
+        case .done: OnboardingDonePage(app: app, showShareHowTo: { showingShareHowTo = true })
         }
     }
 
@@ -282,12 +306,45 @@ struct OnboardingFlow: View {
         DCHaptics.tap()
         focused = false
         if step == .forums { applyForumSelection() }
-        if step == .provider { app.saveSettings() }
+        if step == .provider { continueFromProvider(); return }
         if step == .privacy {
             guard termsAgreed else { return }
             app.acceptTerms()
         }
         go(to: step.next)
+    }
+
+    /// "Test & Continue": tests the provider, stars its model, and shows the
+    /// consent page when it sends forum content to a third party.
+    private func continueFromProvider() {
+        if app.isProviderReady, providerState == .success {
+            finishProvider()
+            return
+        }
+        guard providerState != .testing else { return }
+        providerState = .testing
+        Task {
+            let result = await app.testAndSaveProvider(scope: .both)
+            providerState = result
+            if result == .success { finishProvider() }
+        }
+    }
+
+    private func finishProvider() {
+        let selection = app.selection(for: .assistant)
+        app.selectModel(selection, for: .both)
+        if !app.isFavorite(selection) { app.addCurrentFavorite(for: .assistant) }
+        if selection.provider.requiresDataConsent, app.aiConsentState(for: selection.provider) == .undecided {
+            consentProvider = selection.provider
+        } else {
+            go(to: .forums)
+        }
+    }
+
+    private func answerConsent(_ provider: AIProvider, allow: Bool) {
+        app.answerAIConsent(provider, allow: allow)
+        consentProvider = nil
+        go(to: .forums)
     }
 
     private func go(to target: OnboardingStep?) {
@@ -308,7 +365,7 @@ struct OnboardingFlow: View {
         for forum in app.pinnedForums where !selectedForums.contains(forum.siteURL) {
             app.unpin(forum)
         }
-        for suggested in AppModel.suggestedForums
+        for suggested in AppModel.onboardingSuggestions()
         where selectedForums.contains(suggested.siteURL) && !pinned.contains(suggested.siteURL) {
             app.pinSuggested(suggested)
         }
