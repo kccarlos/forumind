@@ -17,19 +17,18 @@ enum BottomLayer: Equatable {
     case barWithPodcast
     /// The voice Dock replaces the bar.
     case dock
-    /// The drawer is up: its status row carries voice, playback and research.
+    /// The drawer or the split panel is up: its status row carries voice,
+    /// playback and research.
     case drawer
 
     static func resolve(
-        usesDrawer: Bool,
         drawerOpen: Bool,
         voiceShowing: Bool,
         answerReady: Bool,
         podcastPlaying: Bool
     ) -> BottomLayer {
-        if usesDrawer, drawerOpen { return .drawer }
+        if drawerOpen { return .drawer }
         if voiceShowing { return .dock }
-        guard usesDrawer else { return .bar }
         if answerReady { return .barWithAnswerReady }
         if podcastPlaying { return .barWithPodcast }
         return .bar
@@ -150,13 +149,15 @@ struct DockLayer: View {
     @ObservedObject var router: PresentationRouter
     @ObservedObject var podcast: PodcastController
     let showsHome: Bool
+    /// Split layout, panel hidden: the Dock floats bottom-right.
+    var floatsTrailing = false
     @Namespace private var namespace
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var layer: BottomLayer {
         BottomLayer.resolve(
-            usesDrawer: ContentView.usesDrawer,
-            drawerOpen: router.drawerPhase.isPresented,
+            drawerOpen: router.drawerPhase.isPresented
+                || (router.splitLayout == true && router.splitPanelMode.isVisible(onHome: showsHome)),
             voiceShowing: voice.showsBar,
             answerReady: app.activeResearch == nil && app.readyAnswer != nil,
             podcastPlaying: podcast.isPlayingEpisode && !podcast.player.isSuspendedForVoice
@@ -168,7 +169,7 @@ struct DockLayer: View {
     }
 
     var body: some View {
-        VStack(spacing: DCTheme.spacingS) {
+        VStack(alignment: floatsTrailing ? .trailing : .center, spacing: DCTheme.spacingS) {
             if !showsHome { ResultCardsOverlay(app: app, browser: browser, voice: voice) }
             DockContainer {
                 switch layer {
@@ -190,7 +191,7 @@ struct DockLayer: View {
                     EmptyView()
                 }
             }
-            .frame(maxWidth: DCTheme.contentMaxWidth)
+            .frame(maxWidth: floatsTrailing ? 420 : DCTheme.contentMaxWidth)
         }
         .animation(DCMotion.respecting(reduceMotion, .spring(duration: 0.38, bounce: 0.14)), value: layer)
     }

@@ -27,24 +27,14 @@ final class HomeUITests: DCUITestCase {
         // Switch forum section; menu items are matched by label).
         let named = app.buttons.matching(NSPredicate(format: "label == %@", forumName))
         let namedBefore = named.count
-        if isPhone {
-            openForumMenu(in: app)
-            XCTAssertTrue(wait(timeout: 10) { named.count > namedBefore }, "The forum menu does not list \(forumName).")
-            XCTAssertTrue(app.buttons["Add Forum…"].exists)
-            let homeItem = app.buttons["Home · Today & all forums"]
-            XCTAssertTrue(homeItem.exists)
-            // Home closes the menu and keeps Home.
-            homeItem.tap()
-            XCTAssertTrue(waitForGone(homeItem, timeout: 5))
-        } else {
-            app.buttons["forumSwitcher"].tap()
-            let row = app.buttons["switcherForum-\(host)"]
-            XCTAssertTrue(row.waitForExistence(timeout: 10), "The forum switcher does not list \(forumName).")
-            XCTAssertTrue(app.buttons["switcherAllForums"].exists)
-            // "All forums…" closes the switcher and keeps Home.
-            app.buttons["switcherAllForums"].tap()
-            XCTAssertTrue(waitForGone(row, timeout: 5))
-        }
+        openForumMenu(in: app)
+        XCTAssertTrue(wait(timeout: 10) { named.count > namedBefore }, "The forum menu does not list \(forumName).")
+        XCTAssertTrue(app.buttons["Add Forum…"].exists)
+        let homeItem = app.buttons["Home · Today & all forums"]
+        XCTAssertTrue(homeItem.exists)
+        // Home closes the menu and keeps Home.
+        homeItem.tap()
+        XCTAssertTrue(waitForGone(homeItem, timeout: 5))
         XCTAssertTrue(home.waitForExistence(timeout: 5))
 
         // Unpin from the tile's menu: the tile goes, the suggestion is back.

@@ -174,17 +174,22 @@ final class BrowseNavigationTests: XCTestCase {
         }
         defer { subscription.cancel() }
         let topic = topicContext(post: 1)
+        var appChanges = 0
+        let appToken = app.objectWillChange.sink { appChanges += 1 }
+        defer { appToken.cancel() }
         // Back to back on the main actor: the debounce can't fire in between.
         for number in 1...6 {
             var context = topic
             context.visiblePosts = [number, number + 1]
+            app.browser.setPageContext(context)
             app.handlePagePosition(context)
         }
+        XCTAssertEqual(appChanges, 0, "scrolling never republishes the app model")
+        XCTAssertEqual(app.pageContext.visiblePosts, [6, 7], "the browser holds the position")
         await fulfillment(of: [done], timeout: 3)
         try await Task.sleep(for: .milliseconds(200))
         XCTAssertEqual(received.count, 1)
         XCTAssertEqual(received.first?.visiblePosts, [6, 7])
-        XCTAssertEqual(app.pageContext.visiblePosts, [6, 7])
         XCTAssertNil(app.currentTopic, "A position update doesn't select or save a topic")
     }
 
@@ -212,7 +217,7 @@ final class BrowseNavigationTests: XCTestCase {
         XCTAssertEqual(PostLevelURLStub.requests.first?.path, "/search.json")
 
         // Within the open topic: `topic:<id>`.
-        app.handlePagePosition(topicContext(post: 1))
+        app.browser.setPageContext(topicContext(post: 1))
         _ = await app.find("hide it", scope: .topic)
         let query = URLComponents(url: try XCTUnwrap(PostLevelURLStub.requests.last), resolvingAgainstBaseURL: false)?
             .queryItems?.first { $0.name == "q" }?.value
@@ -240,7 +245,7 @@ final class BrowseNavigationTests: XCTestCase {
             }
         }
         let app = makeApp()
-        app.handlePagePosition(topicContext(post: 5))
+        app.browser.setPageContext(topicContext(post: 5))
 
         let result = await app.read()
         XCTAssertEqual(result.status, .read)
@@ -286,7 +291,7 @@ final class BrowseNavigationTests: XCTestCase {
         XCTAssertEqual(app.browseCursor.items.map(\.postNumber), [5, 10])
         XCTAssertEqual(app.browseCursor.index, 0)
         XCTAssertFalse(app.isResearching)
-        let runs = app.agentRuns.map(\.status)
+        let runs = app.agentRuns.map(\.result)
         XCTAssertEqual(runs.filter { $0 == .cancelled }.count, 1)
         XCTAssertEqual(runs.filter { $0 == .completed }.count, 1)
     }
@@ -305,7 +310,7 @@ final class BrowseNavigationTests: XCTestCase {
         planner.release()
         XCTAssertEqual(result.status, .cancelled)
         XCTAssertTrue(app.browseCursor.isEmpty)
-        try await waitUntil { app.agentRuns.first?.status == .cancelled }
+        try await waitUntil { app.agentRuns.first?.result == .cancelled }
     }
 
     // MARK: Results

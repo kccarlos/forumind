@@ -125,11 +125,10 @@ final class ForumPacingTests: XCTestCase {
         XCTAssertEqual(ForumRequestPace.allCases.map(\.maximumConcurrency), [1, 2, 4])
     }
 
-    func testSettingDecodesMissingAndUnknownAsGentleAndRoundTrips() throws {
+    func testSettingDecodesMissingAsGentleAndRoundTrips() throws {
         let old = try JSONDecoder().decode(AppSettings.self, from: Data(#"{"systemPrompt":"x"}"#.utf8))
-        XCTAssertEqual(old.forumRequestPace, .gentle, "existing users get the polite default")
-        let unknown = try JSONDecoder().decode(AppSettings.self, from: Data(#"{"forumRequestPace":"warp"}"#.utf8))
-        XCTAssertEqual(unknown.forumRequestPace, .gentle)
+        XCTAssertEqual(old.forumRequestPace, .gentle, "a missing key takes the polite default")
+        XCTAssertThrowsError(try JSONDecoder().decode(AppSettings.self, from: Data(#"{"forumRequestPace":"warp"}"#.utf8)))
         XCTAssertEqual(AppSettings().forumRequestPace, .gentle)
 
         var settings = AppSettings()
@@ -321,7 +320,7 @@ final class ForumPacingTests: XCTestCase {
         PacingURLStub.reset(clock: clock)
         let app = makeApp(clock: clock)
         app.settings.forumRequestPace = .gentle
-        app.settings.selectedProvider = .ollama
+        app.settings.assistantModel = ModelSelection(provider: .ollama, model: (.ollama as AIProvider).defaultModel)
         var configuration = app.settings.configuration(for: .ollama)
         configuration.model = "model-a"
         app.setConfiguration(configuration, for: .ollama)

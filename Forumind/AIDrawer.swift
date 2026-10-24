@@ -75,7 +75,7 @@ struct AIDrawerModifier: ViewModifier {
 extension AppModel {
     /// The drawer shows on web pages, not on the Forums home.
     var isDrawerAvailable: Bool {
-        ContentView.usesDrawer && !browser.showsForumsHome
+        router.usesDrawer && !browser.showsForumsHome
     }
 
     /// Presents or closes the drawer to match the request, but only while no
@@ -84,7 +84,7 @@ extension AppModel {
     /// its way in or out, the sheet's callbacks (or the router's watchdog)
     /// come back here.
     func syncDrawer() {
-        guard ContentView.usesDrawer, rootPresentation == nil else { return }
+        guard rootPresentation == nil else { return }
         let wanted = router.wantsDrawer && isDrawerAvailable
         switch router.drawerPhase {
         case .closed where wanted: router.presentDrawer()
@@ -95,7 +95,7 @@ extension AppModel {
 
     /// The first topic ever opened shows the drawer once at its peek.
     func showFirstTopicPeekIfNeeded() {
-        guard ContentView.usesDrawer, !router.wantsDrawer, isDrawerAvailable else { return }
+        guard router.usesDrawer, !router.wantsDrawer, isDrawerAvailable else { return }
         let defaults = UserDefaults.standard
         guard !defaults.bool(forKey: PresentationRouter.firstTopicPeekKey) else { return }
         defaults.set(true, forKey: PresentationRouter.firstTopicPeekKey)

@@ -239,11 +239,9 @@ struct ModelListSheet: View {
     private var suggestions: [String] {
         let provider = bindings.provider
         var models = [provider.defaultModel]
-        let configured = app.settings.configuration(for: provider).model
         for role in ModelRole.allCases where app.selection(for: role).provider == provider {
             models.append(app.selection(for: role).model)
         }
-        models.append(configured)
         for favorite in app.settings.favoriteModels where favorite.provider == provider {
             models.append(favorite.model)
         }

@@ -103,10 +103,23 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
     ]
 }
 
+/// A provider's connection (address and key). `model` is not stored: each
+/// role's `ModelSelection` is the only model setting, and
+/// `AppSettings.configuration(for: ModelRole)` fills it in for a request;
+/// a provider's own configuration carries its default model.
 struct ProviderConfiguration: Codable, Equatable {
     var model: String
     var baseURL: String
     var apiKey: String
+
+    private enum CodingKeys: String, CodingKey { case baseURL, apiKey }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        model = ""
+        baseURL = try container.decode(String.self, forKey: .baseURL)
+        apiKey = try container.decodeIfPresent(String.self, forKey: .apiKey) ?? ""
+    }
 
     init(model: String, baseURL: String, apiKey: String) {
         self.model = model
@@ -192,9 +205,6 @@ enum SummaryBatchLimit {
 }
 
 struct AppSettings: Codable, Equatable {
-    /// The assistant model's provider, kept equal to `assistantModel.provider`
-    /// for builds that predate model roles (they sync settings too).
-    var selectedProvider: AIProvider = .openRouter
     /// Summaries, chat and watched-topic refreshes.
     var assistantModel = ModelSelection(provider: .openRouter, model: AIProvider.openRouter.defaultModel)
     /// Ask the forum: planning, answers and follow-ups.
@@ -276,7 +286,6 @@ struct AppSettings: Codable, Equatable {
     var hasAcceptedCurrentTerms: Bool { acceptedTermsVersion >= ModerationTerms.currentVersion }
 
     private enum CodingKeys: String, CodingKey {
-        case selectedProvider
         case assistantModel
         case agentModel
         case configurations
@@ -316,29 +325,27 @@ struct AppSettings: Codable, Equatable {
         case aiConsent
     }
 
-    // Snapshots written by earlier versions lack the newer keys; a missing key
-    // must fall back to the default rather than fail the whole snapshot decode.
+    // A missing key takes its default; an unreadable value fails the decode
+    // (the store then starts fresh).
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        selectedProvider = try container.decodeIfPresent(AIProvider.self, forKey: .selectedProvider)
-            ?? .openRouter
-        configurations = try container.decodeIfPresent(
-            [String: ProviderConfiguration].self,
-            forKey: .configurations
-        ) ?? Dictionary(
+        let stored = try container.decodeIfPresent([String: ProviderConfiguration].self, forKey: .configurations)
+        configurations = stored.map { stored in
+            Dictionary(uniqueKeysWithValues: stored.map { key, value in
+                var configuration = value
+                configuration.model = AIProvider(rawValue: key)?.defaultModel ?? ""
+                return (key, configuration)
+            })
+        } ?? Dictionary(
             uniqueKeysWithValues: AIProvider.allCases.map {
                 ($0.rawValue, ProviderConfiguration(provider: $0))
             }
         )
         favoriteModels = try container.decodeIfPresent([FavoriteModel].self, forKey: .favoriteModels)
             ?? []
-        // Settings from before model roles: both roles take the selected
-        // provider and its model. A legacy build that changed the provider
-        // later wins over the assistant role (see `reconcileModelRoles`).
-        let legacy = ModelSelection(provider: selectedProvider, model: configuration(for: selectedProvider).model)
-        assistantModel = try container.decodeIfPresent(ModelSelection.self, forKey: .assistantModel) ?? legacy
-        agentModel = try container.decodeIfPresent(ModelSelection.self, forKey: .agentModel) ?? legacy
-        if assistantModel.provider != selectedProvider { assistantModel = legacy }
+        let stock = AppSettings()
+        assistantModel = try container.decodeIfPresent(ModelSelection.self, forKey: .assistantModel) ?? stock.assistantModel
+        agentModel = try container.decodeIfPresent(ModelSelection.self, forKey: .agentModel) ?? stock.agentModel
         systemPrompt = try container.decodeIfPresent(String.self, forKey: .systemPrompt) ?? ""
         forumContextLimit = try container.decodeIfPresent(Int.self, forKey: .forumContextLimit)
             ?? 30_000
@@ -346,15 +353,8 @@ struct AppSettings: Codable, Equatable {
             try container.decodeIfPresent(Int.self, forKey: .summaryBatchLimit)
                 ?? SummaryBatchLimit.default
         )
-        // Settings from before the setting existed had the bar on top; a
-        // value from a newer build falls back the same way.
-        browserBarPosition = (try? container.decodeIfPresent(
-            BrowserBarPosition.self,
-            forKey: .browserBarPosition
-        )) ?? .top
-        // Missing (older snapshots) or unknown (a newer build's value).
-        launchDestination = (try? container.decodeIfPresent(LaunchDestination.self, forKey: .launchDestination))
-            .flatMap { $0 } ?? .automatic
+        browserBarPosition = try container.decodeIfPresent(BrowserBarPosition.self, forKey: .browserBarPosition) ?? stock.browserBarPosition
+        launchDestination = try container.decodeIfPresent(LaunchDestination.self, forKey: .launchDestination) ?? stock.launchDestination
         agentMaxSteps = AgentLimits.clampSteps(
             try container.decodeIfPresent(Int.self, forKey: .agentMaxSteps)
                 ?? AgentLimits.defaultMaxSteps
@@ -383,40 +383,39 @@ struct AppSettings: Codable, Equatable {
         adBlockAllowedSites = (try container.decodeIfPresent([String].self, forKey: .adBlockAllowedSites) ?? [])
             .compactMap(ContentBlockingRules.normalizedHost)
         syncAPIKeys = try container.decodeIfPresent(Bool.self, forKey: .syncAPIKeys) ?? true
-        // Missing (older snapshots) or unknown (a newer build's value): the
-        // polite default.
-        forumRequestPace = (try? container.decodeIfPresent(ForumRequestPace.self, forKey: .forumRequestPace))
-            .flatMap { $0 } ?? .default
-        blockedUsers = (try? container.decodeIfPresent([BlockedUser].self, forKey: .blockedUsers)).flatMap { $0 } ?? []
-        filteredWords = (try? container.decodeIfPresent([String].self, forKey: .filteredWords)).flatMap { $0 } ?? []
-        acceptedTermsVersion = (try? container.decodeIfPresent(Int.self, forKey: .acceptedTermsVersion)).flatMap { $0 } ?? 0
-        dailyDigestEnabled = (try? container.decodeIfPresent(Bool.self, forKey: .dailyDigestEnabled)).flatMap { $0 } ?? false
-        dailyDigestNotifies = (try? container.decodeIfPresent(Bool.self, forKey: .dailyDigestNotifies)).flatMap { $0 } ?? false
-        dailyDigestIncludesWatched = (try? container.decodeIfPresent(Bool.self, forKey: .dailyDigestIncludesWatched))
-            .flatMap { $0 } ?? true
-        dailyDigestIncludesTrending = (try? container.decodeIfPresent(Bool.self, forKey: .dailyDigestIncludesTrending))
-            .flatMap { $0 } ?? true
+        forumRequestPace = try container.decodeIfPresent(ForumRequestPace.self, forKey: .forumRequestPace) ?? .default
+        blockedUsers = try container.decodeIfPresent([BlockedUser].self, forKey: .blockedUsers) ?? []
+        filteredWords = try container.decodeIfPresent([String].self, forKey: .filteredWords) ?? []
+        acceptedTermsVersion = try container.decodeIfPresent(Int.self, forKey: .acceptedTermsVersion) ?? 0
+        dailyDigestEnabled = try container.decodeIfPresent(Bool.self, forKey: .dailyDigestEnabled) ?? false
+        dailyDigestNotifies = try container.decodeIfPresent(Bool.self, forKey: .dailyDigestNotifies) ?? false
+        dailyDigestIncludesWatched = try container.decodeIfPresent(Bool.self, forKey: .dailyDigestIncludesWatched) ?? true
+        dailyDigestIncludesTrending = try container.decodeIfPresent(Bool.self, forKey: .dailyDigestIncludesTrending) ?? true
         dailyDigestMaxCards = DigestLimits.clampCards(
-            (try? container.decodeIfPresent(Int.self, forKey: .dailyDigestMaxCards)).flatMap { $0 } ?? DigestLimits.defaultCards
+            try container.decodeIfPresent(Int.self, forKey: .dailyDigestMaxCards) ?? DigestLimits.defaultCards
         )
-        voiceEnabled = (try? container.decodeIfPresent(Bool.self, forKey: .voiceEnabled)).flatMap { $0 } ?? false
-        voiceConsent = (try? container.decodeIfPresent([String: Date].self, forKey: .voiceConsent)).flatMap { $0 } ?? [:]
-        voice = (try? container.decodeIfPresent(VoiceSettings.self, forKey: .voice)).flatMap { $0 } ?? VoiceSettings()
-        podcastDailyEnabled = (try? container.decodeIfPresent(Bool.self, forKey: .podcastDailyEnabled)).flatMap { $0 } ?? false
-        podcastConsent = (try? container.decodeIfPresent([String: Date].self, forKey: .podcastConsent)).flatMap { $0 } ?? [:]
-        podcast = (try? container.decodeIfPresent(PodcastSettings.self, forKey: .podcast)).flatMap { $0 } ?? PodcastSettings()
-        readingLanguage = (try? container.decodeIfPresent(String.self, forKey: .readingLanguage)).flatMap { $0 } ?? ""
-        spotlightEnabled = (try? container.decodeIfPresent(Bool.self, forKey: .spotlightEnabled)).flatMap { $0 } ?? true
-        donatesTopicActivity = (try? container.decodeIfPresent(Bool.self, forKey: .donatesTopicActivity)).flatMap { $0 } ?? true
+        voiceEnabled = try container.decodeIfPresent(Bool.self, forKey: .voiceEnabled) ?? false
+        voiceConsent = try container.decodeIfPresent([String: Date].self, forKey: .voiceConsent) ?? [:]
+        voice = try container.decodeIfPresent(VoiceSettings.self, forKey: .voice) ?? VoiceSettings()
+        podcastDailyEnabled = try container.decodeIfPresent(Bool.self, forKey: .podcastDailyEnabled) ?? false
+        podcastConsent = try container.decodeIfPresent([String: Date].self, forKey: .podcastConsent) ?? [:]
+        podcast = try container.decodeIfPresent(PodcastSettings.self, forKey: .podcast) ?? PodcastSettings()
+        readingLanguage = try container.decodeIfPresent(String.self, forKey: .readingLanguage) ?? ""
+        spotlightEnabled = try container.decodeIfPresent(Bool.self, forKey: .spotlightEnabled) ?? true
+        donatesTopicActivity = try container.decodeIfPresent(Bool.self, forKey: .donatesTopicActivity) ?? true
         aiConsent = try container.decodeIfPresent([String: AIConsentDecision].self, forKey: .aiConsent) ?? [:]
     }
 
     func configuration(for provider: AIProvider) -> ProviderConfiguration {
-        configurations[provider.rawValue] ?? ProviderConfiguration(provider: provider)
+        var configuration = configurations[provider.rawValue] ?? ProviderConfiguration(provider: provider)
+        configuration.model = provider.defaultModel
+        return configuration
     }
 
     mutating func setConfiguration(_ configuration: ProviderConfiguration, for provider: AIProvider) {
-        configurations[provider.rawValue] = configuration
+        var stored = configuration
+        stored.model = provider.defaultModel
+        configurations[provider.rawValue] = stored
     }
 
     var persistable: AppSettings {
@@ -434,8 +433,7 @@ struct RawForumPage: Codable, Equatable {
     var page: Int
     var content: String
     /// The topic's post count when the page was fetched: a page that was full
-    /// then never changes (`CachePlan`). Nil for pages saved by older builds
-    /// (the session's post count stands in).
+    /// then never changes (`CachePlan`).
     var topicPostCount: Int?
 
     /// Posts per raw page.
@@ -455,8 +453,7 @@ struct ChatMessage: Codable, Identifiable, Equatable {
 }
 
 struct TopicSession: Codable, Identifiable, Equatable {
-    /// The forum's site URL (origin + base path). Empty only while decoding a
-    /// pre-multi-forum snapshot; `AppSnapshot` fills in the legacy forum.
+    /// The forum's site URL (origin + base path).
     var siteURL: String
     var topicID: String
     var url: URL
@@ -503,7 +500,7 @@ struct TopicSession: Codable, Identifiable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        siteURL = try container.decodeIfPresent(String.self, forKey: .siteURL) ?? ""
+        siteURL = try container.decode(String.self, forKey: .siteURL)
         topicID = try container.decode(String.self, forKey: .topicID)
         url = try container.decode(URL.self, forKey: .url)
         title = try container.decode(String.self, forKey: .title)
@@ -734,12 +731,29 @@ enum AgentRunOrigin: String, Codable, CaseIterable {
 
 /// A goal-driven run of the forum agent, kept so it can be reopened and
 /// continued with follow-up questions.
+/// The terminal outcome of an agent run.
+enum AgentRunResult: String, Codable, Equatable {
+    case completed
+    case failed
+    case cancelled
+
+    var workStatus: WorkStatus {
+        switch self {
+        case .completed: .completed
+        case .failed: .failed
+        case .cancelled: .cancelled
+        }
+    }
+}
+
 struct AgentRun: Codable, Identifiable, Equatable {
     var id = UUID()
     /// The forum every tool call of this run (and its follow-ups) targets.
     var siteURL: String
     var goal: String
-    var status: WorkStatus = .queued
+    /// How the run ended; nil while it is live. Whether a live run is queued
+    /// or running is its work record's (`AppModel.status(of:)`).
+    var result: AgentRunResult?
     var steps: [AgentStep] = []
     /// Model/observation exchange; follow-ups append to it so the agent keeps
     /// the topics it already read as context.
@@ -761,6 +775,8 @@ struct AgentRun: Codable, Identifiable, Equatable {
 
     var readTopicCount: Int { topicIDs.count }
 
+    var isFinished: Bool { result != nil }
+
     init(id: UUID = UUID(), siteURL: String, goal: String, provider: AIProvider, model: String, origin: AgentRunOrigin = .typed) {
         self.id = id
         self.origin = origin
@@ -771,17 +787,16 @@ struct AgentRun: Codable, Identifiable, Equatable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, siteURL, goal, status, steps, transcript, answer, initialAnswer, followUps
+        case id, siteURL, goal, result, steps, transcript, answer, initialAnswer, followUps
         case topicIDs, error, provider, model, origin, createdAt, updatedAt, completedAt
     }
 
-    // Runs saved before multi-forum have no site URL; `AppSnapshot` fills it.
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
-        siteURL = try container.decodeIfPresent(String.self, forKey: .siteURL) ?? ""
+        siteURL = try container.decode(String.self, forKey: .siteURL)
         goal = try container.decode(String.self, forKey: .goal)
-        status = try container.decode(WorkStatus.self, forKey: .status)
+        result = try container.decodeIfPresent(AgentRunResult.self, forKey: .result)
         steps = try container.decode([AgentStep].self, forKey: .steps)
         transcript = try container.decode([ChatMessage].self, forKey: .transcript)
         answer = try container.decode(String.self, forKey: .answer)
@@ -824,10 +839,9 @@ struct WatchedTopic: Codable, Identifiable, Equatable {
         case siteURL, topicID, url, title, knownPostCount, newReplies, addedAt, lastCheckedAt
     }
 
-    // Watches saved before multi-forum have no site URL; `AppSnapshot` fills it.
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        siteURL = try container.decodeIfPresent(String.self, forKey: .siteURL) ?? ""
+        siteURL = try container.decode(String.self, forKey: .siteURL)
         topicID = try container.decode(String.self, forKey: .topicID)
         url = try container.decode(URL.self, forKey: .url)
         title = try container.decode(String.self, forKey: .title)
@@ -987,8 +1001,7 @@ enum WorkStatus: String, Codable {
 struct WorkRecord: Codable, Identifiable, Equatable {
     var id = UUID()
     var type: WorkType
-    /// The forum the work runs against. Empty only while decoding a
-    /// pre-multi-forum snapshot; `AppSnapshot` fills in the legacy forum.
+    /// The forum the work runs against.
     var siteURL: String
     /// Forum topic id, or `agent:{runID}` for agent work.
     var topicID: String
@@ -1047,12 +1060,11 @@ struct WorkRecord: Codable, Identifiable, Equatable {
         case statusText, progress, error, batchLimit, createdAt, updatedAt, startedAt, completedAt
     }
 
-    // Records saved before multi-forum have no site URL; `AppSnapshot` fills it.
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
         type = try container.decode(WorkType.self, forKey: .type)
-        siteURL = try container.decodeIfPresent(String.self, forKey: .siteURL) ?? ""
+        siteURL = try container.decode(String.self, forKey: .siteURL)
         topicID = try container.decode(String.self, forKey: .topicID)
         title = try container.decode(String.self, forKey: .title)
         url = try container.decode(URL.self, forKey: .url)

@@ -141,14 +141,14 @@ final class AppleIntelligenceTests: XCTestCase {
         fake.status = .unavailable(.modelNotReady)
         XCTAssertFalse(app.isProviderReady(for: .agent))
         XCTAssertTrue(app.isProviderReady(for: .assistant))
-        XCTAssertEqual(app.settings.selectedProvider, .ollama)
+        XCTAssertEqual(app.settings.assistantModel.provider, .ollama)
 
         // Swapped: summaries on Apple Intelligence, Ask the forum elsewhere.
         app.useSameModel(as: .assistant)
         app.selectProvider(.appleIntelligence, for: .role(.assistant))
         XCTAssertFalse(app.isProviderReady(for: .assistant))
         XCTAssertTrue(app.isProviderReady(for: .agent))
-        XCTAssertEqual(app.settings.selectedProvider, .appleIntelligence)
+        XCTAssertEqual(app.settings.assistantModel.provider, .appleIntelligence)
     }
 
     // MARK: Default provider
@@ -174,13 +174,11 @@ final class AppleIntelligenceTests: XCTestCase {
         XCTAssertFalse(AppleIntelligenceDefaults.isUntouched(withKey))
 
         var otherProvider = AppSettings()
-        otherProvider.selectedProvider = .ollama
+        otherProvider.assistantModel = ModelSelection(provider: .ollama, model: (.ollama as AIProvider).defaultModel)
         XCTAssertFalse(AppleIntelligenceDefaults.isUntouched(otherProvider))
 
         var editedModel = AppSettings()
-        var anthropic = editedModel.configuration(for: .anthropic)
-        anthropic.model = "claude-sonnet-4-5"
-        editedModel.setConfiguration(anthropic, for: .anthropic)
+        editedModel.assistantModel = ModelSelection(provider: .anthropic, model: "claude-sonnet-4-5")
         XCTAssertFalse(AppleIntelligenceDefaults.isUntouched(editedModel))
 
         var withFavorite = AppSettings()
@@ -192,17 +190,17 @@ final class AppleIntelligenceTests: XCTestCase {
     func testApplyingTheDefaultHappensOnceAndNeverOverridesAConfiguredProvider() throws {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: "ai-tests-\(UUID().uuidString)"))
         let app = makeApp(FakeAppleIntelligence())
-        XCTAssertEqual(app.settings.selectedProvider, .openRouter)
+        XCTAssertEqual(app.settings.assistantModel.provider, .openRouter)
         app.applyAppleIntelligenceDefaultIfNeeded(status: .available(.onDevice), defaults: defaults)
-        XCTAssertEqual(app.settings.selectedProvider, .appleIntelligence)
+        XCTAssertEqual(app.settings.assistantModel.provider, .appleIntelligence)
         XCTAssertEqual(app.settings.assistantModel.provider, .appleIntelligence)
         XCTAssertEqual(app.settings.agentModel.provider, .appleIntelligence, "a new user starts with it for both roles")
         XCTAssertEqual(app.settings.favoriteModels, [FavoriteModel(provider: .appleIntelligence, model: "Automatic")], "starred, so the model menus list it")
 
         // The user switches back; the default is not applied again.
-        app.settings.selectedProvider = .openRouter
+        app.settings.assistantModel = ModelSelection(provider: .openRouter, model: (.openRouter as AIProvider).defaultModel)
         app.applyAppleIntelligenceDefaultIfNeeded(status: .available(.onDevice), defaults: defaults)
-        XCTAssertEqual(app.settings.selectedProvider, .openRouter)
+        XCTAssertEqual(app.settings.assistantModel.provider, .openRouter)
 
         // An existing user with a key keeps their provider.
         let existing = makeApp(FakeAppleIntelligence())
@@ -211,13 +209,13 @@ final class AppleIntelligenceTests: XCTestCase {
         existing.settings.setConfiguration(configuration, for: .openRouter)
         let freshDefaults = try XCTUnwrap(UserDefaults(suiteName: "ai-tests-\(UUID().uuidString)"))
         existing.applyAppleIntelligenceDefaultIfNeeded(status: .available(.privateCloudCompute), defaults: freshDefaults)
-        XCTAssertEqual(existing.settings.selectedProvider, .openRouter)
+        XCTAssertEqual(existing.settings.assistantModel.provider, .openRouter)
 
         // Unavailable: nothing changes and the one-time flag stays unset.
         let other = makeApp(FakeAppleIntelligence())
         let otherDefaults = try XCTUnwrap(UserDefaults(suiteName: "ai-tests-\(UUID().uuidString)"))
         other.applyAppleIntelligenceDefaultIfNeeded(status: .unavailable(.modelNotReady), defaults: otherDefaults)
-        XCTAssertEqual(other.settings.selectedProvider, .openRouter)
+        XCTAssertEqual(other.settings.assistantModel.provider, .openRouter)
         XCTAssertFalse(otherDefaults.bool(forKey: AppleIntelligenceDefaults.appliedKey))
     }
 

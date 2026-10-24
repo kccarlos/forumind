@@ -7,6 +7,7 @@ import XCTest
 /// run only on a physical device with a configured provider.
 final class PhysicalDeviceSmokeTests: DCUITestCase {
     func testLandscapeShowsBrowserAndAdaptivePanelSideBySide() throws {
+        try skipUnlessPhone("The iPad workspace switcher, mode picker and Manage screen were replaced in Phase 8; IPadLayoutUITests covers the split and drawer layouts.")
         try skipUnlessPad("The side-by-side layout is an iPad feature.")
         let app = launch(["-dc-sample"], orientation: .landscapeRight)
 
@@ -66,7 +67,8 @@ final class PhysicalDeviceSmokeTests: DCUITestCase {
         XCTAssertTrue(modePicker.waitForExistence(timeout: 10))
     }
 
-    func testPortraitUsesBrowseAssistantWorkspaceSwitcher() {
+    func testPortraitUsesBrowseAssistantWorkspaceSwitcher() throws {
+        try skipUnlessPhone("The iPad workspace switcher, mode picker and Manage screen were replaced in Phase 8; IPadLayoutUITests covers the split and drawer layouts.")
         // A page is open (the web view shows even when it fails to load offline).
         let app = launch(["-dc-open", Self.forumLatest])
         if isPhone {
@@ -104,17 +106,13 @@ final class PhysicalDeviceSmokeTests: DCUITestCase {
         openBrowserMenuIfCompact(in: app)
         // iPhone: the forum menu's header row is the account ("host · Not
         // signed in" / "Logged in as …").
-        let accountButton = isPhone
-            ? app.buttons.matching(label(contains: "Signed in")).firstMatch
-            : app.buttons["Forum account"]
+        let accountButton = app.buttons.matching(label(contains: "Signed in")).firstMatch
         let loggedIn = app.buttons.matching(label(contains: "Logged in as")).firstMatch
-        if accountButton.waitForExistence(timeout: 5) || (isPhone && loggedIn.exists) {
+        if accountButton.waitForExistence(timeout: 5) || loggedIn.exists {
             // Signed in from an earlier run: the account button opens the forum home.
             dismissMenuIfCompact(in: app)
         } else {
-            let signInButton = isPhone
-                ? app.buttons.matching(label(contains: "Not signed in")).firstMatch
-                : app.buttons["Forum sign in"]
+            let signInButton = app.buttons.matching(label(contains: "Not signed in")).firstMatch
             XCTAssertTrue(signInButton.waitForExistence(timeout: 10))
             signInButton.tap()
 
@@ -127,9 +125,9 @@ final class PhysicalDeviceSmokeTests: DCUITestCase {
         }
 
         // Sign-in help.
-        let menu = app.buttons[isPhone ? "forumSwitcher" : "browserMoreMenu"]
+        let menu = app.buttons["forumSwitcher"]
         XCTAssertTrue(menu.waitForExistence(timeout: 10))
-        if isPhone { tapBarItem(menu) } else { menu.tap() }
+        tapBarItem(menu)
         let help = app.buttons["Sign-in help"]
         XCTAssertTrue(help.waitForExistence(timeout: 10))
         help.tap()
@@ -146,6 +144,7 @@ final class PhysicalDeviceSmokeTests: DCUITestCase {
     }
 
     func testExpandedWorkspacesRenderMarkdownAndKeepChatComposerVisible() throws {
+        try skipUnlessPhone("The iPad workspace switcher, mode picker and Manage screen were replaced in Phase 8; IPadLayoutUITests covers the split and drawer layouts.")
         // iPhone: a page under the AI drawer (the seeded topic stays selected).
         let app = launch(["-ui-test-sample-session"] + (isPhone ? ["-dc-open", Self.forumLatest] : []))
 
@@ -450,6 +449,7 @@ final class PhysicalDeviceSmokeTests: DCUITestCase {
     }
 
     func testBrowserBarMinimizesOnScrollAndMovesToBottom() throws {
+        try skipUnlessPhone("The iPad workspace switcher, mode picker and Manage screen were replaced in Phase 8; IPadLayoutUITests covers the split and drawer layouts.")
         let app = try launchOnForum()
         if isPhone {
             try assertPhoneBarMinimizesEditsAndMoves(in: app)
@@ -533,6 +533,7 @@ final class PhysicalDeviceSmokeTests: DCUITestCase {
     }
 
     func testManageRowsUseMailStyleSwipeActions() throws {
+        try skipUnlessPhone("The iPad workspace switcher, mode picker and Manage screen were replaced in Phase 8; IPadLayoutUITests covers the split and drawer layouts.")
         let app = launch(["-ui-test-manage-swipe"])
 
         if isPhone {
@@ -588,6 +589,7 @@ final class PhysicalDeviceSmokeTests: DCUITestCase {
     }
 
     func testAssistantPageStatesOffline() throws {
+        try skipUnlessPhone("The iPad workspace switcher, mode picker and Manage screen were replaced in Phase 8; IPadLayoutUITests covers the split and drawer layouts.")
         // A page that isn't a Discourse forum: status chip and not-forum card.
         var app = launch(["-dc-sample", "-dc-no-provider", "-dc-page-state", "notForum"])
         showAssistantIfNeeded(in: app)
@@ -699,6 +701,7 @@ final class PhysicalDeviceSmokeTests: DCUITestCase {
     }
 
     func testLayoutAdaptsWhenRotatedAfterLaunch() throws {
+        try skipUnlessPhone("The iPad workspace switcher, mode picker and Manage screen were replaced in Phase 8; IPadLayoutUITests covers the split and drawer layouts.")
         try skipUnlessPad("The side-by-side layout is an iPad feature.")
         let app = launch(["-dc-open", Self.forumLatest])
 
@@ -721,6 +724,7 @@ final class PhysicalDeviceSmokeTests: DCUITestCase {
     }
 
     func testSelectingForumPostActivatesTopicPanel() throws {
+        try skipUnlessPhone("The iPad workspace switcher, mode picker and Manage screen were replaced in Phase 8; IPadLayoutUITests covers the split and drawer layouts.")
         let app = try launchOnForum()
 
         try selectForumTopic(in: app)
@@ -1024,9 +1028,7 @@ final class PhysicalDeviceSmokeTests: DCUITestCase {
     }
 
     private func dismissMenuIfCompact(in app: XCUIApplication) {
-        if isPhone {
-            dismissMenu(in: app)
-        }
+        dismissMenu(in: app)
     }
 
     /// Opens a topic from the forum's latest list by tapping its title link

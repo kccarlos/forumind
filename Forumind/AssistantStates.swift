@@ -136,95 +136,6 @@ struct AssistantForumPill: View {
 
 // MARK: - Mode switcher
 
-/// Summary · Chat · Ask the forum, with a sliding selection. Exposed to
-/// accessibility (and UI tests) as a segmented picker.
-struct AssistantModeSwitcher: View {
-    @Binding var mode: AssistantMode
-    @Namespace private var namespace
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    /// Every segment uses the same label variant, the richest that fits.
-    private enum LabelVariant: CaseIterable {
-        case iconAndTitle, title, iconAndShort, short
-    }
-
-    var body: some View {
-        ViewThatFits(in: .horizontal) {
-            ForEach(LabelVariant.allCases, id: \.self) { variant in
-                HStack(spacing: 2) {
-                    ForEach(AssistantMode.allCases) { item in
-                        segment(item, variant: variant)
-                    }
-                }
-            }
-        }
-        .padding(3)
-        .background(Color.primary.opacity(0.07), in: Capsule())
-        .accessibilityRepresentation {
-            Picker("Assistant mode", selection: $mode) {
-                ForEach(AssistantMode.allCases) { item in
-                    Text(item.accessibilityTitle).tag(item)
-                }
-            }
-            .pickerStyle(.segmented)
-        }
-        .sensoryFeedback(.selection, trigger: mode)
-        .accessibilityIdentifier("assistantModePicker")
-    }
-
-    @ViewBuilder
-    private func label(_ item: AssistantMode, variant: LabelVariant) -> some View {
-        switch variant {
-        case .iconAndTitle: Label(item.title, systemImage: item.systemImage)
-        case .title: Text(item.title)
-        case .iconAndShort: Label(item.shortTitle, systemImage: item.systemImage)
-        case .short: Text(item.shortTitle)
-        }
-    }
-
-    private func segment(_ item: AssistantMode, variant: LabelVariant) -> some View {
-        let selected = mode == item
-        return Button {
-            guard !selected else { return }
-            withAnimation(DCMotion.respecting(reduceMotion, DCMotion.spring)) {
-                mode = item
-            }
-        } label: {
-            label(item, variant: variant)
-            .labelStyle(SwitcherLabelStyle())
-            .fixedSize()
-            .font(.subheadline.weight(selected ? .semibold : .medium))
-            .lineLimit(1)
-            .foregroundStyle(selected ? item.tint : Color.secondary)
-            .padding(.horizontal, 8)
-            .frame(maxWidth: .infinity, minHeight: 34)
-            .background {
-                if selected {
-                    Capsule()
-                        .fill(Color(uiColor: .systemBackground))
-                        .overlay { Capsule().fill(item.tint.opacity(0.1)) }
-                        .overlay { Capsule().stroke(item.tint.opacity(0.28)) }
-                        .shadow(color: .black.opacity(0.08), radius: 3, y: 1)
-                        .matchedGeometryEffect(id: "selection", in: namespace)
-                }
-            }
-            .contentShape(Capsule())
-            .contentShape(.hoverEffect, Capsule())
-        }
-        .buttonStyle(.plain)
-        .hoverEffect(.highlight)
-    }
-
-    private struct SwitcherLabelStyle: LabelStyle {
-        func makeBody(configuration: Configuration) -> some View {
-            HStack(spacing: 5) {
-                configuration.icon.imageScale(.small)
-                configuration.title
-            }
-        }
-    }
-}
-
 // MARK: - Provider setup
 
 /// Shown in place of the assistant's content while the mode's model can't
@@ -750,14 +661,21 @@ struct MaybeForumState: View {
 /// "You're on {forum}": Ask the forum first, then what the user saved here.
 struct ForumHomeState: View {
     @ObservedObject var app: AppModel
+    @ObservedObject private var drafts: ComposerDrafts
     let forum: Forum
     @FocusState private var focused: Bool
     @Environment(\.composerFocusChanged) private var composerFocusChanged
 
+    init(app: AppModel, forum: Forum) {
+        self.app = app
+        _drafts = ObservedObject(wrappedValue: app.drafts)
+        self.forum = forum
+    }
+
     private var examples: [String] { AgentExamples.questions }
 
     private var canAsk: Bool {
-        !app.agentGoalDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !app.drafts.goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {
@@ -772,7 +690,7 @@ struct ForumHomeState: View {
                     )
                 }
 
-                TextField("Ask \(forum.displayName) anything…", text: $app.agentGoalDraft, axis: .vertical)
+                TextField("Ask \(forum.displayName) anything…", text: $drafts.goal, axis: .vertical)
                     .lineLimit(2...5)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 10)
@@ -790,7 +708,7 @@ struct ForumHomeState: View {
                     HStack(spacing: 8) {
                         ForEach(examples, id: \.self) { example in
                             Button {
-                                app.agentGoalDraft = example
+                                app.drafts.goal = example
                                 focused = true
                             } label: {
                                 Text(example)
@@ -907,7 +825,7 @@ struct ForumHomeState: View {
         guard canAsk else { return }
         focused = false
         app.agentSiteURL = forum.siteURL
-        app.startAgentRun(goal: app.agentGoalDraft, siteURL: forum.siteURL)
+        app.startAgentRun(goal: app.drafts.goal, siteURL: forum.siteURL)
         withAnimation(DCMotion.smooth) {
             app.assistantMode = .agent
         }

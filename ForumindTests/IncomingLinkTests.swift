@@ -250,16 +250,16 @@ final class IncomingLinkTests: XCTestCase {
     private func deliverTopicPage(to app: AppModel) {
         let siteURL = "https://forum.example.com"
         let topic = ForumTopic(siteURL: siteURL, topicID: "42", url: topicURL, title: "Topic")
-        app.browser.onPageContextChanged?(
-            PageContext(
+        let context = PageContext(
                 url: topicURL,
                 isDiscourse: true,
                 siteURL: siteURL,
                 forumName: "Example",
                 topic: topic,
                 state: .topic
-            )
         )
+        app.browser.setPageContext(context)
+        app.browser.onPageContextChanged?(context)
     }
 
     private func makeRequest(

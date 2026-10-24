@@ -12,8 +12,9 @@ import WebKit
 // pushed over Home (`AppModel.homePath`) go on this stack. At the bottom it
 // is the system toolbar; at the top (the
 // user's choice) the same items in a bar above the page. While the address
-// is edited the field rides on the keyboard instead. iPad keeps
-// `BrowserChrome` (ContentView.swift).
+// is edited the field rides on the keyboard instead. In the iPad split layout
+// the same bar sits at the top over the page and the AI panel, with three
+// groups (`SplitBarContext`).
 
 struct PhoneBrowser<Page: View>: View {
     @ObservedObject var app: AppModel
@@ -28,6 +29,9 @@ struct PhoneBrowser<Page: View>: View {
     /// The window width: toolbar items get their ideal width, so the
     /// capsule is given the room the avatar and the AI button leave.
     var width: CGFloat = 0
+    /// iPad split layout: the top bar's three groups, with the AI panel's
+    /// toggle. nil: the iPhone bar.
+    var split: SplitBarContext?
     @ViewBuilder let page: () -> Page
 
     @State private var isEditingAddress = false
@@ -44,7 +48,7 @@ struct PhoneBrowser<Page: View>: View {
     /// `toolbarMinimizationBehavior`) doesn't follow WKWebView's scroll view,
     /// so it isn't used.
     private var showsStrip: Bool {
-        !isEditingAddress && browser.isChromeMinimized && !browser.showsForumsHome
+        !isEditingAddress && browser.isChromeMinimized && !browser.showsForumsHome && split == nil
     }
 
     private var showsToolbar: Bool {
@@ -120,6 +124,35 @@ struct PhoneBrowser<Page: View>: View {
 
     @ViewBuilder
     private var items: some View {
+        if let split {
+            splitItems(split)
+        } else {
+            phoneItems
+        }
+    }
+
+    /// Forum avatar, back, forward | address capsule | mic, ···, AI panel.
+    @ViewBuilder
+    private func splitItems(_ split: SplitBarContext) -> some View {
+        let controls = 5 + (app.showsVoiceButton ? 1 : 0)
+        ForumMenuButton(app: app, browser: browser, voice: app.voice, actions: actions)
+        SplitNavigationButtons(browser: browser)
+        PhoneTitleCapsule(
+            app: app,
+            browser: browser,
+            filled: true,
+            width: max(0, width - 2 * DCTheme.spacingM - CGFloat(controls) * (DCTheme.controlHeight + DCTheme.spacingS)),
+            onEdit: beginEditingAddress
+        )
+        if app.showsVoiceButton {
+            VoiceBarButton(voice: app.voice)
+        }
+        SplitMoreMenu(app: app, browser: browser, actions: actions)
+        SplitPanelToggle(isShown: split.panelShown, action: split.togglePanel)
+    }
+
+    @ViewBuilder
+    private var phoneItems: some View {
         ForumMenuButton(app: app, browser: browser, voice: app.voice, actions: actions)
         PhoneTitleCapsule(
             app: app,
@@ -131,14 +164,14 @@ struct PhoneBrowser<Page: View>: View {
         )
         if browser.showsForumsHome {
             if app.showsVoiceButton {
-                VoiceBarButton(voice: app.voice, onTap: actions.noteInteraction)
+                VoiceBarButton(voice: app.voice)
             }
         } else {
             PhoneAIButton(
                 app: app,
                 voice: app.voice,
                 isAvailable: app.isDrawerAvailable && browser.currentURL != nil,
-                onOpen: { actions.openAssistant?() }
+                onOpen: actions.openAssistant
             )
         }
     }
@@ -173,7 +206,7 @@ struct PhoneBrowser<Page: View>: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
-                Text(BrowserChrome.displayHost(browser.currentURL))
+                Text(BrowserAddress.host(browser.currentURL))
                     .font(.caption.weight(.semibold))
                     .lineLimit(1)
             }
@@ -241,7 +274,6 @@ struct PhoneBrowser<Page: View>: View {
     }
 
     private func beginEditingAddress() {
-        actions.noteInteraction()
         addressDraft = browser.showsForumsHome ? "" : (browser.currentURL?.absoluteString ?? "")
         isEditingAddress = true
     }
@@ -395,12 +427,12 @@ struct PhoneTitleCapsule: View {
     }
 
     private var subtitle: String {
-        BrowserChrome.displayHost(browser.currentURL)
+        BrowserAddress.host(browser.currentURL)
     }
 
     private var accessibilityTitle: Text {
         if showsHome { return Text("Search or enter a forum address", comment: "iPhone bar on Home: placeholder of the search and address field") }
-        return Text(verbatim: "\(browser.pageTitle), \(BrowserChrome.displayAddress(browser.currentURL))")
+        return Text(verbatim: "\(browser.pageTitle), \(BrowserAddress.display(browser.currentURL))")
     }
 
     private var accessibilityHint: Text {
@@ -430,8 +462,8 @@ struct PhoneTitleCapsule: View {
         Button {
             browser.go(to: item)
         } label: {
-            Text(item.title?.isEmpty == false ? item.title ?? "" : BrowserChrome.displayHost(item.url))
-            Text(BrowserChrome.displayAddress(item.url))
+            Text(item.title?.isEmpty == false ? item.title ?? "" : BrowserAddress.host(item.url))
+            Text(BrowserAddress.display(item.url))
         }
     }
 
@@ -659,7 +691,7 @@ struct ForumMenuButton: View {
             headerSection
             ControlGroup {
                 Button(action: goBack) { Label("Back", systemImage: "chevron.backward") }
-                    .disabled(!canGoBack)
+                    .disabled(!browser.canNavigateBack)
                 Button(action: browser.goForward) { Label("Forward", systemImage: "chevron.forward") }
                     .disabled(!browser.canGoForward || showsHome)
                 if browser.isLoading, !showsHome {
@@ -705,10 +737,8 @@ struct ForumMenuButton: View {
                     Label("Home · Today & all forums", systemImage: "square.grid.2x2")
                 }
                 .accessibilityIdentifier("switcherAllForums")
-                if let openPanel = actions.openPanel {
-                    Button { openPanel(.history) } label: {
-                        Label("History", systemImage: "clock.arrow.circlepath")
-                    }
+                Button { actions.openPanel(.history) } label: {
+                    Label("History", systemImage: "clock.arrow.circlepath")
                 }
             }
         } label: {
@@ -751,10 +781,8 @@ struct ForumMenuButton: View {
                     Label("Sign-in help", systemImage: "questionmark.circle")
                 }
             }
-            if let openPanel = actions.openPanel {
-                Button { openPanel(.settings) } label: {
-                    Label("Settings", systemImage: "gearshape")
-                }
+            Button { actions.openPanel(.settings) } label: {
+                Label("Settings", systemImage: "gearshape")
             }
         }
     }
@@ -827,17 +855,8 @@ struct ForumMenuButton: View {
         return String(localized: "\(forum.host) · Signed in", comment: "Forum menu header; the placeholder is the forum's host")
     }
 
-    /// Back also leaves the Forums home when it covers a page.
-    private var canGoBack: Bool {
-        (browser.isForumsHomeRequested && browser.currentURL != nil) || (browser.canGoBack && !showsHome)
-    }
-
     private func goBack() {
-        if browser.isForumsHomeRequested, browser.currentURL != nil {
-            withAnimation(DCMotion.respecting(reduceMotion)) { browser.hideForumsHome() }
-        } else {
-            browser.goBack()
-        }
+        withAnimation(DCMotion.respecting(reduceMotion)) { browser.navigateBack() }
     }
 
     private func goHome() {

@@ -8111,6 +8111,22 @@
         }
       }
     },
+    "Hidden" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已隐藏"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已隱藏"
+          }
+        }
+      }
+    },
     "Hidden on this device: %@" : {
       "comment" : "Settings › AI models: the Apple Intelligence favorite isn't offered on this device. The placeholder is the reason, e.g. Device not supported.",
       "localizations" : {
@@ -8124,6 +8140,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在此裝置上隱藏：%@"
+          }
+        }
+      }
+    },
+    "Hide AI panel" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隐藏 AI 面板"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隱藏 AI 面板"
           }
         }
       }
@@ -9857,6 +9889,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "下一步"
+          }
+        }
+      }
+    },
+    "Next Result" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下一个结果"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下一個結果"
           }
         }
       }
@@ -12288,6 +12336,22 @@
         }
       }
     },
+    "Play or Pause" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "播放或暂停"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "播放或暫停"
+          }
+        }
+      }
+    },
     "Play today’s podcast" : {
       "comment" : "Home podcast card: play button",
       "localizations" : {
@@ -12602,6 +12666,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在準備清單…"
+          }
+        }
+      }
+    },
+    "Previous Result" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上一个结果"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上一個結果"
           }
         }
       }
@@ -15226,6 +15306,22 @@
         }
       }
     },
+    "Show AI panel" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示 AI 面板"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示 AI 面板"
+          }
+        }
+      }
+    },
     "Show browser bar" : {
       "localizations" : {
         "zh-Hans" : {
@@ -15258,6 +15354,22 @@
         }
       }
     },
+    "Show or Hide AI Panel" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示或隐藏 AI 面板"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示或隱藏 AI 面板"
+          }
+        }
+      }
+    },
     "Show original" : {
       "localizations" : {
         "zh-Hans" : {
@@ -15286,6 +15398,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "顯示譯文"
+          }
+        }
+      }
+    },
+    "Shown" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已显示"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已顯示"
           }
         }
       }
@@ -16354,6 +16482,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "總結連結"
+          }
+        }
+      }
+    },
+    "Summarize this link" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "总结此链接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "總結此連結"
           }
         }
       }

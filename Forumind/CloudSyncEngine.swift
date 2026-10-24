@@ -508,7 +508,7 @@ actor CloudSyncEngine {
         for run in local.runs {
             // A run syncs once it has finished; until then it belongs to the
             // device running it (and remote copies do not touch it).
-            add(.run, run.id.uuidString, SyncSchema.runUnits(run), time: run.updatedAt, held: !run.status.isTerminal)
+            add(.run, run.id.uuidString, SyncSchema.runUnits(run), time: run.updatedAt, held: !run.isFinished)
         }
         for watched in local.watched {
             add(.watched, watched.topicKey, Self.units(.watched, watched), time: nil, touched: watched.addedAt)

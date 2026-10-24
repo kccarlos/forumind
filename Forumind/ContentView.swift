@@ -1,50 +1,13 @@
 import SwiftUI
 
-enum AppPane: String, CaseIterable {
-    case browser = "Browse"
-    case assistant = "Assistant"
-
-    var icon: String {
-        switch self {
-        case .browser: "safari"
-        case .assistant: "sparkles"
-        }
-    }
-
-    /// Visible label; `rawValue` stays English for state and tests.
-    var title: String {
-        switch self {
-        case .browser: String(localized: "Browse", comment: "Workspace switch: the web browser pane")
-        case .assistant: String(localized: "Assistant", comment: "Workspace switch: the AI assistant pane")
-        }
-    }
-}
-
 struct ContentView: View {
     @ObservedObject var app: AppModel
     @ObservedObject private var router: PresentationRouter
-    /// iPad single-pane layout only: the page or the assistant. (iPhone has
-    /// the AI drawer over the page instead.)
-    @State private var compactPane: AppPane = .browser
-    /// nil until the first size is known; then updated with hysteresis.
-    @State private var splitState: Bool?
-    /// The pane the user last worked in; picks the pane to keep when the
-    /// window narrows from split to single pane.
-    @State private var focusedPane: AppPane = .browser
-    @State private var keyboardVisible = false
     @Namespace private var nowPlayingNamespace
     @State private var addressFocusRequest = 0
     /// The last `AppModel.assistantRequest` shown.
     @State private var handledAssistantRequest = 0
-    /// Assistant panel width chosen with the handle (0 = default 40%).
-    @AppStorage("dc.assistantPanelWidth") private var storedPanelWidth: Double = 0
-    @State private var dragStartWidth: CGFloat?
-    @State private var dragWidth: CGFloat?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    /// iPhone: the page with the AI drawer over it; iPad keeps the split and
-    /// single-pane layouts (keyed off the device, not the width).
-    static var usesDrawer: Bool { UIDevice.current.userInterfaceIdiom == .phone }
 
     init(app: AppModel) {
         self.app = app
@@ -53,16 +16,23 @@ struct ContentView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            workspace(width: proxy.size.width, bottomSafeArea: proxy.safeAreaInsets.bottom)
-                .onChange(of: proxy.size.width, initial: true) { _, width in
-                    updateLayout(forWidth: width)
-                }
+            WorkspaceView(
+                app: app,
+                browser: app.browser,
+                router: router,
+                width: proxy.size.width,
+                actions: actions,
+                addressFocusRequest: addressFocusRequest,
+                onOpenURL: { _ in showBrowser() }
+            )
+            .onChange(of: proxy.size.width, initial: true) { _, width in
+                updateLayout(forWidth: width)
+            }
         }
         .background(DCTheme.pageBackground)
         #if DEBUG
         .modifier(DebugWindowWidth())
         #endif
-        .dcKeyboardVisible($keyboardVisible)
         .task {
             #if DEBUG
             app.applyDebugLaunchArguments()
@@ -88,34 +58,15 @@ struct ContentView: View {
             // possibly before this view existed (a cold launch).
             guard app.assistantRequest != handledAssistantRequest else { return }
             handledAssistantRequest = app.assistantRequest
-            showPane(.assistant)
+            showAssistant()
         }
         .modifier(AIDrawerCoordinator(app: app))
-        // Where the user is working, without intercepting taps: using the
-        // assistant (Manage/Settings, typing) vs. navigating the page. (Not
-        // the mode: a new topic resets it programmatically.)
-        .onChange(of: app.panelRoute) {
-            if app.panelRoute != .topic { focusedPane = .assistant }
-        }
-        .onChange(of: app.chatDraft) { focusedPane = .assistant }
-        .onChange(of: app.agentGoalDraft) { focusedPane = .assistant }
-        .onChange(of: app.agentFollowUpDraft) { focusedPane = .assistant }
-        .onChange(of: app.browser.currentURL) { focusedPane = .browser }
-        .onChange(of: app.browser.isForumsHomeRequested) { focusedPane = .browser }
-        .onReceive(app.browser.userInteraction) { focusedPane = .browser }
-        .onChange(of: compactPane) {
-            focusedPane = compactPane
-            if compactPane == .browser {
-                // A hidden chat field must not keep the keyboard up.
-                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-            }
-        }
         .onReceive(NotificationCenter.default.publisher(for: .dcWorkspaceCommand)) { notification in
             if let command = WorkspaceCommand(notification) { perform(command) }
         }
         .modifier(AIDrawerModifier(
             app: app,
-            onOpenURL: { _ in showPane(.browser) },
+            onOpenURL: { _ in showBrowser() },
             onForumAdded: forumAdded
         ))
         // Every root sheet, cover and alert (PresentationRouter.swift); inside
@@ -128,31 +79,31 @@ struct ContentView: View {
         .environment(\.nowPlayingNamespace, nowPlayingNamespace)
     }
 
-    /// Home's History and Settings: sheets on iPhone (Home has no drawer),
-    /// the assistant panel on iPad.
+    /// History and Settings: sheets over the drawer layout and over Home, in
+    /// the panel in the split layout.
     private func openPanelRoute(_ route: ExpandedPanelRoute) {
-        if Self.usesDrawer {
+        if router.usesDrawer || route == .post || app.browser.showsForumsHome {
             app.router.item = .expanded(route)
         } else {
             withAnimation(DCMotion.respecting(reduceMotion)) { app.panelRoute = route == .settings ? .settings : .history }
-            showPane(.assistant)
+            showAssistant()
         }
     }
 
     /// A topic or post from the Today page or Home (Home closes).
     private func openDigestLink(_ url: URL, card: DigestCard) {
         app.openDigestLink(url, card: card)
-        showPane(.browser)
+        showBrowser()
     }
 
     private func forumAdded(_ forum: Forum) {
         app.openForum(forum)
-        compactPane = .browser
     }
 
-    /// The side-by-side forum/assistant layout needs an iPad-class window. An
-    /// iPhone in landscape can be wider than the split threshold but is too short
-    /// to keep the panel usable, so phones always use the single-pane layout.
+    /// The side-by-side page and AI panel layout needs a window wide enough
+    /// for both (iPad, not an iPhone in landscape: too short to keep the
+    /// panel usable). Narrower windows, iPad included, get the bottom bar and
+    /// the drawer.
     static func usesSplitLayout(
         width: CGFloat,
         idiom: UIUserInterfaceIdiom = UIDevice.current.userInterfaceIdiom
@@ -160,215 +111,88 @@ struct ContentView: View {
         idiom != .phone && width >= DCTheme.splitLayoutMinimumWidth
     }
 
-    private func isSplit(width: CGFloat) -> Bool {
-        splitState ?? Self.usesSplitLayout(width: width)
-    }
-
-    /// Crossing the threshold moves the panes inside the system's own size
+    /// Crossing the threshold moves the views inside the system's own size
     /// transition (rotation, Split View, Stage Manager resize), which already
     /// animates; an extra SwiftUI animation on top makes a resizing List (the
     /// Forums home grid) loop in UICollectionView self-sizing and crash.
-    /// Split → single keeps the pane the user was in (Settings or Manage
-    /// open, typing in the assistant → Assistant; page or bar → Browse).
+    /// Widening past it closes the drawer (the panel takes over); narrowing
+    /// leaves the drawer closed (the AI button opens it).
     private func updateLayout(forWidth width: CGFloat) {
         guard width > 0 else { return }
-        let next = WorkspaceMetrics.nextIsSplit(current: splitState, width: width)
-        guard next != splitState else { return }
-        let wasSplit = splitState
+        let next = WorkspaceMetrics.nextIsSplit(current: router.splitLayout, width: width)
+        guard next != router.splitLayout else { return }
+        let wasMeasured = router.splitLayout != nil
         var transaction = Transaction(animation: nil)
         transaction.disablesAnimations = true
         withTransaction(transaction) {
-            if wasSplit == true, !next {
-                compactPane = app.panelRoute != .topic || focusedPane == .assistant ? .assistant : .browser
+            router.splitLayout = next
+            if wasMeasured, next {
+                // The drawer was the reader's AI view: keep it as the panel.
+                router.splitPanelMode = router.wantsDrawer ? .shown : .auto
+                router.closeDrawer()
             }
-            splitState = next
         }
-    }
-
-    private func panelWidth(containerWidth: CGFloat) -> CGFloat {
-        WorkspaceMetrics.panelWidth(
-            preferred: dragWidth ?? (storedPanelWidth > 0 ? CGFloat(storedPanelWidth) : nil),
-            containerWidth: containerWidth
-        )
+        app.syncDrawer()
     }
 
     private var actions: BrowserActions {
         BrowserActions(
-            noteInteraction: { focusedPane = .browser },
             showLoginInfo: { app.router.item = .loginInfo },
             addForum: { app.router.item = .addForum },
             report: { topic in app.router.item = .report(topic) },
             translatePosts: { app.router.item = .translatePosts },
-            openAssistant: Self.usesDrawer ? openAssistant : nil,
-            openPanel: Self.usesDrawer ? { route in app.router.item = .expanded(route) } : nil,
+            openAssistant: openAssistant,
+            openPanel: openPanelRoute,
             openForum: { forum in
                 app.openForum(forum)
-                showPane(.browser)
+                showBrowser()
             },
             showForumsHome: {
                 app.showForumsHome()
-                showPane(.browser)
+                showBrowser()
             },
             openDigestLink: openDigestLink,
-            // Phase 7 replaces this with the History page.
             openHistory: { openPanelRoute(.history) },
             openSettings: { openPanelRoute(.settings) }
         )
     }
 
-    // MARK: Workspace
+    // MARK: AI view (drawer or panel)
 
-    @ViewBuilder
-    private func workspace(width: CGFloat, bottomSafeArea: CGFloat) -> some View {
-        if Self.usesDrawer {
-            phoneWorkspace(width: width)
-        } else {
-            padWorkspace(width: width, bottomSafeArea: bottomSafeArea)
+    /// The assistant comes forward: the drawer opens at medium, or the split
+    /// layout's panel shows.
+    private func showAssistant() {
+        if router.usesDrawer {
+            // Not over the Forums home: the drawer is for pages.
+            guard app.isDrawerAvailable else { return }
+            if !router.wantsDrawer || router.drawerDetent == .peek { router.openDrawer(at: .medium) }
+        } else if !app.browser.showsForumsHome, !router.splitPanelMode.isVisible(onHome: false) {
+            // Not over the Forums home: the panel is for pages.
+            router.splitPanelMode = .shown
         }
     }
 
-    /// iPhone: the page with the bar (PhoneBrowserBar.swift); the assistant
-    /// is the AI drawer over it.
-    private func phoneWorkspace(width: CGFloat) -> some View {
-        let showsWebView = !app.browser.showsForumsHome
-        return PhoneBrowser(
-            app: app,
-            browser: app.browser,
-            voice: app.voice,
-            position: app.settings.browserBarPosition.resolved(isSplit: false),
-            actions: actions,
-            addressFocusRequest: addressFocusRequest,
-            width: width
-        ) {
-            BrowserContent(
-                app: app,
-                browser: app.browser,
-                voice: app.voice,
-                actions: actions,
-                webViewIgnoresBottomSafeArea: showsWebView
-            )
-            .ignoresSafeArea(.keyboard, edges: showsWebView ? .bottom : [])
+    /// The page comes forward: a large drawer lowers to medium so the page
+    /// shows (the split layout shows both).
+    private func showBrowser() {
+        if router.usesDrawer, router.drawerDetent == .large {
+            withAnimation(DCMotion.respecting(reduceMotion, DCMotion.smooth)) { router.drawerDetent = .medium }
         }
     }
-
-    private func padWorkspace(width: CGFloat, bottomSafeArea: CGFloat) -> some View {
-        let split = isSplit(width: width)
-        let panel = panelWidth(containerWidth: width)
-        let barPosition = app.settings.browserBarPosition.resolved(isSplit: split)
-        let showsBrowser = split || compactPane == .browser
-        let showsAssistant = split || compactPane == .assistant
-        let showsWebView = showsBrowser && !app.browser.showsForumsHome
-        // Typing in the assistant with the bar at the bottom: the bar would
-        // sit between the chat field and the keyboard, so it steps aside
-        // until the keyboard goes. (While browsing it holds the address.)
-        let hidesChrome = !split && barPosition == .bottom && keyboardVisible && compactPane == .assistant
-
-        return WorkspaceLayout(
-            isSplit: split,
-            panelWidth: panel,
-            barPosition: barPosition,
-            showsChrome: !hidesChrome,
-            parksPanel: !split && compactPane == .browser
-        ) {
-            BrowserChrome(
-                app: app,
-                browser: app.browser,
-                position: barPosition,
-                workspace: split ? nil : $compactPane,
-                actions: actions,
-                addressFocusRequest: addressFocusRequest
-            )
-            .opacity(hidesChrome ? 0 : 1)
-
-            BrowserContent(
-                app: app,
-                browser: app.browser,
-                voice: app.voice,
-                actions: actions,
-                // With the bar on top the page runs under the home indicator;
-                // the result cards stay above it.
-                cardsBottomInset: barPosition == .top && showsWebView ? bottomSafeArea : 0
-            )
-                // With the bar on top the page runs under the home indicator;
-                // WKWebView insets its own scroll view for the safe area and
-                // the keyboard, so only the bar moves when the keyboard
-                // appears (which keeps a bottom address field visible).
-                .ignoresSafeArea(.container, edges: barPosition == .top && showsWebView ? .bottom : [])
-                .ignoresSafeArea(.keyboard, edges: showsWebView ? .bottom : [])
-                .opacity(showsBrowser ? 1 : 0)
-                .allowsHitTesting(showsBrowser)
-                .accessibilityHidden(!showsBrowser)
-
-            AssistantPanel(
-                app: app,
-                onExpand: { route in app.router.item = .expanded(route) },
-                onOpenURL: { _ in showPane(.browser) }
-            )
-            .opacity(showsAssistant ? 1 : 0)
-            .allowsHitTesting(showsAssistant)
-            // Hidden: no keyboard shortcuts (⌘Return) or focus, and out of
-            // VoiceOver's order (it is also parked off screen).
-            .disabled(!showsAssistant)
-            .accessibilityHidden(!showsAssistant)
-
-            PanelResizeHandle(
-                panelWidth: panel,
-                onDrag: { translation in
-                    let start = dragStartWidth ?? panel
-                    dragStartWidth = start
-                    // The panel is on the right: dragging left widens it.
-                    dragWidth = WorkspaceMetrics.panelWidth(preferred: start - translation, containerWidth: width)
-                },
-                onDragEnded: {
-                    if let dragWidth { storedPanelWidth = Double(dragWidth) }
-                    dragWidth = nil
-                    dragStartWidth = nil
-                },
-                // Width changes are not animated: animating a List's width
-                // (the Forums home) can loop UICollectionView self-sizing.
-                onReset: { storedPanelWidth = 0 },
-                onAdjust: { delta in
-                    storedPanelWidth = Double(
-                        WorkspaceMetrics.panelWidth(preferred: panel - delta, containerWidth: width)
-                    )
-                }
-            )
-            .opacity(split ? 1 : 0)
-            .allowsHitTesting(split)
-            .accessibilityHidden(!split)
-        }
-        .animation(DCMotion.respecting(reduceMotion, DCMotion.quick), value: compactPane)
-        .animation(DCMotion.respecting(reduceMotion, DCMotion.smooth), value: app.browser.isChromeMinimized)
-        .animation(DCMotion.respecting(reduceMotion, DCMotion.quick), value: hidesChrome)
-    }
-
-    /// Brings a pane forward in the single-pane layout (split shows both).
-    /// iPhone: the assistant opens the drawer at medium; the page lowers a
-    /// large drawer to medium so the page shows.
-    private func showPane(_ pane: AppPane) {
-        if Self.usesDrawer {
-            switch pane {
-            case .assistant:
-                // Not over the Forums home: the drawer is for pages.
-                guard app.isDrawerAvailable else { return }
-                if !router.wantsDrawer || router.drawerDetent == .peek { router.openDrawer(at: .medium) }
-            case .browser:
-                if router.drawerDetent == .large {
-                    withAnimation(DCMotion.respecting(reduceMotion, DCMotion.smooth)) { router.drawerDetent = .medium }
-                }
-            }
-            return
-        }
-        focusedPane = pane
-        guard compactPane != pane else { return }
-        withAnimation(DCMotion.respecting(reduceMotion, DCMotion.smooth)) { compactPane = pane }
-    }
-
-    // MARK: AI drawer (iPhone)
 
     private func openAssistant() {
         DCHaptics.tap()
-        showPane(.assistant)
+        showAssistant()
+    }
+
+    /// ⌥⌘0 and the bar's button: the panel hides or shows; the drawer opens
+    /// or closes.
+    private func togglePanel() {
+        if router.usesDrawer {
+            if router.wantsDrawer { router.closeDrawer() } else { showAssistant() }
+        } else {
+            router.splitPanelMode = router.splitPanelMode.toggled(onHome: app.browser.showsForumsHome)
+        }
     }
 
     // MARK: Keyboard commands
@@ -379,62 +203,62 @@ struct ContentView: View {
         let browser = app.browser
         switch command {
         case .focusAddress:
-            showPane(.browser)
-            // The drawer covers the bar on iPhone.
-            if Self.usesDrawer { router.closeDrawer() }
+            showBrowser()
+            // The drawer covers the bar.
+            if router.usesDrawer { router.closeDrawer() }
             addressFocusRequest += 1
         case .reload:
             if browser.currentURL != nil { browser.reload() }
         case .back:
-            if browser.isForumsHomeRequested, browser.currentURL != nil {
-                withAnimation(DCMotion.respecting(reduceMotion)) { browser.hideForumsHome() }
-            } else {
-                browser.goBack()
-            }
+            withAnimation(DCMotion.respecting(reduceMotion)) { browser.navigateBack() }
         case .forward:
             browser.goForward()
         case .forumsHome:
             withAnimation(DCMotion.respecting(reduceMotion)) { app.showForumsHome() }
-            showPane(.browser)
+            showBrowser()
         case .settings:
             withAnimation(DCMotion.respecting(reduceMotion)) { app.panelRoute = .settings }
-            showPane(.assistant)
+            showAssistant()
         case .history:
             withAnimation(DCMotion.respecting(reduceMotion)) { app.panelRoute = .history }
-            showPane(.assistant)
+            showAssistant()
         case .summary, .chat, .agent:
-            let mode: AssistantMode = command == .summary ? .summary : command == .chat ? .chat : .agent
-            // The drawer: ⌘2 / ⌘3 pick the Ask box's scope and focus it.
-            let asks = Self.usesDrawer && command != .summary
+            // ⌘2 / ⌘3 pick the Ask box's scope and focus it.
+            let asks = command != .summary
             withAnimation(DCMotion.respecting(reduceMotion, DCMotion.spring)) {
                 app.panelRoute = .topic
                 if asks {
                     app.setAskScope(command == .chat ? .topic : .forum)
                 } else {
-                    app.assistantMode = mode
+                    app.assistantMode = .summary
                 }
             }
-            showPane(.assistant)
+            showAssistant()
             if asks { app.askFocusRequest += 1 }
+        case .togglePanel:
+            togglePanel()
+        case .nextResult:
+            if app.browseCursor.hasNext { Task { await app.next() } }
+        case .previousResult:
+            if app.browseCursor.hasPrevious { Task { await app.previous() } }
+        case .playPause:
+            if app.podcast.isPlayingEpisode { app.podcast.player.toggle() }
         }
     }
 }
 
 /// Callbacks the browser bar needs from the screen that owns sheets.
 struct BrowserActions {
-    /// The user used the browser bar (picks the pane kept when the window
-    /// narrows to one pane).
-    var noteInteraction: () -> Void = {}
     var showLoginInfo: () -> Void
     var addForum: () -> Void
     /// Report or block content in a topic.
     var report: (ForumTopic) -> Void = { _ in }
     /// Translate the posts on screen into the reading language.
     var translatePosts: () -> Void = {}
-    /// iPhone: the bar's AI button opens the drawer.
-    var openAssistant: (() -> Void)?
-    /// iPhone: Manage and Settings as sheets (the Forums home has no drawer).
-    var openPanel: ((ExpandedPanelRoute) -> Void)?
+    /// The bar's AI button: opens the drawer, or shows the panel.
+    var openAssistant: () -> Void = {}
+    /// History and Settings: sheets over the drawer, the panel in the split.
+    var openPanel: (ExpandedPanelRoute) -> Void = { _ in }
     var openForum: (Forum) -> Void
     var showForumsHome: () -> Void
     /// A digest card's topic or post (Home and the Today page close).
@@ -462,6 +286,8 @@ struct BrowserContent: View {
     /// iPhone: the page runs under the bottom toolbar and the home indicator
     /// (WKWebView insets its own scroll view); the cards stay above them.
     var webViewIgnoresBottomSafeArea = false
+    /// Split layout with the panel hidden: the Dock floats bottom-right.
+    var dockFloatsTrailing = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -474,7 +300,7 @@ struct BrowserContent: View {
                 .allowsHitTesting(!showsHome)
                 .accessibilityHidden(showsHome)
             if showsHome {
-                HomeView(app: app, actions: actions, embedsNavigationStack: !ContentView.usesDrawer)
+                HomeView(app: app, actions: actions)
                     .transition(DCMotion.screen(reduceMotion: reduceMotion))
                     .zIndex(1)
             }
@@ -496,8 +322,10 @@ struct BrowserContent: View {
                 voice: voice,
                 router: app.router,
                 podcast: app.podcast,
-                showsHome: showsHome
+                showsHome: showsHome,
+                floatsTrailing: dockFloatsTrailing
             )
+            .frame(maxWidth: .infinity, alignment: dockFloatsTrailing ? .trailing : .center)
             .padding(.horizontal, DCTheme.spacingM)
             .padding(.bottom, DCTheme.spacingS + cardsBottomInset)
             .background(alignment: .bottom) {
@@ -515,7 +343,7 @@ struct BrowserContent: View {
         }
         #if DEBUG
         .overlay(alignment: .topLeading) {
-            if AssistantDebug.has("-dc-browse-debug") { BrowseDebugState(app: app) }
+            if AssistantDebug.has("-dc-browse-debug") { BrowseDebugState(app: app, browser: app.browser) }
         }
         #endif
         .animation(DCMotion.respecting(reduceMotion), value: showsHome)
@@ -535,6 +363,7 @@ private struct CoveredHeightKey: PreferenceKey {
 /// first post in the viewport.
 private struct BrowseDebugState: View {
     @ObservedObject var app: AppModel
+    @ObservedObject var browser: ForumBrowserModel
 
     private var state: String {
         let context = app.pageContext
@@ -603,666 +432,23 @@ private struct WebContentCrashBanner: View {
 }
 
 
-/// iPad browser bar (iPhone: PhoneBrowserBar.swift): forum switcher,
-/// navigation + address (only while browsing), the Browse/Assistant switch in
-/// single-pane layouts, and a minimized strip while the page is being scrolled.
-struct BrowserChrome: View {
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @ObservedObject var app: AppModel
-    @ObservedObject var browser: ForumBrowserModel
-    let position: BrowserBarPosition
-    let workspace: Binding<AppPane>?
-    let actions: BrowserActions
-    /// Bumped by ⌘L to start editing the address.
-    var addressFocusRequest = 0
-    @State private var isEditingAddress = false
-    @State private var addressDraft = ""
-    @State private var addressError: AddressError?
-    @State private var showingSwitcher = false
-    @FocusState private var addressFocused: Bool
-
-    private var isBrowsing: Bool {
-        (workspace?.wrappedValue ?? .browser) == .browser
-    }
-
-    private var isMinimized: Bool {
-        isBrowsing && browser.isChromeMinimized && !browser.showsForumsHome
-    }
-
-    private var showsHome: Bool { browser.showsForumsHome }
-
-    private var forum: Forum? { app.barForum }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            if position == .bottom { Divider() }
-            Group {
-                if isMinimized {
-                    minimizedStrip
-                        .transition(.opacity)
-                } else {
-                    // The workspace switch hugs the screen edge and the address
-                    // row stays next to the page: switch-then-address at the top,
-                    // address-then-switch at the bottom (closest to the thumb).
-                    VStack(spacing: 0) {
-                        if position == .top { secondRow }
-                        if isBrowsing {
-                            addressRow
-                                .transition(.opacity)
-                        }
-                        if position == .bottom { secondRow }
-                    }
-                    .transition(.opacity)
-                }
-            }
-            if position == .top { Divider() }
-        }
-        .background(.bar)
-        .overlay(alignment: position == .top ? .bottom : .top) {
-            if isBrowsing, !showsHome {
-                LoadingLine(progress: browser.estimatedProgress, isLoading: browser.isLoading)
-            }
-        }
-        .alert(
-            addressError?.title ?? "",
-            isPresented: Binding(
-                get: { addressError != nil },
-                set: { if !$0 { addressError = nil } }
-            ),
-            presenting: addressError
-        ) { _ in
-            Button("OK", role: .cancel) {}
-        } message: { error in
-            Text(error.message)
-        }
-        .onChange(of: addressFocused) {
-            if !addressFocused {
-                withAnimation(DCMotion.quick) { isEditingAddress = false }
-            }
-        }
-        .onChange(of: addressFocusRequest) {
-            if isMinimized { browser.expandChrome() }
-            beginEditingAddress()
-        }
-        #if DEBUG
-        .task {
-            if ProcessInfo.processInfo.arguments.contains("-dc-show-switcher") {
-                try? await Task.sleep(for: .seconds(4))
-                showingSwitcher = true
-            }
-        }
-        #endif
-    }
-
-    // MARK: Rows
-
-    @ViewBuilder
-    private var secondRow: some View {
-        if let workspace {
-            workspaceRow(workspace)
-        }
-    }
-
-    private func workspaceRow(_ workspace: Binding<AppPane>) -> some View {
-        HStack(spacing: DCTheme.spacingS) {
-            forumSwitcher(compact: true)
-                .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? 150 : 190, alignment: .leading)
-            Picker("Workspace", selection: workspace.animation(DCMotion.quick)) {
-                ForEach(AppPane.allCases, id: \.self) { pane in
-                    Label(pane.title, systemImage: pane.icon)
-                        .tag(pane)
-                }
-            }
-            .pickerStyle(.segmented)
-            .accessibilityIdentifier("workspacePicker")
-        }
-        .padding(.horizontal, DCTheme.spacingM)
-        .padding(.vertical, 6)
-    }
-
-    private var minimizedStrip: some View {
-        Button(action: browser.expandChrome) {
-            HStack(spacing: 6) {
-                if let forum, browser.pageContext.isForum {
-                    ForumIcon(forum: forum, size: 14)
-                } else {
-                    Image(systemName: "lock.fill")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                Text(browser.currentURL == nil ? browser.pageTitle : Self.displayHost(browser.currentURL))
-                    .font(.caption.weight(.semibold))
-                    .lineLimit(1)
-                if workspace != nil {
-                    Image(systemName: "sparkles")
-                        .font(.caption2)
-                        .foregroundStyle(DCTheme.brandGradient)
-                }
-            }
-            .frame(maxWidth: .infinity, minHeight: 30)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .hoverEffect(.highlight)
-        .accessibilityLabel("Show browser bar")
-        .accessibilityIdentifier("browserChromeStrip")
-    }
-
-    private var addressRow: some View {
-        HStack(spacing: 2) {
-            if workspace == nil {
-                forumSwitcher(compact: false)
-                    .frame(maxWidth: 190, alignment: .leading)
-                    .fixedSize(horizontal: true, vertical: false)
-                    .padding(.trailing, DCTheme.spacingXS)
-            }
-            browserButton("chevron.left", label: String(localized: "Back"), action: goBack)
-                .disabled(!canGoBack)
-            browserButton("chevron.right", label: String(localized: "Forward"), action: browser.goForward)
-                .disabled(!browser.canGoForward || showsHome)
-
-            if horizontalSizeClass == .compact {
-                pageIdentity
-                reloadButton
-                voiceButton
-                overflowMenu
-            } else {
-                // All forums lives in the switcher and the menu, so the
-                // address keeps its room next to the assistant panel.
-                homeButton
-                reloadButton
-                pageIdentity
-                voiceButton
-                accountButton
-                overflowMenu
-            }
-        }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 5)
-    }
-
-    // MARK: Forum switcher
-
-    private func forumSwitcher(compact: Bool) -> some View {
-        Button {
-            DCHaptics.tap()
-            actions.noteInteraction()
-            showingSwitcher = true
-        } label: {
-            ForumSwitcherLabel(forum: forum, compact: compact)
-        }
-        .buttonStyle(.plain)
-        .hoverEffect(.highlight)
-        .accessibilityLabel(forum.map { String(localized: "Forum: \($0.displayName)") } ?? String(localized: "Forums"))
-        .accessibilityHint("Switch to another forum")
-        .accessibilityIdentifier("forumSwitcher")
-        .popover(isPresented: $showingSwitcher, arrowEdge: position == .top ? .top : .bottom) {
-            ForumSwitcherPanel(
-                app: app,
-                onSelect: { selected in
-                    showingSwitcher = false
-                    actions.openForum(selected)
-                },
-                onAllForums: {
-                    showingSwitcher = false
-                    actions.showForumsHome()
-                },
-                onAddForum: {
-                    showingSwitcher = false
-                    // Present the sheet once the popover has gone.
-                    Task { @MainActor in
-                        try? await Task.sleep(for: .milliseconds(350))
-                        actions.addForum()
-                    }
-                }
-            )
-            .presentationCompactAdaptation(.popover)
-        }
-    }
-
-    // MARK: Buttons
-
-    /// Back also leaves the Forums home when it covers a page.
-    private var canGoBack: Bool {
-        (browser.isForumsHomeRequested && browser.currentURL != nil) || (browser.canGoBack && !showsHome)
-    }
-
-    private func goBack() {
-        if browser.isForumsHomeRequested, browser.currentURL != nil {
-            withAnimation(DCMotion.respecting(reduceMotion)) { browser.hideForumsHome() }
-        } else {
-            browser.goBack()
-        }
-    }
-
-    private var homeLabel: String {
-        forum.map { String(localized: "\($0.displayName) home", comment: "Button label: the forum's home page (forum name)") }
-            ?? String(localized: "Forums")
-    }
-
-    private func goHome() {
-        withAnimation(DCMotion.respecting(reduceMotion)) { app.goHome() }
-    }
-
-    private var homeButton: some View {
-        browserButton("house", label: homeLabel, action: goHome)
-            .accessibilityIdentifier("browserHome")
-    }
-
-    /// Live voice (VoiceViews.swift), when a Gemini or Vertex key is there
-    /// or voice is on.
-    @ViewBuilder
-    private var voiceButton: some View {
-        if app.showsVoiceButton {
-            VoiceBarButton(voice: app.voice, onTap: actions.noteInteraction)
-        }
-    }
-
-    private var reloadButton: some View {
-        browserButton(
-            browser.isLoading ? "xmark" : "arrow.clockwise",
-            label: browser.isLoading ? String(localized: "Stop loading") : String(localized: "Reload"),
-            action: browser.isLoading ? browser.stopLoading : browser.reload
-        )
-        .disabled(browser.currentURL == nil || showsHome)
-    }
-
-    private var accountLabel: String {
-        browser.isAuthenticated
-            ? String(localized: "Forum account")
-            : String(localized: "Forum sign in", comment: "Button: open the forum's sign-in page")
-    }
-
-    private var accountHint: String {
-        browser.isAuthenticated
-            ? String(localized: "Open the forum home")
-            : String(localized: "Open the forum sign in page")
-    }
-
-    private func openAccount() {
-        let opened = browser.isAuthenticated ? browser.loadHome() : browser.loadLogin()
-        if !opened { actions.showForumsHome() }
-    }
-
-    private var accountButton: some View {
-        Button(action: openAccount) {
-            Image(
-                systemName: browser.isAuthenticated
-                    ? "person.crop.circle.fill"
-                    : "person.badge.key"
-            )
-            .foregroundStyle(browser.isAuthenticated ? DCTheme.success : .primary)
-        }
-        .buttonStyle(DCIconButtonStyle())
-        .disabled(forum == nil)
-        .accessibilityLabel(accountLabel)
-        .accessibilityHint(accountHint)
-    }
-
-    private var signInHelpLabel: String { String(localized: "Sign-in help") }
-
-    /// Narrow windows (iPhone, or a compact Stage Manager window) keep the
-    /// remaining browser controls one tap away in a menu.
-    private var overflowMenu: some View {
-        Menu {
-            Section {
-                if horizontalSizeClass == .compact {
-                    Button(action: goHome) {
-                        Label(homeLabel, systemImage: "house")
-                    }
-                    .accessibilityIdentifier("browserHome")
-                }
-                Button(action: actions.showForumsHome) {
-                    Label("All Forums", systemImage: "square.grid.2x2")
-                }
-                Button(action: actions.addForum) {
-                    Label("Add Forum…", systemImage: "plus")
-                }
-            }
-            if let openPanel = actions.openPanel {
-                Section {
-                    Button { openPanel(.history) } label: {
-                        Label("History", systemImage: "clock.arrow.circlepath")
-                    }
-                    Button { openPanel(.settings) } label: {
-                        Label("Settings", systemImage: "gearshape")
-                    }
-                }
-            }
-            if forum != nil, horizontalSizeClass == .compact {
-                Section {
-                    Button(action: openAccount) {
-                        Label(
-                            accountLabel,
-                            systemImage: browser.isAuthenticated
-                                ? "person.crop.circle.fill"
-                                : "person.badge.key"
-                        )
-                    }
-                    Button(action: actions.showLoginInfo) {
-                        Label(signInHelpLabel, systemImage: "questionmark.circle")
-                    }
-                }
-            }
-            if forum != nil, horizontalSizeClass != .compact {
-                Button(action: actions.showLoginInfo) {
-                    Label(signInHelpLabel, systemImage: "questionmark.circle")
-                }
-            }
-            if browser.currentURL != nil, !showsHome, let toggle = adsToggle {
-                Section(blockingStatusTitle) {
-                    Button(action: toggle.action) {
-                        Label(toggle.title, systemImage: toggle.systemImage)
-                    }
-                    .accessibilityIdentifier("menuToggleAdsOnSite")
-                }
-            }
-            if let url = browser.currentURL, !showsHome {
-                Section {
-                    ShareLink(item: url) {
-                        Label("Share Page", systemImage: "square.and.arrow.up")
-                    }
-                    Button {
-                        UIPasteboard.general.url = url
-                        DCHaptics.success()
-                    } label: {
-                        Label("Copy Link", systemImage: "link")
-                    }
-                }
-            }
-            if let topic = browser.pageContext.topic, !showsHome {
-                Section {
-                    if ReadingLanguage.isTranslationAvailable {
-                        Button(action: actions.translatePosts) {
-                            Label("Translate Posts on Screen", systemImage: "translate")
-                        }
-                        .accessibilityIdentifier("menuTranslatePosts")
-                    }
-                    Button {
-                        actions.report(topic)
-                    } label: {
-                        Label("Report or block…", systemImage: "flag")
-                    }
-                    .accessibilityIdentifier("menuReportOrBlock")
-                }
-            }
-        } label: {
-            Image(systemName: "ellipsis.circle")
-        }
-        .buttonStyle(DCIconButtonStyle())
-        .accessibilityLabel("More browser actions")
-        .accessibilityIdentifier("browserMoreMenu")
-    }
-
-    // MARK: Address
-
-    /// Tap to edit the address; Go loads it.
-    private var pageIdentity: some View {
-        HStack(spacing: 7) {
-            identityIcon
-                .frame(width: 18, height: 18)
-            if isEditingAddress {
-                addressField
-            } else {
-                // Title over address on every width; a long topic URL clips in
-                // the middle rather than disappearing.
-                titleAndAddress
-                    .contentShape(Rectangle())
-                    .onTapGesture(perform: beginEditingAddress)
-                    .hoverEffect(.highlight)
-                    .accessibilityAddTraits(.isButton)
-                    .accessibilityHint("Tap to enter a forum address")
-            }
-            Spacer(minLength: 0)
-            if !isEditingAddress, !showsHome, browser.currentURL != nil {
-                shieldMenu
-            }
-        }
-        .padding(.horizontal, 10)
-        .frame(minHeight: DCTheme.controlHeight)
-        .background(
-            Color(uiColor: .tertiarySystemFill),
-            in: RoundedRectangle(cornerRadius: DCTheme.controlCornerRadius, style: .continuous)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: DCTheme.controlCornerRadius, style: .continuous)
-                .strokeBorder(isEditingAddress ? Color.accentColor : .clear, lineWidth: 1.5)
-        }
-        .animation(DCMotion.quick, value: isEditingAddress)
-        .layoutPriority(1)
-    }
-
-    @ViewBuilder
-    private var identityIcon: some View {
-        if isEditingAddress {
-            Image(systemName: "globe")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        } else if showsHome {
-            Image(systemName: "square.grid.2x2.fill")
-                .font(.caption)
-                .foregroundStyle(DCTheme.brandGradient)
-        } else if browser.pageContext.isForum, let forum {
-            ForumIcon(forum: forum, size: 18)
-        } else {
-            Image(systemName: browser.currentURL?.scheme == "https" ? "lock.fill" : "globe")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    // MARK: Ad and tracker blocking
-
-    private var blockingStatus: ContentBlockingStatus {
-        app.contentBlockingStatus(for: browser.currentURL)
-    }
-
-    private var blockingStatusTitle: String {
-        switch blockingStatus {
-        case .off: String(localized: "Ad blocking is off")
-        case .blocking(let ads, _):
-            ads ? String(localized: "Ads blocked on this site") : String(localized: "Trackers blocked on this site")
-        case .allowedSite: String(localized: "Ads allowed on this site")
-        case .signInPage: String(localized: "Nothing blocked on sign-in pages")
-        }
-    }
-
-    /// Allow / block ads on the current site (nil when it doesn't apply).
-    private var adsToggle: (title: String, systemImage: String, action: () -> Void)? {
-        let url = browser.currentURL
-        guard let host = url?.host.flatMap(ContentBlockingRules.normalizedHost) else { return nil }
-        switch blockingStatus {
-        case .blocking:
-            return (String(localized: "Allow ads on \(host)", comment: "Menu item; the placeholder is a website host"), "shield.slash", {
-                DCHaptics.tap()
-                app.setAdsAllowed(true, on: url)
-            })
-        case .allowedSite:
-            return (String(localized: "Block ads on \(host)", comment: "Menu item; the placeholder is a website host"), "shield.lefthalf.filled", {
-                DCHaptics.tap()
-                app.setAdsAllowed(false, on: url)
-            })
-        case .off, .signInPage:
-            return nil
-        }
-    }
-
-    /// Shield at the end of the address: shows whether ads are blocked here
-    /// and toggles the site. Blocking is off by default (out of respect for
-    /// forum owners who rely on ads); then the shield is neutral and offers to
-    /// turn it on. (WebKit reports no per-page block count.)
-    private var shieldMenu: some View {
-        Menu {
-            Section(blockingStatusTitle) {
-                if blockingStatus == .off {
-                    Button {
-                        DCHaptics.tap()
-                        app.turnOnContentBlocking()
-                    } label: {
-                        Label("Turn on ad blocking", systemImage: "shield.lefthalf.filled")
-                    }
-                    .accessibilityIdentifier("shieldTurnOnBlocking")
-                }
-                if let toggle = adsToggle {
-                    Button(action: toggle.action) {
-                        Label(toggle.title, systemImage: toggle.systemImage)
-                    }
-                    .accessibilityIdentifier("shieldToggleAdsOnSite")
-                }
-            }
-        } label: {
-            Image(systemName: shieldSymbol)
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(shieldTint)
-                .frame(width: 26, height: 30)
-                .contentShape(Rectangle())
-        }
-        .accessibilityLabel(blockingStatusTitle)
-        .accessibilityIdentifier("contentBlockingShield")
-    }
-
-    private var shieldSymbol: String {
-        switch blockingStatus {
-        case .blocking: "shield.lefthalf.filled"
-        case .off: "shield"
-        case .allowedSite, .signInPage: "shield.slash"
-        }
-    }
-
-    private var shieldTint: Color {
-        switch blockingStatus {
-        case .blocking: DCTheme.success
-        case .allowedSite, .signInPage, .off: Color.secondary
-        }
-    }
-
-    private var addressField: some View {
-        HStack(spacing: 6) {
-            TextField("Forum address", text: $addressDraft)
-                .textContentType(.URL)
-                .keyboardType(.URL)
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-                .submitLabel(.go)
-                .focused($addressFocused)
-                .onSubmit(commitAddress)
-                .accessibilityIdentifier("addressField")
-                // Select the whole address so typing replaces it, like Safari.
-                .onReceive(
-                    NotificationCenter.default.publisher(
-                        for: UITextField.textDidBeginEditingNotification
-                    )
-                ) { notification in
-                    (notification.object as? UITextField)?.selectAll(nil)
-                }
-            // Esc / ⌘. leaves the address unchanged, like Safari.
-            Button("Cancel editing") { addressFocused = false }
-                .keyboardShortcut(.cancelAction)
-                .frame(width: 0, height: 0)
-                .opacity(0)
-                .accessibilityHidden(true)
-            if !addressDraft.isEmpty {
-                Button {
-                    addressDraft = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Clear address")
-            }
-        }
-    }
-
-    private func beginEditingAddress() {
-        actions.noteInteraction()
-        addressDraft = showsHome ? "" : (browser.currentURL?.absoluteString ?? "")
-        isEditingAddress = true
-        addressFocused = true
-    }
-
-    private func commitAddress() {
-        if browser.open(address: addressDraft) {
-            addressFocused = false
-            isEditingAddress = false
-        } else {
-            addressError = AddressError(address: addressDraft, hasForum: browser.homeSiteURL != nil)
-        }
-    }
-
-    private var titleAndAddress: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            if showsHome {
-                Text("Forums")
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-                Text("Enter a forum address")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            } else {
-                Text(browser.pageTitle)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-                HStack(spacing: 4) {
-                    if browser.pageContext.state == .notForum, !browser.isLoading {
-                        // On a phone the chip is icon-only so the host stays
-                        // readable; the label still says "Not a Discourse forum".
-                        DCStatusChip(
-                            text: horizontalSizeClass == .compact ? nil : String(localized: "Not a Discourse forum"),
-                            systemImage: "exclamationmark.circle",
-                            tint: DCTheme.warning
-                        )
-                        .accessibilityLabel("Not a Discourse forum")
-                        .accessibilityIdentifier("pageStatusNotForum")
-                        .transition(.opacity)
-                    }
-                    // Off-forum the chip needs the room; the host is enough.
-                    Text(
-                        browser.pageContext.state == .notForum
-                            ? Self.displayHost(browser.currentURL)
-                            : Self.displayAddress(browser.currentURL)
-                    )
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .layoutPriority(1)
-                }
-                .animation(DCMotion.quick, value: browser.pageContext.state)
-            }
-        }
-    }
-
+/// How the bar shows a page's address.
+enum BrowserAddress {
     /// Host without "www.", as Safari shows it.
-    static func displayHost(_ url: URL?) -> String {
+    static func host(_ url: URL?) -> String {
         guard let host = url?.host() else { return "" }
         return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
     }
 
     /// Host and path without the scheme (the part people read); a bare "/"
     /// path is dropped. Middle truncation keeps both ends visible.
-    static func displayAddress(_ url: URL?) -> String {
+    static func display(_ url: URL?) -> String {
         guard let url else { return "" }
-        var text = displayHost(url)
+        var text = host(url)
         let path = url.path()
         if !path.isEmpty, path != "/" { text += path }
         if let query = url.query(), !query.isEmpty { text += "?" + query }
         return text.isEmpty ? url.absoluteString : text
-    }
-
-    private func browserButton(
-        _ systemImage: String,
-        label: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: { actions.noteInteraction(); action() }) {
-            Image(systemName: systemImage)
-        }
-        .buttonStyle(DCIconButtonStyle())
-        .accessibilityLabel(label)
     }
 }
 

@@ -8,27 +8,16 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(AppSettings().browserBarPosition, .automatic)
     }
 
-    func testStoredBarPositionsSurviveAndOldSettingsKeepTheTopBar() throws {
+    func testStoredBarPositionsSurviveAndAMissingOneTakesTheDefault() throws {
         func decode(_ json: String) throws -> BrowserBarPosition {
             try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8)).browserBarPosition
         }
-        // Existing users keep what they stored (the old default was top).
         XCTAssertEqual(try decode(#"{"browserBarPosition":"top"}"#), .top)
         XCTAssertEqual(try decode(#"{"browserBarPosition":"bottom"}"#), .bottom)
         XCTAssertEqual(try decode(#"{"browserBarPosition":"automatic"}"#), .automatic)
-        // Settings from before the setting existed had the bar on top.
-        XCTAssertEqual(try decode("{}"), .top)
-        // A value from a newer build doesn't break the settings.
-        XCTAssertEqual(try decode(#"{"browserBarPosition":"floating","systemPrompt":"kept"}"#), .top)
-        XCTAssertEqual(
-            try JSONDecoder().decode(AppSettings.self, from: Data(#"{"browserBarPosition":"floating","systemPrompt":"kept"}"#.utf8)).systemPrompt,
-            "kept"
-        )
-
-        var settings = AppSettings()
-        settings.browserBarPosition = .automatic
-        let roundTripped = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(settings))
-        XCTAssertEqual(roundTripped.browserBarPosition, .automatic)
+        XCTAssertEqual(try decode("{}"), AppSettings().browserBarPosition)
+        // An unreadable value fails the decode; the store then starts fresh.
+        XCTAssertThrowsError(try decode(#"{"browserBarPosition":"floating"}"#))
     }
 
     func testAutomaticBarIsAtTheBottomExceptInTheSplitLayout() {
@@ -798,9 +787,9 @@ final class CoreTests: XCTestCase {
     }
 
     func testSnapshotsWithoutAgentDataStillDecode() throws {
-        let json = #"{"settings":{"selectedProvider":"groq"},"sessions":[],"activities":[]}"#
+        let json = #"{"settings":{"assistantModel":{"provider":"groq","model":"m"}},"sessions":[],"activities":[]}"#
         let snapshot = try JSONDecoder().decode(AppSnapshot.self, from: Data(json.utf8))
-        XCTAssertEqual(snapshot.settings.selectedProvider, .groq)
+        XCTAssertEqual(snapshot.settings.assistantModel.provider, .groq)
         XCTAssertEqual(snapshot.settings.agentMaxSteps, AgentLimits.defaultMaxSteps)
         XCTAssertTrue(snapshot.settings.watchAutoRefreshSummaries)
         XCTAssertTrue(snapshot.agentRuns.isEmpty)
@@ -863,7 +852,7 @@ final class CoreTests: XCTestCase {
         )
         let run = try await waitForTerminalAgentRun(in: app)
 
-        XCTAssertEqual(run.status, .completed)
+        XCTAssertEqual(run.result, .completed)
         XCTAssertEqual(run.steps.map(\.tool), ["search_forum", "read_topic", "post_reply", "final_answer"])
         XCTAssertEqual(run.steps[0].outcome, "1 topic")
         XCTAssertEqual(run.steps[1].outcome, "Read 2 posts")
@@ -897,7 +886,7 @@ final class CoreTests: XCTestCase {
     private func waitForTerminalAgentRun(in app: AppModel, timeout: TimeInterval = 20) async throws -> AgentRun {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if let run = app.agentRuns.first, run.status.isTerminal { return run }
+            if let run = app.agentRuns.first, run.isFinished { return run }
             try await Task.sleep(for: .milliseconds(50))
         }
         return try XCTUnwrap(app.agentRuns.first, "No agent run was created.")
@@ -1074,22 +1063,22 @@ final class CoreTests: XCTestCase {
     func testOlderSnapshotsDecodeWithDefaultsForNewFields() throws {
         let json = """
         {
-          "selectedProvider": "openai",
+          "assistantModel": {"provider": "openai", "model": "gpt-test"},
           "favoriteModels": [],
           "systemPrompt": "keep it short",
           "forumContextLimit": 40000
         }
         """
         let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
-        XCTAssertEqual(settings.selectedProvider, .openAI)
+        XCTAssertEqual(settings.assistantModel.provider, .openAI)
         XCTAssertEqual(settings.systemPrompt, "keep it short")
         XCTAssertEqual(settings.forumContextLimit, 40_000)
         XCTAssertEqual(settings.summaryBatchLimit, SummaryBatchLimit.default)
-        XCTAssertEqual(settings.browserBarPosition, .top)
-        XCTAssertEqual(settings.configuration(for: .openAI).model, AIProvider.openAI.defaultModel)
+        XCTAssertEqual(settings.browserBarPosition, AppSettings().browserBarPosition)
 
         let sessionJSON = """
         {
+          "siteURL": "https://forum.example.com",
           "topicID": "1",
           "url": "https://forum.example.com/t/a/1",
           "title": "A",

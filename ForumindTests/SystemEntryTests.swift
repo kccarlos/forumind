@@ -169,7 +169,7 @@ final class SystemEntryTests: XCTestCase {
 
         app.perform(.ask(siteURL: site, question: "Why?"))
         XCTAssertTrue(app.agentRuns.isEmpty)
-        XCTAssertEqual(app.agentGoalDraft, "Why?")
+        XCTAssertEqual(app.drafts.goal, "Why?")
     }
 
     func testAskStartsAskTheForumOnThatForum() throws {
@@ -188,7 +188,7 @@ final class SystemEntryTests: XCTestCase {
         let app = makeApp(ready: false)
         app.perform(.ask(siteURL: site, question: "Did anyone fix it?"))
         XCTAssertTrue(app.agentRuns.isEmpty)
-        XCTAssertEqual(app.agentGoalDraft, "Did anyone fix it?")
+        XCTAssertEqual(app.drafts.goal, "Did anyone fix it?")
         XCTAssertEqual(app.needsProviderSetup, .agent)
     }
 
@@ -266,9 +266,9 @@ final class SystemEntryTests: XCTestCase {
 
     private func deliverTopicPage(to app: AppModel) {
         let topic = ForumTopic(siteURL: site, topicID: "42", url: topicURL, title: "Topic")
-        app.browser.onPageContextChanged?(
-            PageContext(url: topicURL, isDiscourse: true, siteURL: site, forumName: "Example", topic: topic, state: .topic)
-        )
+        let context = PageContext(url: topicURL, isDiscourse: true, siteURL: site, forumName: "Example", topic: topic, state: .topic)
+        app.browser.setPageContext(context)
+        app.browser.onPageContextChanged?(context)
     }
 }
 

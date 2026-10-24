@@ -775,10 +775,10 @@ struct OnboardingDonePage: View {
                 checklistRow(
                     done: app.isProviderReady,
                     title: app.isProviderReady
-                        ? String(localized: "AI provider: \(app.settings.selectedProvider.displayName)", comment: "Walkthrough checklist. The placeholder is the provider's name, e.g. OpenRouter.")
+                        ? String(localized: "AI provider: \(app.settings.assistantModel.provider.displayName)", comment: "Walkthrough checklist. The placeholder is the provider's name, e.g. OpenRouter.")
                         : String(localized: "AI provider not connected"),
                     detail: app.isProviderReady
-                        ? (app.settings.selectedProvider.isAppleIntelligence ? app.appleIntelligenceStatus.title : app.selectedConfiguration.model)
+                        ? (app.settings.assistantModel.provider.isAppleIntelligence ? app.appleIntelligenceStatus.title : app.selectedConfiguration.model)
                         : String(localized: "Add one any time in Settings › AI models.", comment: "Walkthrough checklist; Settings › AI models names the app's own Settings page")
                 )
                 Divider().padding(.leading, 48)

@@ -16,28 +16,17 @@ struct HomeView: View {
     @ObservedObject var browser: ForumBrowserModel
     @ObservedObject var podcast: PodcastController
     let actions: BrowserActions
-    /// iPad: Home brings its own NavigationStack for the pushed pages
-    /// (iPhone pushes them in the bar's stack).
-    var embedsNavigationStack = false
 
-    init(app: AppModel, actions: BrowserActions, embedsNavigationStack: Bool = false) {
+    init(app: AppModel, actions: BrowserActions) {
         self.app = app
         browser = app.browser
         podcast = app.podcast
         self.actions = actions
-        self.embedsNavigationStack = embedsNavigationStack
     }
 
     var body: some View {
-        if embedsNavigationStack {
-            NavigationStack(path: $app.homePath) {
-                HomeList(app: app, browser: browser, podcast: podcast, actions: actions)
-                    .toolbar(.hidden, for: .navigationBar)
-                    .modifier(HomeDestinations(app: app, onOpenDigestLink: actions.openDigestLink))
-            }
-        } else {
-            HomeList(app: app, browser: browser, podcast: podcast, actions: actions)
-        }
+        // The pages pushed over Home go on the bar's stack (PhoneBrowser).
+        HomeList(app: app, browser: browser, podcast: podcast, actions: actions)
     }
 }
 

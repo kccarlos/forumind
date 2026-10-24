@@ -31,11 +31,11 @@ final class StateTransitionTests: XCTestCase {
 
         app.activateFavorite(FavoriteModel(provider: .lmStudio, model: "model-b"), for: .assistant)
         // The header reads the selection: it changes at once.
-        XCTAssertEqual(app.settings.selectedProvider, .lmStudio)
+        XCTAssertEqual(app.settings.assistantModel.provider, .lmStudio)
         XCTAssertEqual(app.selectedConfiguration.model, "model-b")
         // Running streams are untouched and not mixed.
         for record in running {
-            XCTAssertEqual(app.summaryStreams[record.id], "[ollama/model-a]")
+            XCTAssertEqual(app.streams.text(for: record.id), "[ollama/model-a]")
             XCTAssertEqual(record.provider, .ollama)
         }
 
@@ -51,7 +51,7 @@ final class StateTransitionTests: XCTestCase {
         XCTAssertEqual(app.activities.first { $0.topicID == "3" }?.model, "model-b")
         XCTAssertEqual(app.sessions[topic("1").topicKey]?.model, "model-a")
         XCTAssertEqual(app.sessions[topic("3").topicKey]?.provider, .lmStudio)
-        XCTAssertTrue(app.summaryStreams.isEmpty)
+        XCTAssertTrue(app.streams.isEmpty)
         XCTAssertTrue(app.activities.allSatisfy { $0.status == .completed })
     }
 
@@ -97,7 +97,7 @@ final class StateTransitionTests: XCTestCase {
         let harness = makeHarness()
         let app = harness.app
         app.settingsSaveDelay = .seconds(60)
-        app.settings.selectedProvider = .openAI
+        app.settings.assistantModel = ModelSelection(provider: .openAI, model: (.openAI as AIProvider).defaultModel)
         let savesBefore = harness.store.saveCount
         let writesBefore = harness.keys.writeCount
 
@@ -114,7 +114,7 @@ final class StateTransitionTests: XCTestCase {
         XCTAssertEqual(harness.keys.writeCount, writesBefore + 1)
         XCTAssertEqual(harness.keys.value(for: .openAI), "sk-live-12345")
         XCTAssertEqual(harness.store.saveCount, savesBefore + 1)
-        XCTAssertEqual(harness.store.load().settings.selectedProvider, .openAI)
+        XCTAssertEqual(harness.store.load().settings.assistantModel.provider, .openAI)
         XCTAssertEqual(harness.store.load().settings.configuration(for: .openAI).apiKey, "", "keys never go in the snapshot")
 
         // Nothing pending: a second background does not write again.
@@ -178,7 +178,7 @@ final class StateTransitionTests: XCTestCase {
         harness.ai.failConnection = true
         let task = Task { await app.testAndSaveProvider() }
         try await waitUntil { harness.ai.waiting == 1 }
-        app.settings.selectedProvider = .anthropic
+        app.settings.assistantModel = ModelSelection(provider: .anthropic, model: (.anthropic as AIProvider).defaultModel)
         harness.ai.releaseAll()
         let state = await task.value
         XCTAssertEqual(state, .idle)
@@ -193,7 +193,7 @@ final class StateTransitionTests: XCTestCase {
         app.discoveredModels = [.openAI: ["kept-until-its-address-changes"], .groq: ["groq-old"]]
 
         // Lists are per provider: switching a role's provider keeps them.
-        app.settings.selectedProvider = .groq
+        app.settings.assistantModel = ModelSelection(provider: .groq, model: (.groq as AIProvider).defaultModel)
         XCTAssertEqual(app.discoveredModels[.openAI], ["kept-until-its-address-changes"])
 
         async let result = app.discoverModels(provider: .openAI)
@@ -249,7 +249,7 @@ final class StateTransitionTests: XCTestCase {
 
         // Chat: the context size is also taken at start.
         StateForumStub.gate(path: "/t/2.json")
-        app.chatDraft = "What changed?"
+        app.drafts.chat = "What changed?"
         app.sendChat()
         try await waitUntil { StateForumStub.isWaiting }
         app.settings.forumContextLimit = 10_000
@@ -284,9 +284,9 @@ final class StateTransitionTests: XCTestCase {
         XCTAssertTrue(planner.lastTranscript.last?.content.contains("budget") ?? false)
         planner.release()
 
-        try await waitUntil { app.agentRuns.first?.status.isTerminal == true }
+        try await waitUntil { app.agentRuns.first?.isFinished == true }
         let run = try XCTUnwrap(app.agentRuns.first)
-        XCTAssertEqual(run.status, .completed)
+        XCTAssertEqual(run.result, .completed)
         XCTAssertEqual(run.steps.count, 5)
         XCTAssertEqual(run.steps.last?.outcome, "Stopped at the step budget")
         XCTAssertEqual(run.provider, .ollama)
@@ -323,7 +323,7 @@ final class StateTransitionTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(300))
         XCTAssertTrue(app.sessions.filter { $0.value.siteURL == site && $0.value.hasSummary }.isEmpty)
         XCTAssertTrue(app.activities.isEmpty)
-        XCTAssertTrue(app.summaryStreams.isEmpty)
+        XCTAssertTrue(app.streams.isEmpty)
         XCTAssertEqual(harness.ai.calls.count, 2, "the queued job never started")
 
         // Still browsing the removed forum: it is not added straight back.
@@ -416,33 +416,33 @@ final class StateTransitionTests: XCTestCase {
         let app = harness.app
         select(app, .ollama, model: "model-a")
         app.select(topic: topic("1"))
-        app.chatDraft = "Is it still true?"
+        app.drafts.chat = "Is it still true?"
         app.sendChat()
         XCTAssertTrue(app.enqueueSummary(for: topic("2")))
         try await waitUntil { harness.ai.waiting == 2 }
-        XCTAssertFalse(app.chatStreams.isEmpty)
-        app.chatDraft = "An unsent draft"
-        app.agentGoalDraft = "Unsent goal"
-        app.agentFollowUpDraft = "Unsent follow-up for the deleted run"
+        XCTAssertFalse(app.streams.isEmpty)
+        app.drafts.chat = "An unsent draft"
+        app.drafts.goal = "Unsent goal"
+        app.drafts.followUp = "Unsent follow-up for the deleted run"
 
         app.clearAllSavedData()
         XCTAssertTrue(app.sessions.isEmpty)
         XCTAssertTrue(app.activities.isEmpty)
         XCTAssertTrue(app.agentRuns.isEmpty)
         XCTAssertNil(app.selectedAgentRunID)
-        XCTAssertTrue(app.summaryStreams.isEmpty)
-        XCTAssertTrue(app.chatStreams.isEmpty)
+        XCTAssertTrue(app.streams.isEmpty)
+        XCTAssertTrue(app.streams.isEmpty)
         // Unsent text is kept on purpose, except the draft for a deleted run.
-        XCTAssertEqual(app.chatDraft, "An unsent draft")
-        XCTAssertEqual(app.agentGoalDraft, "Unsent goal")
-        XCTAssertEqual(app.agentFollowUpDraft, "")
+        XCTAssertEqual(app.drafts.chat, "An unsent draft")
+        XCTAssertEqual(app.drafts.goal, "Unsent goal")
+        XCTAssertEqual(app.drafts.followUp, "")
 
         harness.ai.gated = false
         harness.ai.releaseAll()
         try await Task.sleep(for: .milliseconds(300))
         XCTAssertTrue(app.sessions.isEmpty, "no resurrected sessions")
         XCTAssertTrue(app.activities.isEmpty)
-        XCTAssertTrue(app.chatStreams.isEmpty)
+        XCTAssertTrue(app.streams.isEmpty)
         XCTAssertNil(app.presentedError)
         XCTAssertTrue(harness.store.load().sessions.isEmpty)
         XCTAssertNil(app.currentSession)
@@ -478,7 +478,7 @@ final class StateTransitionTests: XCTestCase {
         app.discoveredModels = [.openAI: ["gpt-test"]]
 
         app.resetSettings()
-        XCTAssertEqual(app.settings.selectedProvider, AppSettings().selectedProvider)
+        XCTAssertEqual(app.settings.assistantModel.provider, AppSettings().assistantModel.provider)
         XCTAssertFalse(app.isProviderReady)
         XCTAssertTrue(app.discoveredModels.isEmpty)
         XCTAssertEqual(harness.keys.value(for: .openAI), "", "reset removes keys at once")
@@ -505,7 +505,7 @@ final class StateTransitionTests: XCTestCase {
         let app = harness.app
         select(app, .ollama, model: "model-a")
         app.select(topic: topic("1"))
-        app.chatDraft = "First question"
+        app.drafts.chat = "First question"
         app.sendChat()
         try await waitUntil { harness.ai.waiting == 1 }
         app.clearChat()
@@ -523,7 +523,7 @@ final class StateTransitionTests: XCTestCase {
         select(app, .ollama, model: "model-a")
         app.select(topic: topic("1"))
         StateForumStub.gate(path: "/t/1.json")
-        app.chatDraft = "First question"
+        app.drafts.chat = "First question"
         app.sendChat()
         try await waitUntil { StateForumStub.isWaiting }
         app.clearChat()
@@ -561,7 +561,7 @@ final class StateTransitionTests: XCTestCase {
         try await waitUntil { app.activities.allSatisfy(\.status.isTerminal) }
         XCTAssertEqual(app.activities.first?.status, .completed)
         XCTAssertEqual(app.sessions[topic("1").topicKey]?.provider, .ollama)
-        XCTAssertEqual(harness.store.load().settings.selectedProvider, .lmStudio)
+        XCTAssertEqual(harness.store.load().settings.assistantModel.provider, .lmStudio)
     }
 
     func testProviderSetupRequestClearsOnceTheProviderIsReady() {
@@ -730,7 +730,7 @@ final class StateTransitionTests: XCTestCase {
         let app = harness.app
         select(app, .ollama, model: "model-a")
         app.select(topic: topic("1"))
-        app.chatDraft = "A question"
+        app.drafts.chat = "A question"
         app.sendChat()
         try await waitUntil { harness.ai.waiting == 1 }
         let running = try XCTUnwrap(app.activities.first)
@@ -785,9 +785,9 @@ final class StateTransitionTests: XCTestCase {
         XCTAssertEqual(app.activities.first?.provider, .ollama)
 
         app.startAgentRun(goal: "What changed?", siteURL: site)
-        try await waitUntil { app.agentRuns.first?.status.isTerminal == true }
+        try await waitUntil { app.agentRuns.first?.isFinished == true }
         let run = try XCTUnwrap(app.agentRuns.first)
-        XCTAssertEqual(run.status, .completed, run.error)
+        XCTAssertEqual(run.result, .completed, run.error)
         XCTAssertEqual(planner.labels, ["lmstudio/reasoner", "lmstudio/reasoner"])
         XCTAssertEqual(run.provider, .lmStudio)
         XCTAssertEqual(run.model, "reasoner")
@@ -817,7 +817,7 @@ final class StateTransitionTests: XCTestCase {
         planner.release()
         try await waitUntil { planner.calls == 2 && planner.isWaiting }
         planner.release()
-        try await waitUntil { app.agentRuns.first?.status.isTerminal == true }
+        try await waitUntil { app.agentRuns.first?.isFinished == true }
         XCTAssertEqual(planner.labels, ["lmstudio/reasoner", "lmstudio/reasoner"])
 
         let id = try XCTUnwrap(app.agentRuns.first?.id)
@@ -827,13 +827,13 @@ final class StateTransitionTests: XCTestCase {
         planner.release()
         try await waitUntil { planner.calls == 2 && planner.isWaiting }
         planner.release()
-        try await waitUntil { app.agentRuns.first?.status.isTerminal == true }
+        try await waitUntil { app.agentRuns.first?.isFinished == true }
         XCTAssertEqual(planner.labels, ["ollama/reasoner-2", "ollama/reasoner-2"])
         let run = try XCTUnwrap(app.agentRuns.first)
         XCTAssertEqual(run.provider, .lmStudio, "the run keeps the model of its first answer")
         let turns = app.activities.filter { $0.type == .agent }
         XCTAssertEqual(Set(turns.map(\.model)), ["reasoner", "reasoner-2"], "each turn records its model")
-        XCTAssertEqual(app.settings.selectedProvider, .ollama)
+        XCTAssertEqual(app.settings.assistantModel.provider, .ollama)
     }
 
     /// The header switcher changes the current mode's role only: Summary and
@@ -852,7 +852,7 @@ final class StateTransitionTests: XCTestCase {
             app.activateFavorite(favorite, for: app.currentRole)
             XCTAssertEqual(app.settings.assistantModel, ModelSelection(provider: .openAI, model: "gpt-5-mini"))
             XCTAssertEqual(app.settings.agentModel, agentic, "\(mode) never changes Ask the forum")
-            XCTAssertEqual(app.settings.selectedProvider, .openAI)
+            XCTAssertEqual(app.settings.assistantModel.provider, .openAI)
             XCTAssertEqual(app.providerSummary, "OpenAI · gpt-5-mini")
         }
 
@@ -861,8 +861,7 @@ final class StateTransitionTests: XCTestCase {
         app.activateFavorite(favorite, for: app.currentRole)
         XCTAssertEqual(app.settings.agentModel, ModelSelection(provider: .openAI, model: "gpt-5-mini"))
         XCTAssertEqual(app.settings.assistantModel, cheap)
-        XCTAssertEqual(app.settings.selectedProvider, .gemini)
-        XCTAssertEqual(app.settings.configuration(for: .gemini).model, "gemini-3.1-flash-lite")
+        XCTAssertEqual(app.settings.assistantModel.provider, .gemini)
         XCTAssertEqual(app.providerSummary, "OpenAI · gpt-5-mini")
     }
 
@@ -889,8 +888,8 @@ final class StateTransitionTests: XCTestCase {
         XCTAssertFalse(app.isProviderReady(for: .agent))
         XCTAssertFalse(app.isProviderReady)
         app.startAgentRun(goal: "Anything?", siteURL: site)
-        try await waitUntil { app.agentRuns.first?.status.isTerminal == true }
-        XCTAssertEqual(app.agentRuns.first?.status, .failed)
+        try await waitUntil { app.agentRuns.first?.isFinished == true }
+        XCTAssertEqual(app.agentRuns.first?.result, .failed)
         XCTAssertTrue(app.agentRuns.first?.error.contains("DeepSeek") ?? false)
         XCTAssertEqual(planner.calls, 0)
         XCTAssertTrue(app.enqueueSummary(for: topic("1")))
@@ -902,9 +901,9 @@ final class StateTransitionTests: XCTestCase {
         setKey(app, "", for: .openAI)
         app.dismissPresentedError()
         app.startAgentRun(goal: "Summarize it", siteURL: site)
-        try await waitUntil { app.agentRuns.first?.status.isTerminal == true }
+        try await waitUntil { app.agentRuns.first?.isFinished == true }
         let run = try XCTUnwrap(app.agentRuns.first)
-        XCTAssertEqual(run.status, .completed, run.error)
+        XCTAssertEqual(run.result, .completed, run.error)
         XCTAssertEqual(run.steps.first?.isError, true)
         XCTAssertTrue(run.steps.first?.outcome.contains("OpenAI") ?? false, run.steps.first?.outcome ?? "")
         XCTAssertEqual(run.answer, "Read it instead")
@@ -942,110 +941,57 @@ final class StateTransitionTests: XCTestCase {
         XCTAssertNil(app.needsProviderSetup)
     }
 
-    /// `selectedProvider` and that provider's configured model are what
-    /// builds without roles run; they follow the assistant role through
-    /// every change, and a change they make moves the assistant role only.
-    func testSelectedProviderStaysOnTheAssistantRoleForOlderBuilds() {
-        let harness = makeHarness()
-        let app = harness.app
-        func assertInvariant(_ message: String, line: UInt = #line) {
-            let assistant = app.settings.assistantModel
-            XCTAssertEqual(app.settings.selectedProvider, assistant.provider, message, line: line)
-            XCTAssertEqual(app.settings.configuration(for: assistant.provider).model, assistant.model, message, line: line)
-        }
-        let agentic = ModelSelection(provider: .deepSeek, model: "deepseek-v4-flash")
-        app.selectModel(ModelSelection(provider: .gemini, model: "gemini-3.1-flash-lite"), for: .both)
-        assertInvariant("both")
-        app.selectModel(agentic, for: .role(.agent))
-        assertInvariant("agent only")
-        XCTAssertEqual(app.settings.selectedProvider, .gemini)
-        // Same provider, different models: the slot keeps the assistant model.
-        app.selectModel(ModelSelection(provider: .gemini, model: "gemini-3.1-pro"), for: .role(.agent))
-        assertInvariant("agent on the assistant's provider")
-        app.selectProvider(.openAI, for: .role(.assistant))
-        assertInvariant("provider switch")
-        app.useSameModel(as: .agent)
-        assertInvariant("same model for both")
-        XCTAssertEqual(app.settings.assistantModel, app.settings.agentModel)
-        app.selectModel(agentic, for: .role(.agent))
-
-        // An older build (or a synced edit from one) switches the provider:
-        // the assistant role follows with that provider's model.
-        var legacy = app.settings
-        legacy.selectedProvider = .groq
-        var groq = legacy.configuration(for: .groq)
-        groq.model = "llama-legacy"
-        legacy.setConfiguration(groq, for: .groq)
-        app.settings = legacy
-        XCTAssertEqual(app.settings.assistantModel, ModelSelection(provider: .groq, model: "llama-legacy"))
-        XCTAssertEqual(app.settings.agentModel, agentic)
-        assertInvariant("legacy provider")
-        // It changes only the model.
-        var model = app.settings
-        groq.model = "llama-newer"
-        model.setConfiguration(groq, for: .groq)
-        app.settings = model
-        XCTAssertEqual(app.settings.assistantModel.model, "llama-newer")
-        XCTAssertEqual(app.settings.agentModel, agentic)
-        assertInvariant("legacy model")
-
-        // Setting up both roles with the provider one of them already uses
-        // moves the other one too.
-        app.selectModel(ModelSelection(provider: .openAI, model: "gpt-5-mini"), for: .role(.assistant))
-        app.selectProvider(.openAI, for: .both)
-        XCTAssertEqual(app.settings.agentModel, ModelSelection(provider: .openAI, model: "gpt-5-mini"))
-        assertInvariant("both roles on one provider")
-
-        app.resetSettings()
-        assertInvariant("reset")
-        XCTAssertEqual(app.settings.agentModel, AppSettings().agentModel)
-    }
-
-    /// Settings saved before model roles: both roles take the selected
-    /// provider and its model. A synced record from an older build that
-    /// picked another provider moves the assistant role.
-    func testSettingsWithoutModelRolesMigrateToBothRoles() throws {
-        let json = #"{"selectedProvider":"deepseek","configurations":{"deepseek":{"model":"deepseek-chat","baseURL":"https://api.deepseek.com/v1","apiKey":""}}}"#
-        let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
-        XCTAssertEqual(settings.assistantModel, ModelSelection(provider: .deepSeek, model: "deepseek-chat"))
-        XCTAssertEqual(settings.agentModel, ModelSelection(provider: .deepSeek, model: "deepseek-chat"))
-
-        let bare = try JSONDecoder().decode(AppSettings.self, from: Data(#"{"selectedProvider":"groq"}"#.utf8))
-        XCTAssertEqual(bare.assistantModel, ModelSelection(provider: .groq, model: AIProvider.groq.defaultModel))
-        XCTAssertEqual(bare.agentModel, bare.assistantModel)
-
-        let mixed = #"{"selectedProvider":"groq","assistantModel":{"provider":"openai","model":"gpt-5-mini"},"agentModel":{"provider":"deepseek","model":"deepseek-v4-flash"}}"#
-        let merged = try JSONDecoder().decode(AppSettings.self, from: Data(mixed.utf8))
-        XCTAssertEqual(merged.assistantModel.provider, .groq, "an older build's provider change wins")
-        XCTAssertEqual(merged.agentModel, ModelSelection(provider: .deepSeek, model: "deepseek-v4-flash"))
-
-        // Round trip keeps both roles and the legacy key.
+    /// The model roles are the only model setting: they round trip, a missing
+    /// key takes the default, and a provider's stored configuration holds no
+    /// model.
+    func testModelRolesRoundTripAndMissingKeysTakeDefaults() throws {
         var roles = AppSettings()
         roles.setModel(ModelSelection(provider: .gemini, model: "gemini-3.1-flash-lite"), for: .assistant)
         roles.setModel(ModelSelection(provider: .deepSeek, model: "deepseek-v4-flash"), for: .agent)
         let data = try JSONEncoder().encode(roles)
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        XCTAssertEqual(object["selectedProvider"] as? String, "gemini")
-        XCTAssertEqual(try JSONDecoder().decode(AppSettings.self, from: data), roles)
+        XCTAssertNil(object["selectedProvider"])
+        let configurations = try XCTUnwrap(object["configurations"] as? [String: [String: Any]])
+        XCTAssertNil(configurations["gemini"]?["model"])
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+        XCTAssertEqual(decoded.assistantModel, roles.assistantModel)
+        XCTAssertEqual(decoded.agentModel, roles.agentModel)
 
-        // A snapshot saved before roles migrates at launch.
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-            .appendingPathComponent("state.json")
-        let keys = InMemoryProviderKeyStore()
-        var legacy = AppSnapshot()
-        legacy.settings.selectedProvider = .ollama
-        try PersistentStore(fileURL: url, keys: keys).save(legacy)
-        var file = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
-        var saved = try XCTUnwrap(file["settings"] as? [String: Any])
-        saved.removeValue(forKey: "assistantModel")
-        saved.removeValue(forKey: "agentModel")
-        file["settings"] = saved
-        try JSONSerialization.data(withJSONObject: file).write(to: url)
-        let app = AppModel(store: PersistentStore(fileURL: url, keys: keys))
-        app.browser.onPageContextChanged = nil
-        XCTAssertEqual(app.settings.assistantModel, ModelSelection(provider: .ollama, model: AIProvider.ollama.defaultModel))
-        XCTAssertEqual(app.settings.agentModel, app.settings.assistantModel)
+        let bare = try JSONDecoder().decode(AppSettings.self, from: Data("{}".utf8))
+        XCTAssertEqual(bare, AppSettings())
+    }
+
+
+    // MARK: Streams
+
+    /// Tokens collect and publish at a bounded rate; the final text always
+    /// arrives, and a removed stream stays removed.
+    @MainActor
+    func testStreamStoreCoalescesAndDeliversTheFinalText() async throws {
+        let store = StreamStore(interval: .milliseconds(40))
+        var publishes = 0
+        let token = store.objectWillChange.sink { publishes += 1 }
+        let id = UUID()
+        store.start(id)
+        let afterStart = publishes
+        for index in 0..<200 { store.append("t\(index) ", to: id) }
+        let expected = (0..<200).map { "t\($0) " }.joined()
+        XCTAssertEqual(store.text(for: id), expected, "the latest text is readable before it publishes")
+        XCTAssertEqual(publishes, afterStart, "nothing publishes per token")
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertEqual(store.texts[id], expected)
+        XCTAssertLessThanOrEqual(publishes - afterStart, 2)
+
+        store.append("end", to: id)
+        store.flush()
+        XCTAssertEqual(store.texts[id], expected + "end")
+
+        store.append("late", to: id)
+        store.remove(id)
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertNil(store.text(for: id))
+        XCTAssertTrue(store.isEmpty)
+        withExtendedLifetime(token) {}
     }
 
     // MARK: Errors
@@ -1128,6 +1074,50 @@ final class StateTransitionTests: XCTestCase {
 
     // MARK: Ask box
 
+    /// A run's live status is its work record's; only the outcome is stored.
+    func testAgentRunStatusIsDerivedFromItsRecordAndStoresOnlyTheOutcome() async throws {
+        let planner = SteppingPlanner()
+        let harness = makeHarness(planner: planner)
+        let app = harness.app
+        select(app, .ollama, model: "model-a")
+        app.settings.agentMaxSteps = 1
+        app.startAgentRun(goal: "Derive", siteURL: site)
+        try await waitUntil { planner.isWaiting }
+        var run = try XCTUnwrap(app.agentRuns.first)
+        XCTAssertNil(run.result, "nothing about a live run is stored")
+        XCTAssertEqual(app.status(of: run), .running)
+        XCTAssertEqual(app.activeRecord(forAgentRun: run.id)?.status, .running)
+
+        // Cancelled: the outcome is stored, the record is gone.
+        app.cancelAgentRun(id: run.id)
+        planner.release()
+        try await waitUntil { app.agentRuns.first?.isFinished == true }
+        run = try XCTUnwrap(app.agentRuns.first)
+        XCTAssertEqual(run.result, .cancelled)
+        XCTAssertEqual(app.status(of: run), .cancelled)
+    }
+
+    /// App killed mid-run: the run with a record resumes as queued; one whose
+    /// record is gone is closed out instead of spinning.
+    func testRelaunchResumesARunWithItsRecordAndClosesOneWithout() throws {
+        let resumable = AgentRun(siteURL: site, goal: "Resume me", provider: .ollama, model: "model-a")
+        let orphan = AgentRun(siteURL: site, goal: "Orphan", provider: .ollama, model: "model-a")
+        var record = WorkRecord(
+            type: .agent, siteURL: site, topicID: AppModel.agentTopicPrefix + resumable.id.uuidString,
+            title: "Resume me", url: URL(string: site)!, provider: .ollama, model: "model-a"
+        )
+        record.status = .running
+        let harness = makeHarness(snapshot: AppSnapshot(activities: [record], agentRuns: [resumable, orphan]))
+        let app = harness.app
+        let resumed = try XCTUnwrap(app.agentRuns.first { $0.id == resumable.id })
+        XCTAssertNil(resumed.result)
+        XCTAssertEqual(app.status(of: resumed), .queued, "the interrupted record is requeued")
+        let closed = try XCTUnwrap(app.agentRuns.first { $0.id == orphan.id })
+        XCTAssertEqual(closed.result, .cancelled)
+        XCTAssertEqual(app.status(of: closed), .cancelled)
+        XCTAssertFalse(closed.error.isEmpty)
+    }
+
     /// Text typed in the Ask box stays in front when the run it waits for
     /// finishes, or another run is selected: the box never swaps it for the
     /// other, empty draft.
@@ -1147,7 +1137,7 @@ final class StateTransitionTests: XCTestCase {
         planner.release()
         try await waitUntil { planner.calls == 2 && planner.isWaiting }
         planner.release()
-        try await waitUntil { app.agentRuns.first?.status.isTerminal == true }
+        try await waitUntil { app.agentRuns.first?.isFinished == true }
         XCTAssertEqual(app.askDraft, "Typed while it runs")
         XCTAssertEqual(app.askDraftTarget, .goal)
         XCTAssertTrue(app.canSendAsk)
@@ -1301,7 +1291,7 @@ final class StateTransitionTests: XCTestCase {
             ai.releaseAll()
             StateForumStub.release()
         }
-        return Harness(app: app, store: store, keys: keys, ai: ai, deliver: { handler?($0) })
+        return Harness(app: app, store: store, keys: keys, ai: ai, deliver: { app.browser.setPageContext($0); handler?($0) })
     }
 
     /// Both roles on `provider` · `model`, with `key`.
@@ -1326,7 +1316,7 @@ final class StateTransitionTests: XCTestCase {
     private func setKey(_ app: AppModel, _ key: String) {
         var configuration = app.selectedConfiguration
         configuration.apiKey = key
-        app.setConfiguration(configuration, for: app.settings.selectedProvider)
+        app.setConfiguration(configuration, for: app.settings.assistantModel.provider)
     }
 
     private func topic(_ id: String, site: String? = nil) -> ForumTopic {
@@ -1352,7 +1342,7 @@ final class StateTransitionTests: XCTestCase {
 
     private func finishedRun() -> AgentRun {
         var run = AgentRun(siteURL: site, goal: "Old question", provider: .ollama, model: "model-a")
-        run.status = .completed
+        run.result = .completed
         run.answer = "Old answer"
         return run
     }

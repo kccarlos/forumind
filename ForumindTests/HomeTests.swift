@@ -75,10 +75,10 @@ final class HomeTests: XCTestCase {
         func decode(_ json: String) throws -> LaunchDestination {
             try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8)).launchDestination
         }
-        XCTAssertEqual(try decode("{}"), .automatic, "older snapshots")
+        XCTAssertEqual(try decode("{}"), .automatic, "a missing key")
         XCTAssertEqual(try decode(#"{"launchDestination":"home"}"#), .home)
         XCTAssertEqual(try decode(#"{"launchDestination":"lastForum"}"#), .lastForum)
-        XCTAssertEqual(try decode(#"{"launchDestination":"somewhereNew"}"#), .automatic, "a newer build's value")
+        XCTAssertThrowsError(try decode(#"{"launchDestination":"somewhereNew"}"#))
         var settings = AppSettings()
         settings.launchDestination = .lastForum
         let round = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(settings))

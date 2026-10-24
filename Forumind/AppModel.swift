@@ -12,7 +12,7 @@ import UserNotifications
 // - `pinnedForums`                  pinned, in the user's order
 // - `recentForums`                  unpinned, most recently visited first
 // - `AppModel.suggestedForums`      well-known forums offered before adding
-// - `currentForum`                  forum of the current page, else the last one shown
+// - `currentForum`                  forum of the current page, else the last one shown (computed from `currentSiteURL`)
 // - `forum(for:)`                   directory entry for a site URL
 // - `addForum(fromAddress:pin:)`    validates a URL/host via basic-info.json, adds it
 // - `pin(_:)` / `unpin(_:)` / `togglePin(_:)` / `movePinned(fromOffsets:toOffset:)`
@@ -138,20 +138,9 @@ final class AppModel: ObservableObject {
     /// change is persisted, coalesced (see `saveSettings()`).
     @Published var settings: AppSettings {
         didSet {
-            guard !reconcilingSettings else { return }
-            // Older builds read `selectedProvider`; keep it on the assistant
-            // role. (Assigning here re-enters `didSet` through @Published.)
-            var reconciled = settings
-            reconciled.reconcileModelRoles(from: oldValue)
-            if reconciled != settings {
-                reconcilingSettings = true
-                settings = reconciled
-                reconcilingSettings = false
-            }
             settingsDidChange(from: oldValue)
         }
     }
-    private var reconcilingSettings = false
     @Published private(set) var sessions: [String: TopicSession] {
         didSet { spotlightDataDidChange() }
     }
@@ -161,9 +150,12 @@ final class AppModel: ObservableObject {
     /// Shared between the inline panel and its full-screen copy so opening the
     /// assistant full screen keeps the same mode.
     @Published var assistantMode: AssistantMode = .summary
-    @Published var summaryStreams: [UUID: String] = [:]
-    @Published var chatStreams: [UUID: String] = [:]
-    @Published var chatDraft = ""
+    /// Streaming summary and chat text; observed by the views that show it
+    /// only, not by this model (`StreamStore`).
+    let streams = StreamStore()
+    /// Unsent composer text. Not published here: it changes on every
+    /// keystroke, so only the Ask box and the composers observe it.
+    let drafts = ComposerDrafts()
     /// Errors waiting for the root alert, oldest first: one shows at a time
     /// and a newer one never replaces it (`presentError`).
     @Published private(set) var errorQueue: [PresentedError] = []
@@ -182,8 +174,6 @@ final class AppModel: ObservableObject {
         // Picking or starting a run shows it (AskBox.swift).
         didSet { agentComposesNewQuestion = false }
     }
-    @Published var agentGoalDraft = ""
-    @Published var agentFollowUpDraft = ""
     /// The Ask box's Whole forum scope starts a new run instead of following
     /// up the selected one (its examples and recent runs show).
     @Published var agentComposesNewQuestion = false
@@ -193,7 +183,6 @@ final class AppModel: ObservableObject {
     /// The user's forums (pinned and recent); see the API list above.
     @Published private(set) var forums: [Forum] {
         didSet {
-            syncCurrentForum()
             spotlightDataDidChange()
             if forums.map(\.siteURL) != oldValue.map(\.siteURL) || forums.map(\.name) != oldValue.map(\.name) {
                 forumsDidChangeForShortcuts()
@@ -201,9 +190,7 @@ final class AppModel: ObservableObject {
         }
     }
     /// The forum of the current page, or the last forum shown.
-    @Published private(set) var currentForum: Forum?
-    /// The browser's current page as the assistant sees it.
-    @Published private(set) var pageContext = PageContext.empty
+    @Published private(set) var currentSiteURL: String?
     /// Forum the next agent run targets; nil means `currentForum`.
     @Published var agentSiteURL: String?
     /// Bumped when a hand-off (shared link, Siri, Spotlight) wants the
@@ -427,20 +414,19 @@ final class AppModel: ObservableObject {
             }
             .sorted { $0.createdAt > $1.createdAt }
 
-        // Interrupted agent runs resume with their re-queued record; a run whose
-        // record is gone cannot resume and is closed out instead of spinning.
+        // Interrupted agent runs resume with their re-queued record (their
+        // status is the record's); a run whose record is gone cannot resume
+        // and is closed out instead of spinning.
         let restorableRunIDs = Set(
             activities
                 .filter { $0.type == .agent && !$0.status.isTerminal }
                 .compactMap { UUID(uuidString: String($0.topicID.dropFirst(Self.agentTopicPrefix.count))) }
         )
         agentRuns = agentRuns.map { run in
-            guard !run.status.isTerminal else { return run }
+            guard !run.isFinished else { return run }
             var updated = run
-            if restorableRunIDs.contains(run.id) {
-                updated.status = .queued
-            } else {
-                updated.status = .cancelled
+            if !restorableRunIDs.contains(run.id) {
+                updated.result = .cancelled
                 updated.error = String(localized: "Interrupted before the run could finish.", comment: "Ask the forum: a research run stopped when the app quit")
                 updated.completedAt = now
             }
@@ -462,8 +448,8 @@ final class AppModel: ObservableObject {
         }
         // Start on the most recently visited forum (or the first pinned one);
         // with none, the browser stays empty and the UI shows the Forums home.
-        currentForum = Self.startForum(in: forums)
-        self.browser.homeSiteURL = currentForum?.siteURL
+        currentSiteURL = Self.startForum(in: forums)?.siteURL
+        self.browser.homeSiteURL = currentSiteURL
         // Ad/tracker blocking starts before the first page load.
         configureContentBlocking()
         applyModerationRules()
@@ -525,7 +511,7 @@ final class AppModel: ObservableObject {
         // `-dc-no-forums`: the sample as a new user sees Home (never saved).
         if AssistantDebug.isActive, AssistantDebug.has("-dc-no-forums") {
             directory = ForumDirectory(forums: [])
-            currentForum = nil
+            currentSiteURL = nil
         }
         applyStateDebugScript()
         // A scripted voice run starts from the consent sheet.
@@ -641,8 +627,25 @@ final class AppModel: ObservableObject {
         browser.load(url)
     }
 
+    /// The browser's current page as the assistant sees it, with the reading
+    /// position (posts on screen, highlights). The browser is the only
+    /// store: scrolling republishes `ForumBrowserModel`, not this model, which
+    /// announces only new pages and routes (`handlePageContext`).
+    var pageContext: PageContext {
+        #if DEBUG
+        if let seededPageContext { return seededPageContext }
+        #endif
+        return browser.pageContext
+    }
+
+    #if DEBUG
+    /// Screenshot and UI-test seeds: the page context they show until the
+    /// browser reports a scroll position.
+    private(set) var seededPageContext: PageContext?
+    #endif
+
     private func handlePageContext(_ context: PageContext) {
-        pageContext = context
+        objectWillChange.send()
         if let suppressed = suppressedAutoAddSiteURL {
             // A forum removed while its page is open stays removed until the
             // browser settles on another forum or a non-forum page.
@@ -667,7 +670,9 @@ final class AppModel: ObservableObject {
     /// Only the page's position changed (posts on screen, highlights, the
     /// topic's facts): no topic selection or save.
     func handlePagePosition(_ context: PageContext) {
-        pageContext = context
+        #if DEBUG
+        seededPageContext = nil
+        #endif
         pageUpdates.send(context)
     }
 
@@ -845,17 +850,11 @@ final class AppModel: ObservableObject {
         directory.forum(siteURL: siteURL)
     }
 
-    /// `currentForum` is a copy: keep its name, icon and pin state in step
-    /// with the directory (a forum that left the directory is handled by
-    /// `removeForum`).
-    private func syncCurrentForum() {
-        guard let current = currentForum,
-              let fresh = forums.first(where: { $0.siteURL == current.siteURL }),
-              fresh != current
-        else {
-            return
-        }
-        currentForum = fresh
+    /// The current forum: the last Discourse forum shown (or opened by the
+    /// app), resolved from `currentSiteURL` so its name, icon and pin state
+    /// always come from the directory.
+    var currentForum: Forum? {
+        currentSiteURL.map { forumInfo(siteURL: $0) }
     }
 
     /// After runs were deleted: select a remaining run, and drop a follow-up
@@ -865,7 +864,7 @@ final class AppModel: ObservableObject {
             return
         }
         self.selectedAgentRunID = agentRuns.first?.id
-        agentFollowUpDraft = ""
+        drafts.followUp = ""
     }
 
     func hasActiveWork(topicKey: String, type: WorkType) -> Bool {
@@ -899,7 +898,7 @@ final class AppModel: ObservableObject {
         }
         let changed = forum != previous
         if changed { self.directory = directory }
-        if currentForum != forum { currentForum = forum }
+        if currentSiteURL != forum.siteURL { currentSiteURL = forum.siteURL }
         if changed { save() }
     }
 
@@ -1029,13 +1028,13 @@ final class AppModel: ObservableObject {
         var directory = self.directory
         directory.remove(siteURL: siteURL)
         self.directory = directory
-        if currentForum?.siteURL == siteURL {
-            currentForum = pageContext.siteURL.flatMap { self.directory.forum(siteURL: $0) }
-                ?? Self.startForum(in: forums)
+        if currentSiteURL == siteURL {
+            currentSiteURL = (pageContext.siteURL.flatMap { self.directory.forum(siteURL: $0) }
+                ?? Self.startForum(in: forums))?.siteURL
         }
         if agentSiteURL == siteURL { agentSiteURL = nil }
         if browser.homeSiteURL == siteURL, pageContext.siteURL != siteURL {
-            browser.homeSiteURL = currentForum?.siteURL
+            browser.homeSiteURL = currentSiteURL
         }
         save()
         browser.refreshPageContext()
@@ -1044,7 +1043,7 @@ final class AppModel: ObservableObject {
     /// Makes the forum current and loads its /latest.
     func openForum(_ forum: Forum) {
         if suppressedAutoAddSiteURL == forum.siteURL { suppressedAutoAddSiteURL = nil }
-        currentForum = directory.forum(siteURL: forum.siteURL) ?? forum
+        currentSiteURL = forum.siteURL
         browser.homeSiteURL = forum.siteURL
         browser.loadHome()
         panelRoute = .topic
@@ -1063,7 +1062,7 @@ final class AppModel: ObservableObject {
         guard !rawGoal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         do {
             selectedAgentRunID = try enqueueAgentRun(goal: rawGoal, siteURL: siteURL, origin: origin)
-            agentGoalDraft = ""
+            drafts.goal = ""
         } catch {
             presentError(error.localizedDescription)
         }
@@ -1158,12 +1157,12 @@ final class AppModel: ObservableObject {
         for (id, completion) in agentRunCompletions {
             let outcome: AgentRunOutcome
             if let run = agentRuns.first(where: { $0.id == id }) {
-                guard run.status.isTerminal else { continue }
+                guard let result = run.result else { continue }
                 outcome = AgentRunOutcome(
                     runID: id,
-                    status: run.status,
-                    answer: run.status == .completed ? run.answer : "",
-                    sources: run.status == .completed
+                    status: result.workStatus,
+                    answer: result == .completed ? run.answer : "",
+                    sources: result == .completed
                         ? AgentSources.extract(from: run.answer, run: run, sessions: sessions)
                         : [],
                     error: run.error
@@ -1185,7 +1184,7 @@ final class AppModel: ObservableObject {
         let question = rawQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !question.isEmpty,
               let index = agentRuns.firstIndex(where: { $0.id == id }),
-              agentRuns[index].status.isTerminal
+              agentRuns[index].isFinished
         else {
             return
         }
@@ -1195,16 +1194,16 @@ final class AppModel: ObservableObject {
         }
         agentRuns[index].followUps.append(ChatMessage(role: .user, content: question))
         agentRuns[index].transcript.append(AgentPrompt.followUpMessage(question))
-        agentRuns[index].status = .queued
+        agentRuns[index].result = nil
         agentRuns[index].error = ""
         agentRuns[index].updatedAt = Date()
-        agentFollowUpDraft = ""
+        drafts.followUp = ""
         selectedAgentRunID = id
         launchAgentRecord(for: agentRuns[index], title: question)
     }
 
     func deleteAgentRun(id: UUID) {
-        guard let run = agentRuns.first(where: { $0.id == id }), run.status.isTerminal else {
+        guard let run = agentRuns.first(where: { $0.id == id }), run.isFinished else {
             return
         }
         agentRuns.removeAll { $0.id == id }
@@ -1221,6 +1220,13 @@ final class AppModel: ObservableObject {
     var selectedAgentRun: AgentRun? {
         guard let selectedAgentRunID else { return agentRuns.first }
         return agentRuns.first { $0.id == selectedAgentRunID } ?? agentRuns.first
+    }
+
+    /// The run's status: its outcome once it ended, else its work record's
+    /// (queued, running, or paused; the record is the only live state).
+    func status(of run: AgentRun) -> WorkStatus {
+        if let result = run.result { return result.workStatus }
+        return activeRecord(forAgentRun: run.id)?.status ?? .queued
     }
 
     func activeRecord(forAgentRun id: UUID) -> WorkRecord? {
@@ -1542,7 +1548,7 @@ final class AppModel: ObservableObject {
     }
 
     func sendChat() {
-        let question = chatDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let question = drafts.chat.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !question.isEmpty, let topic = currentTopic,
               var session = sessions[topic.topicKey],
               !session.source.isEmpty
@@ -1567,7 +1573,7 @@ final class AppModel: ObservableObject {
         session.chatUpdatedAt = Date()
         session.updatedAt = Date()
         sessions[topic.topicKey] = session
-        chatDraft = ""
+        drafts.chat = ""
 
         let selection = settings.assistantModel
         let record = WorkRecord(
@@ -1588,8 +1594,7 @@ final class AppModel: ObservableObject {
     func cancel(record: WorkRecord) {
         runningTasks[record.id]?.task.cancel()
         runningTasks.removeValue(forKey: record.id)
-        summaryStreams.removeValue(forKey: record.id)
-        chatStreams.removeValue(forKey: record.id)
+        streams.remove(record.id)
         Task {
             await limiter.cancel(workID: record.id)
         }
@@ -1600,7 +1605,7 @@ final class AppModel: ObservableObject {
         }
         if record.type == .agent {
             mutateAgentRun(for: record) {
-                $0.status = .cancelled
+                $0.result = .cancelled
                 $0.completedAt = Date()
             }
         }
@@ -1677,7 +1682,7 @@ final class AppModel: ObservableObject {
         else {
             return
         }
-        chatDraft = session.history[index].content
+        drafts.chat = session.history[index].content
         session.history = Array(session.history[..<index])
         session.chatUpdatedAt = session.history.isEmpty ? nil : Date()
         session.updatedAt = Date()
@@ -1900,7 +1905,7 @@ final class AppModel: ObservableObject {
         session.summaryUpdatedAt = Date()
         session.chatUpdatedAt = Date()
         currentTopic = topic
-        pageContext = PageContext(
+        seededPageContext = PageContext(
             url: topic.url,
             isDiscourse: true,
             siteURL: topic.siteURL,
@@ -1923,8 +1928,8 @@ final class AppModel: ObservableObject {
         agentRuns = seed.agentRuns
         watchedTopics = seed.watchedTopics
         currentTopic = seed.currentTopic
-        currentForum = seed.currentForum
-        pageContext = seed.pageContext
+        currentSiteURL = seed.currentForum?.siteURL
+        seededPageContext = seed.pageContext
         selectedAgentRunID = seed.agentRuns.first?.id
         // No automatic watch check (network, summary refresh) for the seed.
         lastWatchCheck = Date()
@@ -2087,15 +2092,11 @@ final class AppModel: ObservableObject {
     private func pause(recordID: UUID) {
         runningTasks[recordID]?.task.cancel()
         runningTasks.removeValue(forKey: recordID)
-        summaryStreams.removeValue(forKey: recordID)
-        chatStreams.removeValue(forKey: recordID)
+        streams.remove(recordID)
         Task { await limiter.cancel(workID: recordID) }
         mutateRecord(recordID) {
             $0.status = .queued
             $0.statusText = String(localized: "Paused until Forumind is open again", comment: "Status of AI work stopped because the app went to the background; it continues when the app is opened")
-        }
-        if let record = activities.first(where: { $0.id == recordID }), record.type == .agent {
-            mutateAgentRun(for: record) { $0.status = .queued }
         }
     }
 
@@ -2230,7 +2231,7 @@ final class AppModel: ObservableObject {
                 }
                 if record.type == .agent {
                     mutateAgentRun(for: record) {
-                        $0.status = .cancelled
+                        $0.result = .cancelled
                         $0.completedAt = Date()
                     }
                 }
@@ -2258,7 +2259,7 @@ final class AppModel: ObservableObject {
             }
             if record.type == .agent {
                 mutateAgentRun(for: record) {
-                    $0.status = .failed
+                    $0.result = .failed
                     $0.error = error.localizedDescription
                     $0.completedAt = Date()
                 }
@@ -2268,8 +2269,7 @@ final class AppModel: ObservableObject {
             if record.origin == .user, !error.isAIConsentError { presentError(error.localizedDescription) }
         }
         if isCurrentLaunch(recordID, token: token) {
-            summaryStreams.removeValue(forKey: recordID)
-            chatStreams.removeValue(forKey: recordID)
+            streams.remove(recordID)
         }
         activities = Array(
             activities
@@ -2367,7 +2367,7 @@ final class AppModel: ObservableObject {
             // The fetch filled its share of the bar; each summary step fills the rest.
             $0.progress = WorkProgress.advanced(from: $0.progress, to: WorkProgress.summary(ai: 0))
         }
-        summaryStreams[recordID] = ""
+        streams.start(recordID)
         let progress = summaryProgressOutput(recordID: recordID)
         defer { progress.cancel() }
         let feed = SummaryProgressFeed(output: progress, map: WorkProgress.summary(ai:))
@@ -2380,7 +2380,7 @@ final class AppModel: ObservableObject {
             onDelta: { delta in
                 // Deltas of a cancelled job must not recreate its stream.
                 guard self.isLive(recordID) else { return }
-                self.summaryStreams[recordID, default: ""] += delta
+                self.streams.append(delta, to: recordID)
             },
             onProgress: { feed.handle($0) }
         )
@@ -2403,11 +2403,11 @@ final class AppModel: ObservableObject {
     private func runFakeSummary(recordID: UUID, record: WorkRecord) async throws {
         let text = SampleContent.current.metaSummary
         let sections = text.components(separatedBy: "\n\n## ")
-        summaryStreams[recordID] = ""
+        streams.start(recordID)
         try await Task.sleep(for: .seconds(1.2))
         for (index, section) in sections.enumerated() {
             guard activities.contains(where: { $0.id == recordID && !$0.status.isTerminal }) else { return }
-            summaryStreams[recordID, default: ""] += index == 0 ? section : "\n\n## " + section
+            streams.append(index == 0 ? section : "\n\n## " + section, to: recordID)
             try await Task.sleep(for: .milliseconds(500))
         }
         var session = sessions[record.topicKey] ?? TopicSession(
@@ -2458,7 +2458,7 @@ final class AppModel: ObservableObject {
             mutateRecord(recordID) { $0.statusText = String(localized: "Chat changed; answer discarded", comment: "Chat status: the conversation was edited while an answer was being written") }
             return
         }
-        chatStreams[recordID] = ""
+        streams.start(recordID)
         let answer = try await aiService.answer(
             source: moderated(session.source, siteURL: session.siteURL, topicID: session.topicID),
             summary: session.summary,
@@ -2469,7 +2469,7 @@ final class AppModel: ObservableObject {
             provider: context.provider,
             onDelta: { delta in
                 guard self.isLive(recordID) else { return }
-                self.chatStreams[recordID, default: ""] += delta
+                self.streams.append(delta, to: recordID)
             },
             summaryIsStale: session.hasStaleSummary
         )
@@ -2512,7 +2512,7 @@ final class AppModel: ObservableObject {
         else {
             throw AgentError.runNotFound
         }
-        run.status = .running
+        run.result = nil
         run.error = ""
         storeAgentRun(run)
         mutateRecord(recordID) {
@@ -2575,7 +2575,7 @@ final class AppModel: ObservableObject {
                 } else {
                     run.initialAnswer = answer
                 }
-                run.status = .completed
+                run.result = .completed
                 run.completedAt = Date()
                 storeAgentRun(run)
                 save()
@@ -3029,11 +3029,11 @@ final class AppModel: ObservableObject {
             // Like `removeForum`: its open page must not add it straight back,
             // and a current forum removed elsewhere falls back.
             if let page = pageContext.siteURL, removed.contains(page) { suppressedAutoAddSiteURL = page }
-            if let current = currentForum, forum(for: current.siteURL) == nil {
-                currentForum = pageContext.siteURL.flatMap { forum(for: $0) } ?? Self.startForum(in: forums)
-                if agentSiteURL == current.siteURL { agentSiteURL = nil }
-                if browser.homeSiteURL == current.siteURL, pageContext.siteURL != current.siteURL {
-                    browser.homeSiteURL = currentForum?.siteURL
+            if let current = currentSiteURL, forum(for: current) == nil {
+                currentSiteURL = (pageContext.siteURL.flatMap { forum(for: $0) } ?? Self.startForum(in: forums))?.siteURL
+                if agentSiteURL == current { agentSiteURL = nil }
+                if browser.homeSiteURL == current, pageContext.siteURL != current {
+                    browser.homeSiteURL = currentSiteURL
                 }
             }
         }

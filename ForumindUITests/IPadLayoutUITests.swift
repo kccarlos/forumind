@@ -9,57 +9,91 @@ import XCTest
 final class IPadLayoutUITests: DCUITestCase {
     private let sample = ["-dc-sample", "-dc-page-state", "topic"]
 
-    // MARK: Rotation
+    // MARK: Width decides the layout
 
-    /// Air 11 / mini cross 850 pt when rotating (1180/1133 ↔ 820/744): the
-    /// Settings sub-page open in the panel survives both ways, and portrait
-    /// shows the Assistant pane (where the user was).
-    func testRotatingAcrossTheSplitThresholdKeepsTheSettingsPage() throws {
-        try skipUnlessPad("iPad layout")
-        let app = launch(sample + ["-dc-panel-settings", "provider"], orientation: .landscapeLeft)
-        let providerPage = app.navigationBars["AI models"]
-        XCTAssertTrue(waitOrDump(providerPage, timeout: 20, in: app), "Settings › AI models did not open in the panel.")
-        XCTAssertFalse(app.segmentedControls["workspacePicker"].exists, "Landscape should be side by side.")
-        snapshot("rotation-1-landscape")
-
-        XCUIDevice.shared.orientation = .portrait
-        let picker = app.segmentedControls["workspacePicker"]
-        let portraitIsSingle = picker.waitForExistence(timeout: 5)
-        snapshot("rotation-2-portrait")
-        XCTAssertTrue(providerPage.waitForExistence(timeout: 5), "The Settings sub-page was lost on rotation.")
-        if portraitIsSingle {
-            XCTAssertTrue(picker.buttons["Assistant"].isSelected, "Settings was open, so the Assistant pane should show.")
-        }
-
-        XCUIDevice.shared.orientation = .landscapeLeft
-        XCTAssertTrue(waitForGone(picker, timeout: 5), "Landscape should return to side by side.")
-        XCTAssertTrue(providerPage.waitForExistence(timeout: 5), "The Settings sub-page was lost rotating back.")
-        snapshot("rotation-3-landscape-again")
-    }
-
-    /// Browsing when the window narrows keeps the page (Browse pane).
-    func testRotatingWhileBrowsingKeepsTheBrowsePane() throws {
+    /// Landscape (≥ 850 pt) is page + AI panel under the split bar; portrait
+    /// (< 850 pt) is the iPhone layout, bottom bar and drawer, on iPad too.
+    func testWidthDecidesTheLayoutAcrossRotation() throws {
         try skipUnlessPad("iPad layout")
         let app = launch(sample, orientation: .landscapeLeft)
-        let address = app.buttons.matching(label(contains: "meta.discourse.org")).firstMatch
-        XCTAssertTrue(waitOrDump(address, timeout: 20, in: app))
-        // The page loaded after the assistant opened, so Browse is current.
-        // (The switcher popover also opens from the bar.)
-        app.buttons["forumSwitcher"].tap()
-        XCTAssertTrue(app.buttons["switcherAllForums"].waitForExistence(timeout: 5))
-        dismissMenu(in: app)
-        XCTAssertTrue(waitForGone(app.buttons["switcherAllForums"], timeout: 5))
+        let panel = any(app, "aiPanel")
+        XCTAssertTrue(waitOrDump(panel, timeout: 20, in: app), "Landscape should show the AI panel beside the page.")
+        XCTAssertTrue(app.buttons["aiPanelToggle"].exists, "The split bar has the panel toggle.")
+        XCTAssertTrue(any(app, "panelResizeHandle").exists)
+        XCTAssertFalse(app.buttons["aiButton"].exists, "The AI button belongs to the bottom bar.")
+        snapshot("layout-1-landscape")
 
         XCUIDevice.shared.orientation = .portrait
-        let picker = app.segmentedControls["workspacePicker"]
-        if picker.waitForExistence(timeout: 5) {
-            XCTAssertTrue(picker.buttons["Browse"].isSelected)
-            XCTAssertTrue(address.exists, "The page should still be shown.")
-            // The waiting assistant is parked off the trailing edge.
-            let modes = app.segmentedControls["assistantModePicker"]
-            XCTAssertTrue(!modes.exists || modes.frame.minX >= app.windows.firstMatch.frame.maxX)
+        XCTAssertTrue(waitForGone(panel, timeout: 8), "Portrait (below 850 pt) should use the drawer layout.")
+        XCTAssertFalse(app.buttons["aiPanelToggle"].exists)
+        let ai = app.buttons["aiButton"]
+        XCTAssertTrue(waitForBarItem(ai, timeout: 10), "Portrait should have the bottom bar's AI button.")
+        snapshot("layout-2-portrait")
+        tapBarItem(ai)
+        XCTAssertTrue(drawerState(in: app).waitForExistence(timeout: 10), "The AI button should open the drawer on iPad portrait.")
+
+        XCUIDevice.shared.orientation = .landscapeLeft
+        XCTAssertTrue(panel.waitForExistence(timeout: 10), "Rotating back should show the panel.")
+        XCTAssertTrue(waitForGone(drawerState(in: app), timeout: 8), "The drawer gives way to the panel.")
+        XCTAssertEqual(app.state, .runningForeground)
+        snapshot("layout-3-landscape-again")
+    }
+
+    /// Rotating repeatedly with the drawer or the panel up never crashes.
+    func testRotatingRepeatedlyKeepsTheAppRunning() throws {
+        try skipUnlessPad("iPad layout")
+        let app = launch(sample, orientation: .landscapeLeft)
+        XCTAssertTrue(waitOrDump(any(app, "aiPanel"), timeout: 20, in: app))
+        for _ in 0..<3 {
+            XCUIDevice.shared.orientation = .portrait
+            RunLoop.current.run(until: Date().addingTimeInterval(1.5))
+            XCUIDevice.shared.orientation = .landscapeRight
+            RunLoop.current.run(until: Date().addingTimeInterval(1.5))
         }
-        snapshot("rotation-browse-portrait")
+        XCTAssertEqual(app.state, .runningForeground)
+        XCTAssertTrue(any(app, "aiPanel").waitForExistence(timeout: 10))
+    }
+
+    // MARK: Panel
+
+    /// Home is full width with the panel collapsed; the toggle (and ⌥⌘0) hides
+    /// and shows the panel on a page.
+    func testPanelIsCollapsedOnHomeAndTogglesOnAPage() throws {
+        try skipUnlessPad("iPad layout")
+        var app = launch(["-dc-sample", "-dc-forums-home"], orientation: .landscapeLeft)
+        XCTAssertTrue(waitOrDump(any(app, "home"), timeout: 20, in: app))
+        XCTAssertFalse(any(app, "aiPanel").exists, "Home should be full width.")
+        app.terminate()
+
+        app = launch(sample, orientation: .landscapeLeft)
+        let panel = any(app, "aiPanel")
+        XCTAssertTrue(waitOrDump(panel, timeout: 20, in: app))
+        let toggle = app.buttons["aiPanelToggle"]
+        toggle.tap()
+        XCTAssertTrue(waitForGone(panel, timeout: 5), "The toggle should hide the panel.")
+        toggle.tap()
+        XCTAssertTrue(panel.waitForExistence(timeout: 5), "The toggle should show the panel again.")
+    }
+
+    /// §4.5 in the panel: summarize (the DEBUG fake summary), tap `#12` → the
+    /// page scrolls to post 12 and marks it. Needs the live meta topic.
+    func testCitationInThePanelJumpsThePage() throws {
+        try skipUnlessPad("iPad layout")
+        try requireNetwork()
+        let app = launch(sample + ["-dc-no-summary", "-dc-fake-summary", "-dc-browse-debug"], orientation: .landscapeLeft)
+        XCTAssertTrue(waitOrDump(any(app, "aiPanel"), timeout: 20, in: app))
+        let summarize = app.buttons["createSummary"].firstMatch
+        XCTAssertTrue(waitForHittable(summarize, timeout: 20), "Create summary is missing from the panel.")
+        summarize.tap()
+        let citation = app.buttons["citation-12"].firstMatch
+        XCTAssertTrue(waitOrDump(citation, timeout: 30, in: app), "The summary has no #12 citation.")
+        XCTAssertTrue(waitForHittable(citation))
+        citation.tap()
+        let browse = any(app, "browseDebugState")
+        XCTAssertTrue(browse.waitForExistence(timeout: 10), "The browse state hook is missing.")
+        XCTAssertTrue(wait(timeout: 40) {
+            (browse.label.hasSuffix("top=12") || browse.label.hasSuffix("top=11")) && browse.label.contains("highlighted=12 ")
+        }, "The page did not land on post 12: \(browse.label)")
     }
 
     /// Regression: animating the split change on top of the rotation made
@@ -112,8 +146,8 @@ final class IPadLayoutUITests: DCUITestCase {
     func testKeyboardShortcutsDriveTheWorkspace() throws {
         try skipUnlessPad("hardware keyboard shortcuts")
         let app = launch(sample, orientation: .landscapeLeft)
-        let modes = app.segmentedControls["assistantModePicker"]
-        XCTAssertTrue(waitOrDump(modes, timeout: 20, in: app))
+        let title = any(app, "drawerTitle")
+        XCTAssertTrue(waitOrDump(title, timeout: 20, in: app))
         // Let the sample page finish loading: a topic change resets the mode.
         XCTAssertTrue(app.buttons.matching(label(contains: "meta.discourse.org")).firstMatch.waitForExistence(timeout: 20))
         RunLoop.current.run(until: Date().addingTimeInterval(3))
@@ -123,17 +157,13 @@ final class IPadLayoutUITests: DCUITestCase {
         any(app, "panelResizeHandle").doubleTap()
         RunLoop.current.run(until: Date().addingTimeInterval(1))
 
-        // The simulator attaches its hardware keyboard on the first key
-        // event, which can be dropped; ⌘2 is idempotent, so retry once.
-        app.typeKey("2", modifierFlags: .command)
-        if !wait(timeout: 2, until: { modes.buttons["Chat"].isSelected }) {
-            app.typeKey("2", modifierFlags: .command)
-        }
-        XCTAssertTrue(wait(timeout: 3) { modes.buttons["Chat"].isSelected }, "⌘2 should show Chat.")
-        app.typeKey("3", modifierFlags: .command)
-        XCTAssertTrue(wait(timeout: 3) { modes.buttons["Agent"].isSelected }, "⌘3 should show Ask the forum.")
-        app.typeKey("1", modifierFlags: .command)
-        XCTAssertTrue(wait(timeout: 3) { modes.buttons["Summary"].isSelected }, "⌘1 should show Summary.")
+        // ⌥⌘0 hides and shows the panel (the first key event can be dropped).
+        let panel = any(app, "aiPanel")
+        app.typeKey("0", modifierFlags: [.command, .option])
+        if !waitForGone(panel, timeout: 2) { app.typeKey("0", modifierFlags: [.command, .option]) }
+        XCTAssertTrue(waitForGone(panel, timeout: 3), "⌥⌘0 should hide the panel.")
+        app.typeKey("0", modifierFlags: [.command, .option])
+        XCTAssertTrue(panel.waitForExistence(timeout: 3), "⌥⌘0 should show the panel.")
 
         app.typeKey("l", modifierFlags: .command)
         let field = app.textFields["addressField"]
@@ -143,16 +173,16 @@ final class IPadLayoutUITests: DCUITestCase {
         app.typeKey(".", modifierFlags: .command)
         XCTAssertTrue(waitForGone(field, timeout: 5), "⌘. should leave the address unchanged.")
 
-        app.buttons["openHistory"].tap()
-        XCTAssertTrue(waitForGone(modes, timeout: 5))
-        app.typeKey(".", modifierFlags: .command)
-        XCTAssertTrue(modes.waitForExistence(timeout: 5), "⌘. should close Manage.")
+        app.typeKey("y", modifierFlags: [.command, .shift])
+        XCTAssertTrue(app.buttons["backToTopic"].waitForExistence(timeout: 5), "⇧⌘Y should show History in the panel.")
+        app.buttons["backToTopic"].tap()
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
 
         app.typeKey(",", modifierFlags: .command)
         XCTAssertTrue(any(app, "settingsRoot").waitForExistence(timeout: 5), "⌘, should open Settings.")
         snapshot("keyboard-settings")
         app.typeKey(".", modifierFlags: .command)
-        XCTAssertTrue(modes.waitForExistence(timeout: 5), "⌘. should return to the assistant.")
+        XCTAssertTrue(title.waitForExistence(timeout: 5), "Back should return to the assistant.")
 
         app.typeKey("h", modifierFlags: [.command, .shift])
         XCTAssertTrue(any(app, "home").waitForExistence(timeout: 5), "⌘⇧H should show the Forums home.")

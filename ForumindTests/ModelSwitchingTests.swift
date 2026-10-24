@@ -79,34 +79,6 @@ final class ModelSwitchingTests: XCTestCase {
         XCTAssertEqual(ModelFavorites.adding(gemini, to: [claude]), [claude, gemini])
     }
 
-    // MARK: Migration
-
-    func testActiveAppleIntelligenceIsStarredOnce() {
-        let onAI = settings(assistant: apple.selection, agent: claude.selection, favorites: [claude])
-        XCTAssertEqual(ModelFavorites.starringActiveAppleIntelligence(onAI)?.favoriteModels, [claude, apple])
-        // The roles stay as they were.
-        XCTAssertEqual(ModelFavorites.starringActiveAppleIntelligence(onAI)?.assistantModel, onAI.assistantModel)
-        // Already starred, or no role on it: nothing to do.
-        XCTAssertNil(ModelFavorites.starringActiveAppleIntelligence(
-            settings(assistant: apple.selection, agent: claude.selection, favorites: [apple])
-        ))
-        XCTAssertNil(ModelFavorites.starringActiveAppleIntelligence(
-            settings(assistant: claude.selection, agent: gemini.selection, favorites: [])
-        ))
-    }
-
-    @MainActor
-    func testTheMigrationRunsOnlyOnceSoUnstarringSticks() throws {
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: "model-tests-\(UUID().uuidString)"))
-        let app = makeApp()
-        app.selectModel(apple.selection, for: .role(.agent))
-        app.starActiveAppleIntelligenceOnce(defaults: defaults)
-        XCTAssertEqual(app.settings.favoriteModels, [apple])
-        app.removeFavorite(apple)
-        app.starActiveAppleIntelligenceOnce(defaults: defaults)
-        XCTAssertEqual(app.settings.favoriteModels, [], "a removed star stays removed")
-    }
-
     // MARK: Not ready
 
     func testReadinessSaysWhatIsMissing() {

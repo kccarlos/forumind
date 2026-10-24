@@ -499,6 +499,15 @@ private extension Collection {
 extension EnvironmentValues {
     /// The post the reader last jumped to: its citation chips show filled.
     @Entry var activeCitation: Int?
+    /// A pointer came over the citation chip for this post.
+    @Entry var citationHover = CitationHoverAction()
+}
+
+struct CitationHoverAction {
+    var action: (Int) -> Void = { _ in }
+
+    @MainActor
+    func callAsFunction(_ number: Int) { action(number) }
 }
 
 /// A paragraph with `#N` post citations, laid out word by word so each chip
@@ -631,6 +640,7 @@ struct CitationChip: View {
     let number: Int
     @Environment(\.openURL) private var openURL
     @Environment(\.activeCitation) private var activeCitation
+    @Environment(\.citationHover) private var citationHover
 
     private var isActive: Bool { activeCitation == number }
 
@@ -657,6 +667,8 @@ struct CitationChip: View {
                 .padding(.vertical, -9)
         }
         .buttonStyle(.plain)
+        .hoverEffect(.highlight)
+        .onHover { if $0 { citationHover(number) } }
         .accessibilityLabel(Text("Post \(number)", comment: "Accessibility label of a post citation in an AI summary; the placeholder is the post number"))
         .accessibilityHint(Text("Shows the post on the page", comment: "Accessibility hint of a post citation in an AI summary"))
         .accessibilityIdentifier("citation-\(number)")

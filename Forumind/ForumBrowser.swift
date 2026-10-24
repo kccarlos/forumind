@@ -451,6 +451,19 @@ final class ForumBrowserModel: NSObject, ObservableObject {
         if webView.canGoBack { webView.goBack() }
     }
 
+    /// Back also leaves the Forums home when it covers a page.
+    var canNavigateBack: Bool {
+        (isForumsHomeRequested && currentURL != nil) || (canGoBack && !showsForumsHome)
+    }
+
+    func navigateBack() {
+        if isForumsHomeRequested, currentURL != nil {
+            hideForumsHome()
+        } else {
+            goBack()
+        }
+    }
+
     /// Pages behind the current one, most recent first (the title's
     /// long-press history menu).
     var backHistory: [WKBackForwardListItem] { webView.backForwardList.backList.reversed() }
@@ -779,6 +792,14 @@ final class ForumBrowserModel: NSObject, ObservableObject {
         }
         publish(context)
     }
+
+    #if DEBUG
+    /// Tests: the page context the web view would have reported, set without
+    /// the callbacks (the test then calls them as it needs).
+    func setPageContext(_ context: PageContext) {
+        pageContext = context
+    }
+    #endif
 
     /// Publishes a new page context: the full callback for a new page or
     /// route, the cheap one when only the position fields changed.

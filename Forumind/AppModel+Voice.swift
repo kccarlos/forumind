@@ -46,7 +46,7 @@ extension AppModel: VoiceNavigator {
     }
 
     var researchProgress: String? {
-        guard isResearching, let run = agentRuns.first(where: { $0.status == .running }),
+        guard isResearching, let run = agentRuns.first(where: { status(of: $0) == .running }),
               let step = run.steps.last
         else {
             return nil

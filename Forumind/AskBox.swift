@@ -16,11 +16,11 @@ enum AskScope: String {
 
 /// The draft the Ask box edits.
 enum AskDraftTarget {
-    /// This topic: `chatDraft`.
+    /// This topic: `ComposerDrafts.chat`.
     case chat
-    /// Whole forum, a new run: `agentGoalDraft`.
+    /// Whole forum, a new run: `ComposerDrafts.goal`.
     case goal
-    /// Whole forum, a follow-up to the selected finished run: `agentFollowUpDraft`.
+    /// Whole forum, a follow-up to the selected finished run: `ComposerDrafts.followUp`.
     case followUp
 }
 
@@ -44,7 +44,7 @@ extension AppModel {
     /// written.
     var askFollowUpRun: AgentRun? {
         guard askScope == .forum, !agentComposesNewQuestion,
-              let run = selectedAgentRun, run.status.isTerminal else { return nil }
+              let run = selectedAgentRun, run.isFinished else { return nil }
         return run
     }
 
@@ -52,7 +52,7 @@ extension AppModel {
     /// goal box did), or a new question can be started instead.
     var askWaitsForRun: Bool {
         guard askScope == .forum, !agentComposesNewQuestion, let run = selectedAgentRun else { return false }
-        return !run.status.isTerminal
+        return !run.isFinished
     }
 
     /// Whole forum shows its empty state: examples and recent runs.
@@ -67,7 +67,7 @@ extension AppModel {
     var askDraftTarget: AskDraftTarget {
         let wanted = askWantedDraftTarget
         guard askScope == .forum, !asksNewForumQuestion else { return wanted }
-        switch (agentGoalDraft.isEmpty, agentFollowUpDraft.isEmpty) {
+        switch (drafts.goal.isEmpty, drafts.followUp.isEmpty) {
         case (false, true): return .goal
         case (true, false): return .followUp
         default: return wanted
@@ -84,15 +84,15 @@ extension AppModel {
     }
 
     var askDraft: String {
-        get { self[keyPath: Self.draftKeyPath(askDraftTarget)] }
-        set { self[keyPath: Self.draftKeyPath(askDraftTarget)] = newValue }
+        get { drafts[keyPath: Self.draftKeyPath(askDraftTarget)] }
+        set { drafts[keyPath: Self.draftKeyPath(askDraftTarget)] = newValue }
     }
 
-    private static func draftKeyPath(_ target: AskDraftTarget) -> ReferenceWritableKeyPath<AppModel, String> {
+    private static func draftKeyPath(_ target: AskDraftTarget) -> ReferenceWritableKeyPath<ComposerDrafts, String> {
         switch target {
-        case .chat: \.chatDraft
-        case .goal: \.agentGoalDraft
-        case .followUp: \.agentFollowUpDraft
+        case .chat: \.chat
+        case .goal: \.goal
+        case .followUp: \.followUp
         }
     }
 
@@ -135,9 +135,9 @@ extension AppModel {
         guard from != to else { return }
         let source = Self.draftKeyPath(from)
         let destination = Self.draftKeyPath(to)
-        guard !self[keyPath: source].isEmpty, self[keyPath: destination].isEmpty else { return }
-        self[keyPath: destination] = self[keyPath: source]
-        self[keyPath: source] = ""
+        guard !drafts[keyPath: source].isEmpty, drafts[keyPath: destination].isEmpty else { return }
+        drafts[keyPath: destination] = drafts[keyPath: source]
+        drafts[keyPath: source] = ""
     }
 
     var canSendAsk: Bool {
@@ -164,9 +164,9 @@ extension AppModel {
         case .chat:
             sendChat()
         case .goal:
-            startAgentRun(goal: agentGoalDraft, siteURL: agentForum?.siteURL)
+            startAgentRun(goal: drafts.goal, siteURL: agentForum?.siteURL)
         case .followUp:
-            if let run = askFollowUpRun { continueAgentRun(id: run.id, question: agentFollowUpDraft) }
+            if let run = askFollowUpRun { continueAgentRun(id: run.id, question: drafts.followUp) }
         }
     }
 }
@@ -175,12 +175,19 @@ extension AppModel {
 /// bottom of the iPhone drawer; one view so the iPad panel can host it too.
 struct AskBox: View {
     @ObservedObject var app: AppModel
+    @ObservedObject private var drafts: ComposerDrafts
     /// This topic: the instructions and chat context size sheet.
     let onShowInstructions: () -> Void
     @FocusState private var focused: Bool
     @State private var showsScopeHint = false
     @Environment(\.composerFocusChanged) private var composerFocusChanged
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    init(app: AppModel, onShowInstructions: @escaping () -> Void) {
+        self.app = app
+        self.onShowInstructions = onShowInstructions
+        _drafts = ObservedObject(wrappedValue: app.drafts)
+    }
 
     private var scope: AskScope { app.askScope }
     private var target: AskDraftTarget { app.askDraftTarget }
@@ -364,7 +371,7 @@ struct AskBox: View {
                 ForEach(Self.suggestions, id: \.0) { suggestion in
                     Button {
                         DCHaptics.tap()
-                        app.chatDraft = suggestion.1
+                        app.drafts.chat = suggestion.1
                         focused = true
                     } label: {
                         Label(suggestion.0, systemImage: "sparkle")

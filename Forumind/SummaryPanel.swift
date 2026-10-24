@@ -26,14 +26,15 @@ enum ExpandedPanelRoute: String, Identifiable {
 /// the Manage and Settings screens shown in place.
 struct AssistantPanel: View {
     @ObservedObject var app: AppModel
+    @ObservedObject private var streams: StreamStore
     /// nil when the panel already owns the whole screen.
     let onExpand: ((ExpandedPanelRoute) -> Void)?
     /// Opens a forum URL in the Browse workspace (the agent's step log uses it).
     let onOpenURL: ((URL) -> Void)?
-    /// In the iPhone AI drawer: its height. The drawer has a one-row header
-    /// (the page bar already names the forum); at the peek only that row and
-    /// one line show.
-    var drawerDetent: DrawerDetent?
+    /// The drawer's height (iPhone and narrow iPad windows); the split panel
+    /// is always `.large`. The header is one row (the page bar already names
+    /// the forum); at the peek only that row and one line show.
+    var drawerDetent: DrawerDetent
     @State private var exportOptions = ExportOptions()
     @State private var showingExportOptions = false
     @State private var showingInstructions = false
@@ -46,15 +47,15 @@ struct AssistantPanel: View {
         app: AppModel,
         onExpand: ((ExpandedPanelRoute) -> Void)? = nil,
         onOpenURL: ((URL) -> Void)? = nil,
-        drawerDetent: DrawerDetent? = nil
+        drawerDetent: DrawerDetent = .large
     ) {
         self.app = app
+        _streams = ObservedObject(wrappedValue: app.streams)
         self.onExpand = onExpand
         self.onOpenURL = onOpenURL
         self.drawerDetent = drawerDetent
     }
 
-    private var isDrawer: Bool { drawerDetent != nil }
     private var isPeek: Bool { drawerDetent == .peek }
 
     private var activeRecords: [WorkRecord] {
@@ -87,7 +88,7 @@ struct AssistantPanel: View {
 
     /// What the body shows; the key drives the cross-fade between states.
     private enum BodyKind: Hashable {
-        case summary, chat, agent, forumHome, notForum, maybe, loading
+        case summary, agent, forumHome, notForum, maybe, loading
     }
 
     private var bodyKind: BodyKind {
@@ -97,7 +98,7 @@ struct AssistantPanel: View {
         }
         switch state {
         // The drawer shows the summary and the conversation together.
-        case .topic: return app.assistantMode == .chat && !isDrawer ? .chat : .summary
+        case .topic: return .summary
         case .forumHome: return .forumHome
         case .notForum: return .notForum
         case .maybe: return .maybe
@@ -111,7 +112,7 @@ struct AssistantPanel: View {
                 drawerHeader
                 peekLine
                 Spacer(minLength: 0)
-            } else if isDrawer, app.panelRoute == .topic {
+            } else if app.panelRoute == .topic {
                 DrawerStatusRow(app: app, podcast: app.podcast, router: app.router, voice: app.voice)
                 drawerHeader
                 topicContent
@@ -127,8 +128,12 @@ struct AssistantPanel: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         // In the drawer the system sheet's glass shows through at medium
         // (opaque at large by itself).
-        .background(isDrawer ? Color.clear : DCTheme.pageBackground)
+        .background(Color.clear)
         .environment(\.activeCitation, app.citationJump?.number)
+        // A pointer over a citation pre-highlights the post on the page.
+        .environment(\.citationHover, CitationHoverAction { number in
+            Task { await app.browser.highlight([], flash: PostFlash(number: number)) }
+        })
         .environment(\.openURL, OpenURLAction { url in
             // `#37` in a summary: scroll the page to the post (§4.5).
             if let number = PostCitations.postNumber(from: url) {
@@ -165,11 +170,7 @@ struct AssistantPanel: View {
         VStack(spacing: 0) {
             switch app.panelRoute {
             case .topic:
-                if isDrawer { drawerHeader }
-                topicHeader
-                Divider()
-                topicContent
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                EmptyView()
             case .history:
                 subHeader("History")
                 Divider()
@@ -196,7 +197,7 @@ struct AssistantPanel: View {
     /// the drawer at its large height, like a citation (§4.5), the drawer
     /// steps down to medium so the post shows.
     private func openInBrowser(_ url: URL) {
-        if isDrawer, app.router.drawerDetent == .large {
+        if app.router.drawerPhase == .shown, app.router.drawerDetent == .large {
             withAnimation(DCMotion.respecting(reduceMotion, DCMotion.smooth)) { app.router.drawerDetent = .medium }
         }
         app.openLink(url)
@@ -204,101 +205,6 @@ struct AssistantPanel: View {
     }
 
     // MARK: Header
-
-    private var headerForum: Forum? {
-        if bodyKind == .agent { return app.agentForum }
-        switch app.assistantPageState {
-        case .topic, .forumHome: return app.assistantForum
-        case .notForum, .maybe, .loading: return nil
-        }
-    }
-
-    /// Off-forum pages name the page's host instead of a forum.
-    private var headerSubtitle: String {
-        // Ask the forum names its own model here (the topic modes show theirs
-        // under the topic title).
-        if bodyKind == .agent, let headerForum {
-            return "\(headerForum.host) · \(app.providerSummary(for: .agent))"
-        }
-        if let headerForum { return headerForum.host }
-        switch app.assistantPageState {
-        case .notForum:
-            return app.pageContext.url?.host.map {
-                String(localized: "\($0) · not a Discourse forum", comment: "Assistant header subtitle; the placeholder is a website host")
-            } ?? String(localized: "Not a Discourse forum")
-        case .maybe:
-            return app.pageContext.url?.host.map {
-                String(localized: "\($0) · checking…", comment: "Assistant header subtitle while checking whether a site is a forum; the placeholder is a website host")
-            } ?? String(localized: "Checking this page…")
-        default:
-            return app.pageContext.url == nil && app.currentForum == nil
-                ? String(localized: "No forum open") : String(localized: "Loading page…")
-        }
-    }
-
-    private var topicHeader: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            // In the drawer the page bar names the forum and the drawer's own
-            // header row holds the buttons.
-            if !isDrawer { forumRow }
-
-            if let title = headerTitle {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(title)
-                        .font(.headline)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("assistantTopicTitle")
-                    Text(metaLine)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                .transition(.opacity)
-            }
-
-            AssistantModeSwitcher(mode: $app.assistantMode)
-        }
-        .padding(.horizontal, 14)
-        .padding(.top, isDrawer ? 2 : 10)
-        .padding(.bottom, 12)
-        .background(isDrawer ? Color.clear : DCTheme.toolbar)
-        .animation(DCMotion.respecting(reduceMotion), value: headerTitle)
-    }
-
-    private var forumRow: some View {
-        HStack(alignment: .center, spacing: 10) {
-            AssistantForumIcon(forum: headerForum, size: 30)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(headerForum?.displayName ?? "Forumind")
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-                    .accessibilityIdentifier("assistantForumName")
-                Text(headerSubtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityElement(children: .combine)
-
-            headerButtons
-        }
-    }
-
-    private var headerButtons: some View {
-        HStack(spacing: 0) {
-            // Same cross-fade as the back buttons, so opening and
-            // leaving Manage/Settings feel alike.
-            headerIcon("clock.arrow.circlepath", label: "History", identifier: "openHistory") {
-                withAnimation(DCMotion.respecting(reduceMotion)) { app.panelRoute = .history }
-            }
-            headerIcon("gearshape", label: "Settings", identifier: "openSettings") {
-                withAnimation(DCMotion.respecting(reduceMotion)) { app.panelRoute = .settings }
-            }
-            moreMenu
-        }
-    }
 
     // MARK: Drawer header
 
@@ -316,7 +222,7 @@ struct AssistantPanel: View {
                     .accessibilityIdentifier("drawerTitle")
                 Spacer(minLength: 4)
                 if !isPeek { drawerModelPill }
-                if bodyKind == .summary || bodyKind == .chat, let session = app.currentSession, session.hasSummary {
+                if bodyKind == .summary, let session = app.currentSession, session.hasSummary {
                     let text = PostCitations.stripped(session.summary)
                     TranslateButton(app: app, title: session.title, text: text, compact: true)
                         .buttonStyle(DCIconButtonStyle())
@@ -575,139 +481,6 @@ struct AssistantPanel: View {
         .accessibilityIdentifier("reportAIOutput")
     }
 
-    private var headerTitle: String? {
-        if app.assistantMode == .agent { return nil }
-        return app.currentTopic?.title
-    }
-
-    private var metaLine: String {
-        var parts = [app.providerSummary(for: .assistant)]
-        if let session = app.currentSession, let count = session.totalPosts, count > 0 {
-            parts.append(String(localized: "\(count) posts"))
-        }
-        return parts.joined(separator: " · ")
-    }
-
-    private func headerIcon(
-        _ systemImage: String,
-        label: LocalizedStringKey,
-        identifier: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.body.weight(.medium))
-        }
-        .buttonStyle(DCIconButtonStyle())
-        .accessibilityLabel(label)
-        .accessibilityIdentifier(identifier)
-    }
-
-    private var moreMenu: some View {
-        Menu {
-            Section {
-                Button {
-                    UIPasteboard.general.string = exportText
-                    DCHaptics.success()
-                } label: {
-                    Label("Copy", systemImage: "doc.on.doc")
-                }
-                .accessibilityIdentifier("copyExport")
-                .disabled(exportDisabled)
-
-                ShareLink(item: exportText) {
-                    Label("Share", systemImage: "square.and.arrow.up")
-                }
-                .accessibilityIdentifier("shareExport")
-                .disabled(exportDisabled)
-
-                Button {
-                    exporting = true
-                } label: {
-                    Label("Export .txt", systemImage: "arrow.down.doc")
-                }
-                .accessibilityIdentifier("exportExport")
-                .disabled(exportDisabled)
-
-                Button {
-                    showingExportOptions = true
-                } label: {
-                    Label("Export options", systemImage: "slider.horizontal.3")
-                }
-                .accessibilityIdentifier("exportOptions")
-            }
-
-            Section {
-                Button {
-                    app.pullTopic()
-                } label: {
-                    Label("Pull post + replies", systemImage: "arrow.down.circle")
-                }
-                .accessibilityIdentifier("pullPost")
-                .disabled(app.currentTopic == nil || activeSummary != nil || activePull != nil)
-
-                Button {
-                    onExpand?(.post)
-                } label: {
-                    Label("Post & responses", systemImage: "text.bubble")
-                }
-                .accessibilityIdentifier("viewPost")
-                .disabled(onExpand == nil || (app.currentSession?.source.isEmpty ?? true))
-
-                Button {
-                    app.toggleWatchCurrentTopic()
-                } label: {
-                    if let topicKey = app.currentTopic?.topicKey, app.isWatched(topicKey: topicKey) {
-                        Label("Unwatch topic", systemImage: "eye.slash")
-                    } else {
-                        Label("Watch topic for new replies", systemImage: "eye")
-                    }
-                }
-                .accessibilityIdentifier("toggleWatchTopic")
-                .disabled(app.currentTopic == nil)
-            }
-
-            modelSwitcher
-
-            if app.assistantMode != .agent { reportAIOutputButton }
-
-            if app.assistantMode == .chat, !(app.currentSession?.history.isEmpty ?? true) {
-                Button(role: .destructive) {
-                    app.clearChat()
-                } label: {
-                    Label("Clear chat", systemImage: "trash")
-                }
-            }
-
-            if onExpand != nil, !isDrawer {
-                Button {
-                    onExpand?(.topic)
-                } label: {
-                    Label("Open full screen", systemImage: "arrow.up.left.and.arrow.down.right")
-                }
-                .accessibilityIdentifier("openFullScreen")
-            }
-        } label: {
-            Image(systemName: "ellipsis.circle")
-                .font(.body.weight(.medium))
-        }
-        .buttonStyle(DCIconButtonStyle())
-        .accessibilityLabel("More assistant actions")
-        .accessibilityIdentifier("assistantMoreMenu")
-    }
-
-    /// Favorites for the current mode's model (Summary and Chat share one,
-    /// Ask the forum has its own); the other role is never changed.
-    private var modelSwitcher: some View {
-        Menu {
-            modelSwitcherItems
-        } label: {
-            Label(app.currentRole.switcherTitle, systemImage: "cpu")
-        }
-        .menuOrder(.fixed)
-        .accessibilityIdentifier("modelSwitcher")
-    }
-
     /// The pill's menu (ModelMenu, ModelForum): the role, what it is used
     /// for, the favorites with their state, "Use X for both", AI models…, and
     /// while a search runs, that a change waits for the next question.
@@ -795,23 +568,11 @@ struct AssistantPanel: View {
         Group {
             switch kind {
             case .summary:
-                if isDrawer { drawerThread } else { summaryContent }
-            case .chat:
-                ChatThread(
-                    app: app,
-                    activeChat: activeChat,
-                    showsProviderCard: !app.isProviderReady(for: .assistant),
-                    onShowInstructions: { showingInstructions = true },
-                    onCreateSummary: {
-                        app.assistantMode = .summary
-                        app.startSummary()
-                    }
-                )
+                drawerThread
             case .agent:
                 AgentView(
                     app: app,
-                    showsProviderCard: !app.isProviderReady(for: .agent),
-                    usesAskBox: isDrawer
+                    showsProviderCard: !app.isProviderReady(for: .agent)
                 ) { url in
                     openInBrowser(url)
                 }
@@ -855,60 +616,11 @@ struct AssistantPanel: View {
 
     private var visibleSummary: String {
         if let activeSummary,
-           let streamed = app.summaryStreams[activeSummary.id],
+           let streamed = streams.text(for: activeSummary.id),
            !streamed.isEmpty {
             return streamed
         }
         return app.currentSession?.summary ?? ""
-    }
-
-    /// The small caps line above the topic title.
-    private var topicEyebrow: String {
-        if let name = app.assistantForum?.displayName {
-            return String(localized: "Topic on \(name)", comment: "Eyebrow above a topic title; the placeholder is a forum name")
-        }
-        return String(localized: "Topic on the forum", comment: "Eyebrow above a topic title when the forum name is unknown")
-    }
-
-    private var summaryContent: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                if !app.isProviderReady(for: .assistant) {
-                    providerCard
-                }
-
-                if activeSummary == nil, activePull == nil {
-                    if visibleSummary.isEmpty {
-                        summaryHero
-                    } else {
-                        summarizeControl(prominent: false)
-                    }
-                }
-
-                if let record = activePull {
-                    WorkProgressCard(record: record) { app.cancel(record: record) }
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                }
-                if let record = activeSummary {
-                    WorkProgressCard(record: record) { app.cancel(record: record) }
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                }
-
-                if app.currentSession?.hasStaleSummary == true, activeSummary == nil {
-                    StaleSummaryNotice(compact: false, session: app.currentSession)
-                }
-
-                if !visibleSummary.isEmpty {
-                    summaryCard
-                }
-            }
-            .padding(14)
-            .frame(maxWidth: 860, alignment: .leading)
-            .frame(maxWidth: .infinity)
-            .animation(DCMotion.respecting(reduceMotion), value: activeSummary?.id)
-            .animation(DCMotion.respecting(reduceMotion), value: activePull?.id)
-        }
-        .accessibilityIdentifier("topicPanelScroll")
     }
 
     // MARK: Drawer topic (summary + conversation)
@@ -916,15 +628,7 @@ struct AssistantPanel: View {
     /// §4.4: the summary, then the topic's conversation, with the chat input
     /// pinned at the bottom.
     private var drawerThread: some View {
-        ChatThread(
-            app: app,
-            activeChat: activeChat,
-            showsProviderCard: false,
-            onShowInstructions: { showingInstructions = true },
-            onCreateSummary: { app.startSummary() },
-            leading: AnyView(drawerSummary),
-            showsComposer: false
-        )
+        ChatThread(app: app, activeChat: activeChat, leading: AnyView(drawerSummary))
     }
 
     private var drawerSummary: some View {
@@ -987,6 +691,36 @@ struct AssistantPanel: View {
         }
     }
 
+    /// Meta chips: model, post count, age, Kept.
+    private func summaryMeta(_ session: TopicSession) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                if !session.model.isEmpty {
+                    DCPill(text: AppleIntelligenceBackend.displayModel(session.model), systemImage: "cpu", tint: .secondary)
+                }
+                if let count = session.summaryPostCount ?? session.totalPosts, count > 0 {
+                    DCPill(text: String(localized: "\(count) posts"), systemImage: "text.bubble", tint: DCTheme.summaryTint)
+                }
+                if let date = session.summaryUpdatedAt {
+                    DCPill(
+                        // Abbreviated ("6 min. ago") so the row fits a phone card.
+                        text: date.formatted(.relative(presentation: .named, unitsStyle: .abbreviated)),
+                        systemImage: "clock",
+                        tint: .secondary
+                    )
+                }
+                if session.kept {
+                    DCPill(
+                        text: String(localized: "Kept", comment: "Badge: the user chose to keep this summary (not cleared automatically)"),
+                        systemImage: "pin.fill",
+                        tint: DCTheme.warning
+                    )
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
     /// Model, post count, age, Kept; then the AI label and Retry.
     private func drawerSummaryMeta(_ session: TopicSession) -> some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -1042,124 +776,6 @@ struct AssistantPanel: View {
         .accessibilityIdentifier("citationTip")
     }
 
-    /// No summary yet: the topic hero with Create summary as the primary action.
-    private var summaryHero: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(topicEyebrow.uppercased())
-                    .font(.caption.weight(.bold))
-                    .kerning(0.8)
-                    .foregroundStyle(DCTheme.summaryTint)
-                    .lineLimit(1)
-                Text(app.currentTopic?.title ?? String(localized: "No topic open"))
-                    .font(.title3.weight(.bold))
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(
-                    app.currentTopic == nil
-                        ? "Open a forum topic in Browse, then come back here."
-                        : "Read every reply and create a focused overview."
-                )
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            }
-            summarizeControl(prominent: true)
-            // The drawer leaves the page in view, so no "keep browsing".
-            if !isDrawer {
-                Label("Runs in the background — keep browsing. Hold for batch options.", systemImage: "info.circle")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .dcCard(tint: DCTheme.summaryTint)
-    }
-
-    private var summaryCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .center, spacing: 10) {
-                Image(systemName: "text.alignleft")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(DCTheme.summaryTint)
-                    .frame(width: 32, height: 32)
-                    .background(DCTheme.summaryTint.opacity(0.12), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                    .accessibilityHidden(true)
-                Text(activeSummary == nil ? "Summary" : "Writing summary…")
-                    .font(.headline)
-                    .accessibilityAddTraits(.isHeader)
-                Spacer(minLength: 0)
-                if activeSummary != nil {
-                    TypingIndicator(tint: DCTheme.summaryTint)
-                }
-            }
-            if activeSummary == nil, let session = app.currentSession {
-                summaryMeta(session)
-            }
-            Divider()
-            MarkdownView(visibleSummary)
-                .textSelection(.enabled)
-                .accessibilityIdentifier("summaryContent")
-            if activeSummary == nil {
-                Divider()
-                HStack(spacing: 8) {
-                    Button {
-                        UIPasteboard.general.string = app.currentSession?.summary
-                        DCHaptics.success()
-                    } label: {
-                        Label("Copy", systemImage: "doc.on.doc")
-                    }
-                    .accessibilityIdentifier("copySummaryInline")
-                    ShareLink(item: app.currentSession?.summary ?? "") {
-                        Label("Share", systemImage: "square.and.arrow.up")
-                    }
-                    if let session = app.currentSession, session.hasSummary {
-                        ReadAloudButton(podcast: app.podcast, id: "summary-\(session.topicKey)", title: session.title, text: session.summary)
-                        TranslateButton(app: app, title: session.title, text: session.summary)
-                    }
-                    Spacer()
-                    Button {
-                        withAnimation(DCMotion.respecting(reduceMotion)) {
-                            app.assistantMode = .chat
-                        }
-                    } label: {
-                        Label("Ask about it", systemImage: "bubble.left.and.bubble.right")
-                    }
-                    .tint(DCTheme.chatTint)
-                }
-                .font(.footnote.weight(.semibold))
-                .buttonStyle(.borderless)
-            }
-        }
-        .dcCard()
-    }
-
-    private func summaryMeta(_ session: TopicSession) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                if !session.model.isEmpty {
-                    DCPill(text: AppleIntelligenceBackend.displayModel(session.model), systemImage: "cpu", tint: .secondary)
-                }
-                if let count = session.summaryPostCount ?? session.totalPosts, count > 0 {
-                    DCPill(text: String(localized: "\(count) posts"), systemImage: "text.bubble", tint: DCTheme.summaryTint)
-                }
-                if let date = session.summaryUpdatedAt {
-                    DCPill(
-                        // Abbreviated ("6 min. ago") so the row fits a phone card.
-                        text: date.formatted(.relative(presentation: .named, unitsStyle: .abbreviated)),
-                        systemImage: "clock",
-                        tint: .secondary
-                    )
-                }
-                if session.kept {
-                    DCPill(
-                        text: String(localized: "Kept", comment: "Badge: the user chose to keep this summary (not cleared automatically)"),
-                        systemImage: "pin.fill",
-                        tint: DCTheme.warning
-                    )
-                }
-            }
-        }
-        .accessibilityElement(children: .combine)
-    }
-
     /// Tap summarizes with the default batch size; hold to pick a batch size for
     /// this run or to pull the post without summarizing.
     @ViewBuilder
@@ -1204,72 +820,32 @@ struct AssistantPanel: View {
     }
 }
 
-private struct StaleSummaryNotice: View {
-    let compact: Bool
-    var session: TopicSession?
-
-    private var newReplies: Int? {
-        guard let session, let total = session.totalPosts, let summarized = session.summaryPostCount else {
-            return nil
-        }
-        return max(0, total - summarized)
-    }
-
-    var body: some View {
-        if compact {
-            Label(
-                "Saved summary may be stale; current post and responses are authoritative.",
-                systemImage: "exclamationmark.triangle"
-            )
-            .font(.caption)
-            .foregroundStyle(DCTheme.warning)
-            .accessibilityIdentifier("staleSummaryChatNotice")
-        } else {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(DCTheme.warning)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(
-                        newReplies.map { String(localized: "Stale summary — \($0) newer replies") }
-                            ?? String(localized: "Stale summary — newer replies are available.")
-                    )
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(DCTheme.warning)
-                    .accessibilityIdentifier("staleSummaryNotice")
-                    Text("You can still read it. Use Check for new replies to update it.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 0)
-            }
-            .dcCard(tint: DCTheme.warning)
-            .accessibilityElement(children: .combine)
-        }
-    }
-}
-
 // MARK: - Chat
 
 /// The conversation: a collapsed summary card, messages, and a pinned composer.
 private struct ChatThread: View {
     @ObservedObject var app: AppModel
+    @ObservedObject private var streams: StreamStore
     let activeChat: WorkRecord?
-    let showsProviderCard: Bool
-    let onShowInstructions: () -> Void
-    let onCreateSummary: () -> Void
-    /// The drawer: the summary above the conversation (replaces the
-    /// collapsed summary card), scrolled from the top.
-    var leading: AnyView?
-    /// The drawer's Ask box replaces the composer.
-    var showsComposer = true
-    @State private var summaryExpanded = false
+    /// The summary above the conversation, scrolled from the top.
+    let leading: AnyView
     @State private var atBottom = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    init(
+        app: AppModel,
+        activeChat: WorkRecord?,
+        leading: AnyView
+    ) {
+        self.app = app
+        _streams = ObservedObject(wrappedValue: app.streams)
+        self.activeChat = activeChat
+        self.leading = leading
+    }
+
     private var stream: String {
         guard let activeChat else { return "" }
-        return app.chatStreams[activeChat.id] ?? ""
+        return streams.text(for: activeChat.id) ?? ""
     }
 
     private var history: [ChatMessage] {
@@ -1281,25 +857,9 @@ private struct ChatThread: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 12) {
-                        if showsProviderCard {
-                            ProviderSetupCard(app: app, role: .assistant)
-                        }
-
-                        if let leading {
-                            leading
-                            if !history.isEmpty || activeChat != nil {
-                                conversationHeader
-                            }
-                        } else {
-                            summaryCard
-
-                            if app.currentSession?.hasStaleSummary == true {
-                                StaleSummaryNotice(compact: true)
-                            }
-
-                            if history.isEmpty, stream.isEmpty, activeChat == nil {
-                                emptyState
-                            }
+                        leading
+                        if !history.isEmpty || activeChat != nil {
+                            conversationHeader
                         }
 
                         ForEach(history) { message in
@@ -1343,13 +903,10 @@ private struct ChatThread: View {
                     .animation(DCMotion.respecting(reduceMotion), value: history.count)
                     .animation(DCMotion.respecting(reduceMotion), value: activeChat?.id)
                 }
-                .defaultScrollAnchor(leading == nil ? .bottom : .top)
+                .defaultScrollAnchor(.top)
                 .modifier(ScrollBottomTracker(atBottom: $atBottom))
                 .scrollDismissesKeyboard(.interactively)
                 .accessibilityIdentifier("chatScroll")
-                .onAppear {
-                    if leading == nil { proxy.scrollTo("chatBottom", anchor: .bottom) }
-                }
                 .onChange(of: history.count) {
                     withAnimation(DCMotion.respecting(reduceMotion)) {
                         proxy.scrollTo("chatBottom", anchor: .bottom)
@@ -1360,7 +917,7 @@ private struct ChatThread: View {
                     if atBottom { proxy.scrollTo("chatBottom", anchor: .bottom) }
                 }
                 .overlay(alignment: .bottomTrailing) {
-                    if !atBottom, leading == nil || !history.isEmpty {
+                    if !atBottom, !history.isEmpty {
                         Button {
                             withAnimation(DCMotion.respecting(reduceMotion)) {
                                 proxy.scrollTo("chatBottom", anchor: .bottom)
@@ -1383,26 +940,6 @@ private struct ChatThread: View {
                 }
                 .animation(DCMotion.respecting(reduceMotion, DCMotion.quick), value: atBottom)
             }
-
-            if showsComposer {
-                ChatComposer(
-                    app: app,
-                    activeChat: activeChat,
-                    onShowInstructions: onShowInstructions
-                )
-                .padding(.horizontal, 12)
-                .padding(.top, 8)
-                .padding(.bottom, 10)
-                .background {
-                    Rectangle()
-                        .fill(.bar)
-                        .overlay(alignment: .top) { Divider() }
-                        .ignoresSafeArea(edges: .bottom)
-                }
-            }
-        }
-        .onChange(of: app.currentTopic?.topicKey) {
-            summaryExpanded = false
         }
     }
 
@@ -1447,35 +984,7 @@ private struct ChatThread: View {
         .padding(.horizontal, 4)
     }
 
-    private var emptyState: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
-                Image(systemName: "bubble.left.and.text.bubble.right")
-                    .font(.title3)
-                    .foregroundStyle(DCTheme.chatTint)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Ask about this topic")
-                        .font(.headline)
-                    Text("Answers use the post, its replies and the summary.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            suggestionFlow
-        }
-        .dcCard(tint: DCTheme.chatTint)
-    }
-
     private static var suggestions: [(String, String)] { AskBox.suggestions }
-
-    private var suggestionFlow: some View {
-        ChipFlowLayout(spacing: 8) {
-            ForEach(Self.suggestions, id: \.0) { suggestion in
-                suggestionChip(suggestion.0, question: suggestion.1)
-            }
-        }
-    }
 
     private var followUpChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -1491,7 +1000,7 @@ private struct ChatThread: View {
     private func suggestionChip(_ title: String, question: String) -> some View {
         Button {
             DCHaptics.tap()
-            app.chatDraft = question
+            app.drafts.chat = question
         } label: {
             Label(title, systemImage: "sparkle")
                 .labelStyle(.titleAndIcon)
@@ -1504,154 +1013,6 @@ private struct ChatThread: View {
         }
         .buttonStyle(.plain)
         .accessibilityHint("Fills the question box")
-    }
-
-    /// The summary is one tap away but collapsed: by the time someone opens Chat
-    /// they have usually read it in the Summary view already.
-    private var summaryCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Button {
-                withAnimation(DCMotion.respecting(reduceMotion)) {
-                    summaryExpanded.toggle()
-                }
-            } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "text.alignleft")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(DCTheme.summaryTint)
-                        .frame(width: 28, height: 28)
-                        .background(DCTheme.summaryTint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    Text("Summary")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                    Spacer()
-                    if let session = app.currentSession, session.hasSummary {
-                        Text("\(session.summaryPostCount ?? session.totalPosts ?? 0) posts")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Image(systemName: "chevron.down")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .rotationEffect(.degrees(summaryExpanded ? 180 : 0))
-                    }
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .disabled(!(app.currentSession?.hasSummary ?? false))
-            .accessibilityIdentifier("chatSummaryCard")
-            .accessibilityValue(summaryExpanded ? "Expanded" : "Collapsed")
-
-            if app.currentSession?.hasSummary == true {
-                if summaryExpanded {
-                    MarkdownView(app.currentSession?.summary ?? "")
-                        .textSelection(.enabled)
-                        .accessibilityIdentifier("chatSummaryContent")
-                        .transition(.opacity)
-                }
-            } else {
-                Text(app.currentSession?.source.isEmpty == false
-                     ? "No summary yet. Chat can still use the pulled post and responses."
-                     : "No summary yet. Chat reads the topic when you ask your first question.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Button("Create summary", action: onCreateSummary)
-                    .buttonStyle(DCActionButtonStyle(prominent: false))
-                    .disabled(app.currentTopic == nil)
-            }
-        }
-        .padding(12)
-        .background(DCTheme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay { RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(DCTheme.border) }
-    }
-}
-
-private struct ChatComposer: View {
-    @ObservedObject var app: AppModel
-    let activeChat: WorkRecord?
-    let onShowInstructions: () -> Void
-    @FocusState private var focused: Bool
-    @Environment(\.composerFocusChanged) private var composerFocusChanged
-
-    var body: some View {
-        HStack(alignment: .bottom, spacing: 6) {
-            Button(action: onShowInstructions) {
-                Image(
-                    systemName: app.currentSession?.hasInstructions == true
-                        ? "text.badge.checkmark"
-                        : "text.quote"
-                )
-                .foregroundStyle(app.currentSession?.hasInstructions == true ? DCTheme.chatTint : .secondary)
-            }
-            .buttonStyle(DCIconButtonStyle())
-            .accessibilityLabel("Instructions and context")
-            .accessibilityIdentifier("chatInstructions")
-            .disabled(app.currentTopic == nil)
-
-            HStack(alignment: .bottom, spacing: 4) {
-                TextField(
-                    "Ask a follow-up question…",
-                    text: $app.chatDraft,
-                    axis: .vertical
-                )
-                .lineLimit(1...6)
-                .padding(.leading, 14)
-                .padding(.vertical, 11)
-                .focused($focused)
-                .onChange(of: focused) { composerFocusChanged(focused) }
-                #if DEBUG
-                .task {
-                    // `-dc-focus-chat`: raise the keyboard (QA screenshots).
-                    if AssistantDebug.has("-dc-focus-chat") {
-                        try? await Task.sleep(for: .milliseconds(900))
-                        focused = true
-                    }
-                }
-                #endif
-                .accessibilityIdentifier("chatInput")
-                .onSubmit {
-                    if canSend { send() }
-                }
-
-                Button {
-                    send()
-                } label: {
-                    Image(systemName: "arrow.up")
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 32, height: 32)
-                        .background(
-                            canSend ? AnyShapeStyle(DCTheme.chatTint) : AnyShapeStyle(Color.secondary.opacity(0.35)),
-                            in: Circle()
-                        )
-                        .frame(width: DCTheme.controlHeight - 2, height: DCTheme.controlHeight - 2)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .hoverEffect(.highlight)
-                .keyboardShortcut(.return, modifiers: .command)
-                .disabled(!canSend)
-                .accessibilityLabel("Send question")
-                .animation(DCMotion.quick, value: canSend)
-            }
-            .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .stroke(focused ? DCTheme.chatTint : DCTheme.border, lineWidth: focused ? 1.5 : 1)
-            }
-            .animation(DCMotion.quick, value: focused)
-        }
-    }
-
-    private func send() {
-        DCHaptics.tap()
-        app.sendChat()
-    }
-
-    private var canSend: Bool {
-        !app.chatDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && activeChat == nil
-            && !(app.currentSession?.source.isEmpty ?? true)
     }
 }
 
@@ -2310,9 +1671,23 @@ private struct DrawerSummarySections: View {
     let text: String
     let maximumPost: Int?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The room the summary has: wide drawers (portrait 11" iPad, 820 pt)
+    /// set it in two columns, so it fits the drawer at medium height.
+    @State private var width: CGFloat = 0
+    static let twoColumnMinimumWidth: CGFloat = 640
 
     var body: some View {
         let sections = Self.sections(of: text)
+        let split = width >= Self.twoColumnMinimumWidth && sections.count > 2 ? (sections.count + 1) / 2 : sections.count
+        HStack(alignment: .top, spacing: 24) {
+            column(Array(sections[..<split]))
+            if split < sections.count { column(Array(sections[split...])) }
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+        .animation(.easeOut(duration: 0.25), value: sections.count)
+    }
+
+    private func column(_ sections: [String]) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             ForEach(Array(sections.enumerated()), id: \.offset) { _, section in
                 MarkdownView(PostCitations.linked(section, maximum: maximumPost), citations: true)
@@ -2320,7 +1695,7 @@ private struct DrawerSummarySections: View {
                     .transition(reduceMotion ? .opacity : .opacity.combined(with: .offset(y: 8)))
             }
         }
-        .animation(.easeOut(duration: 0.25), value: sections.count)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// Splits before each level-1/2 heading outside code fences.

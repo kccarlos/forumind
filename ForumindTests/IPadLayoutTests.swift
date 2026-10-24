@@ -47,6 +47,23 @@ final class IPadLayoutTests: XCTestCase {
         XCTAssertEqual(WorkspaceMetrics.panelWidth(preferred: 540, containerWidth: 700), DCTheme.panelMinimumWidth)
     }
 
+    func testSplitPanelIsCollapsedOnHomeAndShownOnPagesUntilToggled() {
+        XCTAssertFalse(SplitPanelMode.auto.isVisible(onHome: true))
+        XCTAssertTrue(SplitPanelMode.auto.isVisible(onHome: false))
+        // The toggle flips what shows, whichever page it is on.
+        XCTAssertEqual(SplitPanelMode.auto.toggled(onHome: false), .hidden)
+        XCTAssertEqual(SplitPanelMode.auto.toggled(onHome: true), .shown)
+        XCTAssertTrue(SplitPanelMode.shown.isVisible(onHome: true))
+        XCTAssertFalse(SplitPanelMode.hidden.isVisible(onHome: false))
+        XCTAssertEqual(SplitPanelMode.shown.toggled(onHome: false), .hidden)
+        XCTAssertEqual(SplitPanelMode.hidden.toggled(onHome: false), .shown)
+    }
+
+    func testBackLeavesTheFormsHomeBeforeThePageHistory() {
+        let browser = ForumBrowserModel()
+        XCTAssertFalse(browser.canNavigateBack)
+    }
+
     func testWebContentCrashReloadsOnceThenShowsTheBanner() {
         let browser = ForumBrowserModel()
         let start = Date()

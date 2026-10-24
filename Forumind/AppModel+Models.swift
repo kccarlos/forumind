@@ -11,11 +11,6 @@ import Foundation
 // one: two devices that change different roles both keep their change.
 // Credentials and the base URL stay per provider (`configurations`), shared
 // by both roles. Favorites are provider + model pairs, shared too.
-//
-// Builds from before roles read `selectedProvider` and
-// `configurations[selectedProvider].model`. Both stay equal to the assistant
-// role (`reconcileModelRoles`), and a change an older build makes to them is
-// taken into the assistant role.
 
 extension ModelRole {
     /// Summary and Chat share the assistant model; Ask the forum has its own.
@@ -109,41 +104,9 @@ extension AppSettings {
     }
 
     mutating func setModel(_ selection: ModelSelection, for role: ModelRole) {
-        let old = self
         switch role {
         case .assistant: assistantModel = selection
         case .agent: agentModel = selection
-        }
-        reconcileModelRoles(from: old)
-    }
-
-    /// Keeps the settings older builds read (`selectedProvider` and that
-    /// provider's configured model) equal to the assistant role:
-    /// - the assistant role changed: they follow it;
-    /// - otherwise `selectedProvider` changed (an older build, or a synced
-    ///   edit from one): the assistant role takes that provider and its model;
-    /// - otherwise that provider's model changed (same): the assistant role
-    ///   takes the model.
-    /// The agent role is never touched, and never writes a configuration's
-    /// model, so the slot older builds read always holds the assistant model.
-    mutating func reconcileModelRoles(from old: AppSettings) {
-        if assistantModel != old.assistantModel {
-            selectedProvider = assistantModel.provider
-            var configuration = configuration(for: assistantModel.provider)
-            if configuration.model != assistantModel.model {
-                configuration.model = assistantModel.model
-                setConfiguration(configuration, for: assistantModel.provider)
-            }
-        } else if selectedProvider != old.selectedProvider {
-            assistantModel = ModelSelection(
-                provider: selectedProvider,
-                model: configuration(for: selectedProvider).model
-            )
-        } else {
-            let model = configuration(for: selectedProvider).model
-            if model != old.configuration(for: selectedProvider).model, model != assistantModel.model {
-                assistantModel.model = model
-            }
         }
     }
 }
@@ -217,15 +180,12 @@ extension AppModel {
     }
 
     /// The model to preselect when a role switches to `provider`: what the
-    /// other role uses there, else the provider's last used model (kept in
-    /// its configuration), else its default.
+    /// other role uses there, else the provider's default.
     func suggestedModel(for provider: AIProvider, role: ModelRole) -> String {
         if provider.isAppleIntelligence { return provider.defaultModel }
         let other = selection(for: role.other)
         if other.provider == provider, !other.model.isEmpty { return other.model }
-        let configured = settings.configuration(for: provider).model
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return configured.isEmpty ? provider.defaultModel : configured
+        return provider.defaultModel
     }
 
     /// Switches one role to a favorite; the other role is left as it is.
@@ -403,34 +363,6 @@ enum ModelFavorites {
         return candidates.filter {
             !$0.matches(current) && settings.readiness(of: $0.selection, appleIntelligence: status) == .ready
         }
-    }
-
-    /// Builds before §6 couldn't star Apple Intelligence, so a user running
-    /// a role on it would find it missing from the model menus. Stars it
-    /// once (appended, like any new favorite); nil when nothing changes.
-    static func starringActiveAppleIntelligence(_ settings: AppSettings) -> AppSettings? {
-        guard ModelRole.allCases.contains(where: { settings.model(for: $0).provider.isAppleIntelligence }),
-              let favorite = FavoriteModel(selection: ModelSelection(provider: .appleIntelligence, model: "")),
-              let starred = adding(favorite, to: settings.favoriteModels)
-        else { return nil }
-        var updated = settings
-        updated.favoriteModels = starred
-        return updated
-    }
-}
-
-extension AppModel {
-    /// UserDefaults flag: the one-time Apple Intelligence star ran.
-    static let appleIntelligenceFavoriteKey = "favorites.appleIntelligenceStarred"
-
-    /// Once per device, on the first launch with §6: stars Apple Intelligence
-    /// when a role uses it. Runs only once, so unstarring it later sticks.
-    func starActiveAppleIntelligenceOnce(defaults: UserDefaults = .standard) {
-        guard !defaults.bool(forKey: Self.appleIntelligenceFavoriteKey) else { return }
-        defaults.set(true, forKey: Self.appleIntelligenceFavoriteKey)
-        guard let updated = ModelFavorites.starringActiveAppleIntelligence(settings) else { return }
-        settings = updated
-        saveSettings()
     }
 }
 

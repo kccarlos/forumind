@@ -732,11 +732,11 @@ struct HistoryView: View {
                     }
                     Text(runDetail(run))
                         .font(.caption)
-                        .foregroundStyle(run.status == .failed ? DCTheme.danger : .secondary)
+                        .foregroundStyle(run.result == .failed ? DCTheme.danger : .secondary)
                         .lineLimit(2)
                 }
                 Spacer(minLength: 0)
-                statusIcon(run.status)
+                statusIcon(app.status(of: run))
             }
             rowButtons {
                 Button {
@@ -761,7 +761,7 @@ struct HistoryView: View {
 
     private func runDetail(_ run: AgentRun) -> String {
         var parts: [String] = []
-        parts.append(statusTitle(run.status))
+        parts.append(statusTitle(app.status(of: run)))
         parts.append(String(localized: "\(run.steps.count) steps", comment: "Agent run detail: tool calls made"))
         parts.append(String(localized: "\(run.readTopicCount) topics", comment: "Agent run detail: topics read"))
         parts.append(run.createdAt.formatted(.relative(presentation: .named)))

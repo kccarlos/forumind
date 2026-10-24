@@ -331,7 +331,7 @@ extension AppModel {
         run.createdAt = ago(20)
         run.updatedAt = ago(18)
         run.completedAt = ago(18)
-        run.status = .completed
+        run.result = .completed
         run.topicIDs = [layerShifts.topicID, stepperHeat.topicID, fanAfterPrint.topicID]
         run.steps = [
             AgentStep(tool: "search_forum", arguments: ["query": text.agentSearchQuery],
@@ -369,7 +369,7 @@ extension AppModel {
             provider: sampleAgent.provider,
             model: sampleAgent.model
         )
-        olderRun.status = .completed
+        olderRun.result = .completed
         olderRun.createdAt = ago(60 * 4)
         olderRun.completedAt = ago(60 * 4)
         olderRun.answer = text.olderAnswer
@@ -400,7 +400,7 @@ extension AppModel {
         var sampleTickers: [@MainActor (Int) -> Void] = []
         var currentRun = run
         if AssistantDebug.has("-dc-agent-running") {
-            currentRun.status = .running
+            currentRun.result = nil
             currentRun.completedAt = nil
             currentRun.answer = ""
             currentRun.initialAnswer = ""
@@ -446,7 +446,7 @@ extension AppModel {
                     statusText: tracker.statusText
                 )
             }
-            summaryStreams[summaryRecord.id] = text.summaryStream
+            streams.set(text.summaryStream, for: summaryRecord.id)
         }
         if AssistantDebug.has("-dc-chat-streaming") {
             var chatRecord = record(.chat, openTopic, 0, status: .running, text: String(localized: "Answering…"))
@@ -455,7 +455,7 @@ extension AppModel {
             if let index = sessions.firstIndex(where: { $0.topicKey == openTopic.topicKey }) {
                 sessions[index].history.append(ChatMessage(role: .user, content: chatRecord.question))
             }
-            chatStreams[chatRecord.id] = AssistantDebug.has("-dc-chat-typing") ? "" : text.chatStreamingAnswer
+            streams.set(AssistantDebug.has("-dc-chat-typing") ? "" : text.chatStreamingAnswer, for: chatRecord.id)
         }
 
         var watchedMeta = WatchedTopic(siteURL: meta.siteURL, topicID: unifiedNew.topicID, url: unifiedNew.url,

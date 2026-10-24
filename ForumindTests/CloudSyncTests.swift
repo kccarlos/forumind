@@ -104,7 +104,7 @@ final class CloudSyncTests: XCTestCase {
     private func run(goal: String, minutesAgo: Double = 30, steps: Int = 3) -> AgentRun {
         var run = AgentRun(siteURL: site, goal: goal, provider: .anthropic, model: "claude")
         let date = Date(timeIntervalSince1970: floor(Date().timeIntervalSince1970 - minutesAgo * 60))
-        run.status = .completed
+        run.result = .completed
         run.createdAt = date
         run.updatedAt = date
         run.completedAt = date
@@ -343,14 +343,11 @@ final class CloudSyncTests: XCTestCase {
         for device in [a, b] {
             XCTAssertEqual(device.app.settings.assistantModel, cheap)
             XCTAssertEqual(device.app.settings.agentModel, agentic)
-            // What builds without roles read follows the assistant role.
-            XCTAssertEqual(device.app.settings.selectedProvider, .gemini)
-            XCTAssertEqual(device.app.settings.configuration(for: .gemini).model, "gemini-3.1-flash-lite")
         }
         let units = try SyncSchema.settingsUnits(a.app.settings)
         XCTAssertNotNil(units["assistantModel"])
         XCTAssertNotNil(units["agentModel"])
-        XCTAssertNotNil(units["selectedProvider"])
+        XCTAssertNil(units["selectedProvider"])
         let writes = await writes { await sync(a, b) }
         XCTAssertEqual(writes, 0, "the devices agree and stop sending")
     }
@@ -375,28 +372,6 @@ final class CloudSyncTests: XCTestCase {
         XCTAssertEqual(b.app.settings.configuration(for: .deepSeek).apiKey, "")
     }
 
-    /// A settings record from a build without roles: it carries no role
-    /// units, and its provider change moves the assistant role only.
-    func testSettingsFromABuildWithoutRolesMoveOnlyTheAssistantRole() async throws {
-        let a = try makeDevice()
-        let agentic = ModelSelection(provider: .deepSeek, model: "deepseek-v4-flash")
-        a.app.selectModel(ModelSelection(provider: .gemini, model: "gemini-3.1-flash-lite"), for: .role(.assistant))
-        a.app.selectModel(agentic, for: .role(.agent))
-
-        var legacyUnits = try SyncSchema.settingsUnits(a.app.settings)
-        legacyUnits.removeValue(forKey: "assistantModel")
-        legacyUnits.removeValue(forKey: "agentModel")
-        legacyUnits["selectedProvider"] = .string("groq")
-        legacyUnits["configurations.groq"] = .object([
-            "model": .string("llama-legacy"),
-            "baseURL": .string(AIProvider.groq.defaultBaseURL)
-        ])
-        a.app.settings = try SyncSchema.applying(settingsUnits: legacyUnits, to: a.app.settings)
-        XCTAssertEqual(a.app.settings.assistantModel, ModelSelection(provider: .groq, model: "llama-legacy"))
-        XCTAssertEqual(a.app.settings.agentModel, agentic)
-        XCTAssertEqual(a.app.settings.selectedProvider, .groq)
-    }
-
     /// One pass the way CKSyncEngine runs in the app: a fetch triggers a pass
     /// (`didFetch`) and the engine sends what it queued right away
     /// (`automaticallySync`), before any later pass.
@@ -413,18 +388,12 @@ final class CloudSyncTests: XCTestCase {
         return try XCTUnwrap(decoded.fields)
     }
 
-    /// Both devices run the same summaries & chat model, stored consistently
-    /// for older builds too, and match the server.
+    /// Both devices run the same summaries & chat model and match the server.
     private func assertModelRolesConverged(
         _ a: Device, _ b: Device, file: StaticString = #filePath, line: UInt = #line
     ) throws {
         for device in [a, b] {
             let settings = device.app.settings
-            XCTAssertEqual(settings.selectedProvider, settings.assistantModel.provider, file: file, line: line)
-            XCTAssertEqual(
-                settings.configuration(for: settings.assistantModel.provider).model, settings.assistantModel.model,
-                file: file, line: line
-            )
             XCTAssertEqual(try SyncSchema.settingsUnits(settings), try serverSettingsUnits(), file: file, line: line)
         }
         XCTAssertEqual(a.app.settings.assistantModel, b.app.settings.assistantModel, file: file, line: line)
@@ -508,70 +477,6 @@ final class CloudSyncTests: XCTestCase {
         XCTAssertEqual(sent, 0, "settled devices stop sending")
     }
 
-    /// The merge's settling of model roles, on records alone.
-    func testMergeSettlesTheAssistantModelFromTheNewestUnit() throws {
-        func record(
-            assistant: ModelSelection, _ assistantStamp: TimeInterval,
-            provider: AIProvider, _ providerStamp: TimeInterval,
-            models: [AIProvider: (String, TimeInterval)]
-        ) throws -> SyncRecord {
-            var fields: [String: JSONValue] = [
-                "assistantModel": try SyncCoding.json(assistant),
-                "selectedProvider": .string(provider.rawValue)
-            ]
-            var stamps: [String: Date] = [
-                "assistantModel": Date(timeIntervalSince1970: assistantStamp),
-                "selectedProvider": Date(timeIntervalSince1970: providerStamp)
-            ]
-            for (provider, (model, stamp)) in models {
-                fields["configurations.\(provider.rawValue)"] = .object(["model": .string(model), "baseURL": .string("u")])
-                stamps["configurations.\(provider.rawValue)"] = Date(timeIntervalSince1970: stamp)
-            }
-            return SyncRecord(kind: .settings, id: "settings", fields: fields, stamps: stamps, deletedAt: nil)
-        }
-        func settled(_ record: SyncRecord) throws -> (ModelSelection, String?, String?) {
-            let merged = try XCTUnwrap(SyncMerge.merge([record]))
-            XCTAssertEqual(SyncMerge.merge([merged]), merged, "settling twice changes nothing")
-            let fields = try XCTUnwrap(merged.fields)
-            let assistant = try SyncCoding.decode(ModelSelection.self, from: try XCTUnwrap(fields["assistantModel"]))
-            return (
-                assistant,
-                fields["selectedProvider"]?.stringValue,
-                fields["configurations.\(assistant.provider.rawValue)"]?.objectValue?["model"]?.stringValue
-            )
-        }
-
-        // An older build switched the provider after the role was chosen.
-        var result = try settled(record(
-            assistant: ModelSelection(provider: .gemini, model: "g"), 10, provider: .groq, 20,
-            models: [.gemini: ("g", 10), .groq: ("llama", 5)]
-        ))
-        XCTAssertEqual(result.0, ModelSelection(provider: .groq, model: "llama"))
-        XCTAssertEqual(result.1, "groq")
-        // The role is newer than the provider: the provider follows it.
-        result = try settled(record(
-            assistant: ModelSelection(provider: .gemini, model: "g"), 20, provider: .groq, 10,
-            models: [.gemini: ("old", 5), .groq: ("llama", 10)]
-        ))
-        XCTAssertEqual(result.0, ModelSelection(provider: .gemini, model: "g"))
-        XCTAssertEqual(result.1, "gemini")
-        XCTAssertEqual(result.2, "g")
-        // Same provider, the configuration is newer (an older build's model
-        // change, or an address edit elsewhere): the role takes its model.
-        result = try settled(record(
-            assistant: ModelSelection(provider: .gemini, model: "g"), 10, provider: .gemini, 10,
-            models: [.gemini: ("g2", 20)]
-        ))
-        XCTAssertEqual(result.0, ModelSelection(provider: .gemini, model: "g2"))
-        // A tie goes to the role.
-        result = try settled(record(
-            assistant: ModelSelection(provider: .gemini, model: "g"), 20, provider: .gemini, 20,
-            models: [.gemini: ("g2", 20)]
-        ))
-        XCTAssertEqual(result.0, ModelSelection(provider: .gemini, model: "g"))
-        XCTAssertEqual(result.2, "g")
-    }
-
     /// The roles live inside the encrypted payload: the CloudKit record keeps
     /// its plain fields (kind, format, tombstone time) and nothing else.
     func testModelRolesAddNoPlainRecordFields() async throws {
@@ -601,7 +506,7 @@ final class CloudSyncTests: XCTestCase {
         var configuration = a.app.settings.configuration(for: .openAI)
         configuration.model = "gpt-5-mini"
         a.app.setConfiguration(configuration, for: .openAI)
-        a.app.settings.selectedProvider = .openAI
+        a.app.settings.assistantModel = ModelSelection(provider: .openAI, model: (.openAI as AIProvider).defaultModel)
         a.app.flushPendingSaves()
         XCTAssertEqual(a.app.settings.configuration(for: .openAI).apiKey, secret)
         let bSecret = "sk-B-\(UUID().uuidString)"
@@ -619,8 +524,7 @@ final class CloudSyncTests: XCTestCase {
             XCTAssertFalse(plain.contains(secret))
         }
         // B got the model and provider, and kept its own key.
-        XCTAssertEqual(b.app.settings.selectedProvider, .openAI)
-        XCTAssertEqual(b.app.settings.configuration(for: .openAI).model, "gpt-5-mini")
+        XCTAssertEqual(b.app.settings.assistantModel.provider, .openAI)
         XCTAssertEqual(b.app.settings.configuration(for: .openAI).apiKey, bSecret)
         XCTAssertEqual(b.providerKeys.value(for: .openAI), bSecret)
         XCTAssertEqual(a.app.settings.configuration(for: .openAI).apiKey, secret)
@@ -798,7 +702,7 @@ final class CloudSyncTests: XCTestCase {
 
     func testRunningRunStaysOnItsDevice() async throws {
         var running = run(goal: "Still running")
-        running.status = .running
+        running.result = nil
         let a = try makeDevice(AppSnapshot(agentRuns: [run(goal: "Done")]))
         await sync(a)
         // Not restorable (no activity record): init marks it cancelled — so

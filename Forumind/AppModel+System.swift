@@ -53,7 +53,7 @@ extension AppModel: SystemEntryRouting {
         requestAssistant()
         guard acceptsSystemWork, isProviderReady(for: .agent) else {
             // Kept as the draft: the user starts it once ready.
-            agentGoalDraft = question
+            drafts.goal = question
             if !isProviderReady(for: .agent) { needsProviderSetup = .agent }
             return
         }

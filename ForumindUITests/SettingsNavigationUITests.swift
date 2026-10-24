@@ -66,7 +66,7 @@ final class SettingsNavigationUITests: DCUITestCase {
         back.tap()
         // iPhone: the drawer's Ask box; iPad: the panel's mode picker.
         XCTAssertTrue(
-            (isPhone ? any(app, "askScopeButton") : app.segmentedControls["assistantModePicker"])
+            any(app, "askScopeButton")
                 .waitForExistence(timeout: 10),
             "Back to assistant did not return to the assistant."
         )
@@ -249,7 +249,7 @@ final class SettingsNavigationUITests: DCUITestCase {
     func testSetupCardShowsOnlyForTheRoleThatIsNotReady() throws {
         let args = ["-dc-sample", "-dc-topic", "makers",
                     "-dc-agent-model", "deepseek:deepseek-v4-flash", "-dc-no-agent-key"]
-            + (isPhone ? phonePage : ["-dc-forums-home"])
+            + phonePage
         var app = launch(args + ["-dc-assistant-mode", "agent"])
         let card = any(app, "providerSetupCard")
         XCTAssertTrue(card.waitForExistence(timeout: 20), "Ask the forum should ask for its model.")
@@ -272,7 +272,7 @@ final class SettingsNavigationUITests: DCUITestCase {
     /// the fictional makers forum's failed load lands), so load a real page
     /// under the seeded makers topic.
     private var phonePage: [String] {
-        isPhone ? ["-dc-open", DCUITestCase.forumLatest] : []
+        ["-dc-open", DCUITestCase.forumLatest]
     }
 
     /// Screenshot attached to the result; also written to

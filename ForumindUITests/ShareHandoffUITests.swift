@@ -24,9 +24,11 @@ final class ShareHandoffUITests: DCUITestCase {
         setupSheet.buttons["Later"].tap()
         XCTAssertTrue(waitForGone(setupSheet, timeout: 10))
 
-        let modePicker = app.segmentedControls["assistantModePicker"]
-        XCTAssertTrue(modePicker.waitForExistence(timeout: 10), "The Assistant did not appear.")
-        XCTAssertTrue(modePicker.buttons["Summary"].isSelected)
+        // The AI view (the drawer, or the panel in the split layout) shows.
+        XCTAssertTrue(
+            any(app, usesDrawerLayout(app) ? "drawerHeader" : "aiPanel").waitForExistence(timeout: 10),
+            "The Assistant did not appear."
+        )
         XCTAssertTrue(any(app, "providerSetupCard").waitForExistence(timeout: 10))
         XCTAssertTrue(any(app, "assistantTopicTitle").waitForExistence(timeout: 10), "No topic is selected.")
         XCTAssertFalse(any(app, "summaryContent").exists, "No summary may start without a provider.")
@@ -53,15 +55,9 @@ final class ShareHandoffUITests: DCUITestCase {
             return
         }
         setupSheet.buttons["Later"].tap()
-        if isPhone {
-            // The drawer shows the summary and the conversation together;
-            // the chat input is pinned at its bottom.
-            XCTAssertTrue(any(app, "chatInput").waitForExistence(timeout: 10), "The drawer has no chat input.")
-            return
-        }
-        let modePicker = app.segmentedControls["assistantModePicker"]
-        XCTAssertTrue(modePicker.waitForExistence(timeout: 10))
-        XCTAssertTrue(modePicker.buttons["Chat"].isSelected)
+        // The drawer and the panel show the summary and the conversation
+        // together; the chat input is pinned at the bottom.
+        XCTAssertTrue(any(app, "chatInput").waitForExistence(timeout: 10), "The AI view has no chat input.")
     }
 
     func testOpenLinkOnlyLoadsThePage() throws {
@@ -79,12 +75,8 @@ final class ShareHandoffUITests: DCUITestCase {
         // "open" never switches to the Assistant or asks for a provider.
         RunLoop.current.run(until: Date().addingTimeInterval(3))
         XCTAssertFalse(app.navigationBars["Connect an AI provider"].exists)
-        if isPhone {
+        if usesDrawerLayout(app) {
             XCTAssertFalse(drawerState(in: app).exists, "An open link must not open the AI drawer.")
-        }
-        let workspace = app.segmentedControls["workspacePicker"]
-        if workspace.exists {
-            XCTAssertTrue(workspace.buttons["Browse"].isSelected)
         }
     }
 

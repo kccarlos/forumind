@@ -296,9 +296,9 @@ final class MultiForumTests: XCTestCase {
         XCTAssertFalse(fresh.settings.hasCompletedOnboarding)
         XCTAssertFalse(AppSnapshot().settings.hasCompletedOnboarding)
 
-        let partial = #"{"settings":{"selectedProvider":"groq","browserBarPosition":"bottom"},"sessions":[],"activities":[]}"#
+        let partial = #"{"settings":{"assistantModel":{"provider":"groq","model":"m"},"browserBarPosition":"bottom"},"sessions":[],"activities":[]}"#
         let decoded = try JSONDecoder().decode(AppSnapshot.self, from: Data(partial.utf8))
-        XCTAssertEqual(decoded.settings.selectedProvider, .groq)
+        XCTAssertEqual(decoded.settings.assistantModel.provider, .groq)
         XCTAssertEqual(decoded.settings.browserBarPosition, .bottom)
         XCTAssertEqual(decoded.settings.forumContextLimit, AppSettings().forumContextLimit)
         XCTAssertTrue(decoded.forums.isEmpty)
@@ -367,11 +367,11 @@ final class MultiForumTests: XCTestCase {
 
         app.startAgentRun(goal: "What is new?", siteURL: "https://meta.discourse.org/")
         let deadline = Date().addingTimeInterval(20)
-        while Date() < deadline, !(app.agentRuns.first?.status.isTerminal ?? false) {
+        while Date() < deadline, !(app.agentRuns.first?.isFinished ?? false) {
             try await Task.sleep(for: .milliseconds(50))
         }
         let run = try XCTUnwrap(app.agentRuns.first)
-        XCTAssertEqual(run.status, .completed)
+        XCTAssertEqual(run.result, .completed)
         XCTAssertEqual(run.siteURL, meta)
         XCTAssertEqual(hosts, ["meta.discourse.org"])
         XCTAssertEqual(app.sessions["meta.discourse.org/t/5"]?.url.absoluteString, "https://meta.discourse.org/t/plugin-api/5")
@@ -533,7 +533,7 @@ final class MultiForumTests: XCTestCase {
         )
         app.usesDirectForumRequests = true
         useLocalProvider(app)
-        app.agentGoalDraft = "half-typed goal"
+        app.drafts.goal = "half-typed goal"
         let mode = app.assistantMode
         let route = app.panelRoute
 
@@ -544,7 +544,7 @@ final class MultiForumTests: XCTestCase {
         XCTAssertEqual(outcome.sources.map(\.topicID), ["240488", "240488"])
         XCTAssertEqual(outcome.runID, app.agentRuns.first?.id)
         XCTAssertNil(app.selectedAgentRunID)
-        XCTAssertEqual(app.agentGoalDraft, "half-typed goal")
+        XCTAssertEqual(app.drafts.goal, "half-typed goal")
         XCTAssertEqual(app.assistantMode, mode)
         XCTAssertEqual(app.panelRoute, route)
         XCTAssertNil(app.presentedError)
@@ -589,7 +589,7 @@ final class MultiForumTests: XCTestCase {
         XCTAssertEqual(outcomes.first?.runID, id)
         XCTAssertEqual(outcomes.first?.status, .cancelled)
         XCTAssertEqual(outcomes.first?.answer, "")
-        XCTAssertEqual(app.agentRuns.first?.status, .cancelled)
+        XCTAssertEqual(app.agentRuns.first?.result, .cancelled)
         app.cancelAgentRun(id: id)
         try await Task.sleep(for: .milliseconds(50))
         XCTAssertEqual(outcomes.count, 1)
@@ -642,11 +642,30 @@ final class MultiForumTests: XCTestCase {
         task.cancel()
         let outcome = try await task.value
         XCTAssertEqual(outcome.status, .cancelled)
-        XCTAssertEqual(app.agentRuns.first?.status, .cancelled)
+        XCTAssertEqual(app.agentRuns.first?.result, .cancelled)
         planner.release()
     }
 
     // MARK: Ask box (§5)
+
+    /// Typing publishes the drafts, never the app model (its observers are
+    /// the whole app), and the text survives scope changes.
+    @MainActor
+    func testTypingPublishesTheDraftsAndNotTheAppModel() {
+        let app = AppModel(store: temporaryStore())
+        var appChanges = 0
+        var draftChanges = 0
+        let appToken = app.objectWillChange.sink { appChanges += 1 }
+        let draftToken = app.drafts.objectWillChange.sink { draftChanges += 1 }
+        app.askDraft = "typing"
+        app.askDraft = "typing on"
+        XCTAssertEqual(draftChanges, 2)
+        XCTAssertEqual(appChanges, 0)
+        app.setAskScope(.forum)
+        app.setAskScope(.topic)
+        XCTAssertEqual(app.askDraft, "typing on")
+        withExtendedLifetime((appToken, draftToken)) {}
+    }
 
     /// Switching the Ask box between This topic and Whole forum (and to a
     /// new question) carries the typed text along, without overwriting text
@@ -656,13 +675,13 @@ final class MultiForumTests: XCTestCase {
         let app = AppModel(store: temporaryStore())
         XCTAssertEqual(app.askScope, .topic)
         app.askDraft = "half-typed question"
-        XCTAssertEqual(app.chatDraft, "half-typed question")
+        XCTAssertEqual(app.drafts.chat, "half-typed question")
 
         app.setAskScope(.forum)
         XCTAssertEqual(app.assistantMode, .agent)
         XCTAssertEqual(app.askDraftTarget, .goal)
         XCTAssertEqual(app.askDraft, "half-typed question")
-        XCTAssertEqual(app.chatDraft, "")
+        XCTAssertEqual(app.drafts.chat, "")
 
         app.chooseAskForum(siteURL: meta)
         XCTAssertEqual(app.agentSiteURL, meta)
@@ -670,14 +689,14 @@ final class MultiForumTests: XCTestCase {
 
         app.setAskScope(.topic)
         XCTAssertEqual(app.askScope, .topic)
-        XCTAssertEqual(app.chatDraft, "half-typed question")
-        XCTAssertEqual(app.agentGoalDraft, "")
+        XCTAssertEqual(app.drafts.chat, "half-typed question")
+        XCTAssertEqual(app.drafts.goal, "")
 
         // Text of its own in the other draft stays; nothing is lost.
-        app.agentGoalDraft = "older goal"
+        app.drafts.goal = "older goal"
         app.setAskScope(.forum)
         XCTAssertEqual(app.askDraft, "older goal")
-        XCTAssertEqual(app.chatDraft, "half-typed question")
+        XCTAssertEqual(app.drafts.chat, "half-typed question")
     }
 
     /// A Whole forum question from the Ask box starts an agent run on the
@@ -711,15 +730,15 @@ final class MultiForumTests: XCTestCase {
         XCTAssertEqual(run.goal, "Anything new this week?")
         XCTAssertEqual(run.siteURL, meta)
         XCTAssertEqual(app.selectedAgentRunID, run.id)
-        XCTAssertEqual(app.agentGoalDraft, "")
+        XCTAssertEqual(app.drafts.goal, "")
         XCTAssertTrue(app.activities.contains { $0.type == .agent && $0.siteURL == meta })
         XCTAssertTrue(app.manageForums.contains { $0.siteURL == meta }, "History groups the run under its forum.")
 
         let deadline = Date().addingTimeInterval(10)
-        while Date() < deadline, app.agentRuns.first?.status.isTerminal != true {
+        while Date() < deadline, app.agentRuns.first?.isFinished != true {
             try await Task.sleep(for: .milliseconds(20))
         }
-        XCTAssertEqual(app.agentRuns.first?.status, .completed)
+        XCTAssertEqual(app.agentRuns.first?.result, .completed)
         XCTAssertEqual(app.askDraftTarget, .followUp)
         XCTAssertEqual(app.askFollowUpRun?.id, run.id)
 
@@ -727,7 +746,7 @@ final class MultiForumTests: XCTestCase {
         app.startNewAgentQuestion()
         XCTAssertEqual(app.askDraftTarget, .goal)
         XCTAssertEqual(app.askDraft, "And last month?")
-        XCTAssertEqual(app.agentFollowUpDraft, "")
+        XCTAssertEqual(app.drafts.followUp, "")
         app.showSelectedAgentRun()
         XCTAssertEqual(app.askDraftTarget, .followUp)
         XCTAssertNil(app.presentedError)

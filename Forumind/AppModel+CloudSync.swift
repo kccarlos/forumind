@@ -61,7 +61,7 @@ extension AppModel {
             let key = SyncRecord.recordKey(kind: .run, id: change.id)
             let index = newRuns.firstIndex { $0.id.uuidString == change.id }
             let current = index.map { newRuns[$0] }
-            guard current == change.expected, current?.status.isTerminal ?? true else {
+            guard current == change.expected, current?.isFinished ?? true else {
                 skipped.insert(key)
                 continue
             }

@@ -1,26 +1,26 @@
 import SwiftUI
 import UIKit
 
-/// "Ask the forum": a goal box scoped to one forum, the selected run's live
-/// step timeline and sourced answer, and a follow-up composer once it ends.
+/// "Ask the forum": the selected run's live step timeline and sourced answer
+/// (the Ask box, AskBox.swift, asks and follows up), or examples and recent
+/// runs when there is none.
 struct AgentView: View {
     @ObservedObject var app: AppModel
     var showsProviderCard = false
-    /// The iPhone drawer: its Ask box (AskBox.swift) asks and follows up, so
-    /// the goal box and the follow-up composer stay out; an empty state
-    /// offers examples and the recent runs on the forum.
-    var usesAskBox = false
     /// Opens a topic the agent read in the browser.
     let onOpenTopic: (URL) -> Void
-    @FocusState private var goalFocused: Bool
-    @FocusState private var followUpFocused: Bool
-    @Environment(\.composerFocusChanged) private var composerFocusChanged
     /// nil follows the run: open while it works, closed once it has an answer.
     @State private var stepsExpanded: Bool?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    init(app: AppModel, showsProviderCard: Bool = false, onOpenTopic: @escaping (URL) -> Void) {
+        self.app = app
+        self.showsProviderCard = showsProviderCard
+        self.onOpenTopic = onOpenTopic
+    }
+
     private var run: AgentRun? {
-        usesAskBox && app.asksNewForumQuestion ? nil : app.selectedAgentRun
+        app.asksNewForumQuestion ? nil : app.selectedAgentRun
     }
 
     private var activeRecord: WorkRecord? {
@@ -30,7 +30,7 @@ struct AgentView: View {
 
     private var isRunning: Bool {
         guard let run else { return false }
-        return !run.status.isTerminal
+        return !run.isFinished
     }
 
     private var forum: Forum? { app.agentForum }
@@ -44,11 +44,7 @@ struct AgentView: View {
                             ProviderSetupCard(app: app, role: .agent)
                         }
 
-                        if usesAskBox {
-                            askBoxHeader
-                        } else {
-                            goalComposer
-                        }
+                        askBoxHeader
 
                         if let run {
                             runHeader(run)
@@ -67,10 +63,8 @@ struct AgentView: View {
                                     .dcCard(tint: DCTheme.danger)
                                     .accessibilityIdentifier("agentRunError")
                             }
-                        } else if usesAskBox {
-                            askBoxEmptyState
                         } else {
-                            emptyState
+                            askBoxEmptyState
                         }
 
                         Color.clear
@@ -81,7 +75,7 @@ struct AgentView: View {
                     .frame(maxWidth: 860, alignment: .leading)
                     .frame(maxWidth: .infinity)
                     .animation(DCMotion.respecting(reduceMotion), value: run?.steps.count)
-                    .animation(DCMotion.respecting(reduceMotion), value: run?.status)
+                    .animation(DCMotion.respecting(reduceMotion), value: run.map { app.status(of: $0) })
                 }
                 .scrollDismissesKeyboard(.interactively)
                 .accessibilityIdentifier("agentScroll")
@@ -105,100 +99,12 @@ struct AgentView: View {
                     }
                 }
             }
-
-            if !usesAskBox, let run, run.status.isTerminal {
-                followUpComposer(run)
-                    .padding(.horizontal, 12)
-                    .padding(.top, 8)
-                    .padding(.bottom, 10)
-                    .background {
-                        Rectangle()
-                            .fill(.bar)
-                            .overlay(alignment: .top) { Divider() }
-                            .ignoresSafeArea(edges: .bottom)
-                    }
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
         }
-        .animation(DCMotion.respecting(reduceMotion), value: run?.status.isTerminal)
+        .animation(DCMotion.respecting(reduceMotion), value: run?.isFinished)
         .onChange(of: app.selectedAgentRunID) { stepsExpanded = nil }
     }
 
     // MARK: Goal
-
-    private var canRun: Bool {
-        !app.agentGoalDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !isRunning && forum != nil
-    }
-
-    private var goalComposer: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                forumMenu
-                Spacer(minLength: 4)
-                if app.agentRuns.count > 1 {
-                    historyMenu
-                }
-            }
-
-            // One TextField in a fixed position, so focusing it (which
-            // expands the composer) never recreates it and drops the focus.
-            HStack(alignment: .bottom, spacing: 8) {
-                goalField(lines: compactComposer ? 1...4 : 2...6)
-                if compactComposer {
-                    runButton(compact: true)
-                        .transition(.opacity)
-                }
-            }
-            if !compactComposer {
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 10) {
-                        budgetText
-                        Spacer(minLength: 4)
-                        runButton(compact: false).fixedSize()
-                    }
-                    VStack(alignment: .leading, spacing: 8) {
-                        runButton(compact: false).frame(maxWidth: .infinity)
-                        budgetText
-                    }
-                }
-            }
-        }
-        .dcCard(tint: DCTheme.agentTint)
-        .animation(DCMotion.respecting(reduceMotion), value: compactComposer)
-    }
-
-    /// With a run on screen the goal box shrinks to one line until focused.
-    private var compactComposer: Bool {
-        run != nil && !goalFocused && app.agentGoalDraft.isEmpty
-    }
-
-    private func goalField(lines: ClosedRange<Int>) -> some View {
-        TextField(
-            goalPlaceholder,
-            text: $app.agentGoalDraft,
-            axis: .vertical
-        )
-        .lineLimit(lines)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(goalFocused ? DCTheme.agentTint : DCTheme.border, lineWidth: goalFocused ? 1.5 : 1)
-        }
-        .focused($goalFocused)
-        .onChange(of: goalFocused) { composerFocusChanged(goalFocused) }
-        .accessibilityIdentifier("agentGoalInput")
-    }
-
-    private var goalPlaceholder: String {
-        guard run == nil else { return String(localized: "Ask another question…") }
-        if let name = forum?.displayName {
-            return String(localized: "Ask \(name) anything…", comment: "Ask the forum placeholder; the placeholder is a forum name")
-        }
-        return String(localized: "Ask the forum anything…")
-    }
 
     private var budgetText: some View {
         Text(
@@ -208,74 +114,6 @@ struct AgentView: View {
         .font(.caption)
         .foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
-    }
-
-    private func runButton(compact: Bool) -> some View {
-        Button {
-            goalFocused = false
-            DCHaptics.tap()
-            stepsExpanded = nil
-            app.startAgentRun(goal: app.agentGoalDraft, siteURL: forum?.siteURL)
-        } label: {
-            if compact {
-                Label("Ask", systemImage: "sparkle.magnifyingglass")
-            } else {
-                Label("Ask the forum", systemImage: "sparkle.magnifyingglass")
-                    .frame(maxWidth: .infinity)
-            }
-        }
-        .buttonStyle(AgentRunButtonStyle())
-        // ⌘Return runs the goal (the follow-up field has its own while focused).
-        .dcSendShortcut(!followUpFocused)
-        .accessibilityLabel("Ask the forum")
-        .accessibilityIdentifier("runAgent")
-        .disabled(!canRun)
-    }
-
-    /// "Searching {forum}" — tap to pick another of the user's forums.
-    private var forumMenu: some View {
-        Menu {
-            Section("Search this forum") {
-                ForEach(app.pinnedForums + app.recentForums) { option in
-                    Button {
-                        app.agentSiteURL = option.siteURL
-                    } label: {
-                        if option.siteURL == forum?.siteURL {
-                            Label(option.displayName, systemImage: "checkmark")
-                        } else {
-                            Text(option.displayName)
-                        }
-                    }
-                }
-            }
-            if app.agentSiteURL != nil, let pageForum = app.assistantForum,
-               pageForum.siteURL != app.agentSiteURL {
-                Button {
-                    app.agentSiteURL = nil
-                } label: {
-                    Label("Use this page’s forum", systemImage: "arrow.uturn.backward")
-                }
-            }
-        } label: {
-            HStack(spacing: 4) {
-                AssistantForumPill(
-                    forum: forum,
-                    prefix: String(localized: "Searching", comment: "Prefix before the forum name in Ask the forum: “Searching <forum>”")
-                )
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .accessibilityLabel(forumMenuAccessibilityLabel)
-        .accessibilityIdentifier("agentForumMenu")
-    }
-
-    private var forumMenuAccessibilityLabel: String {
-        if let name = forum?.displayName {
-            return String(localized: "Searching \(name). Change forum", comment: "Accessibility label; the placeholder is a forum name")
-        }
-        return String(localized: "Searching no forum. Change forum")
     }
 
     private var historyMenu: some View {
@@ -288,7 +126,7 @@ struct AgentView: View {
                 } label: {
                     Label(
                         "\(String(previous.goal.prefix(60))) · \(app.forumInfo(siteURL: previous.siteURL).displayName)",
-                        systemImage: statusIcon(previous.status)
+                        systemImage: statusIcon(app.status(of: previous))
                     )
                 }
             }
@@ -383,7 +221,7 @@ struct AgentView: View {
                 ForEach(AgentExamples.questions, id: \.self) { example in
                     Button {
                         DCHaptics.tap()
-                        app.agentGoalDraft = example
+                        app.drafts.goal = example
                         app.askFocusRequest += 1
                     } label: {
                         HStack(spacing: 10) {
@@ -414,11 +252,11 @@ struct AgentView: View {
                             withAnimation(DCMotion.respecting(reduceMotion)) { app.openAgentRun(id: previous.id) }
                         } label: {
                             HStack(spacing: 10) {
-                                Image(systemName: statusIcon(previous.status))
+                                Image(systemName: statusIcon(app.status(of: previous)))
                                     .font(.footnote.weight(.bold))
-                                    .foregroundStyle(statusColor(previous.status))
+                                    .foregroundStyle(statusColor(app.status(of: previous)))
                                     .frame(width: 28, height: 28)
-                                    .background(statusColor(previous.status).opacity(0.14), in: Circle())
+                                    .background(statusColor(app.status(of: previous)).opacity(0.14), in: Circle())
                                     .accessibilityHidden(true)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(previous.goal)
@@ -453,7 +291,7 @@ struct AgentView: View {
     private func runHeader(_ run: AgentRun) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 10) {
-                statusBadge(run.status)
+                statusBadge(app.status(of: run))
                 VStack(alignment: .leading, spacing: 4) {
                     Text(run.goal)
                         .font(.headline)
@@ -462,7 +300,7 @@ struct AgentView: View {
                         .accessibilityIdentifier("agentRunGoal")
                     Text(runStatusText(run))
                         .font(.caption)
-                        .foregroundStyle(run.status == .failed ? DCTheme.danger : .secondary)
+                        .foregroundStyle(run.result == .failed ? DCTheme.danger : .secondary)
                         .contentTransition(.opacity)
                         .accessibilityIdentifier("agentRunStatus")
                 }
@@ -476,11 +314,11 @@ struct AgentView: View {
                     .accessibilityIdentifier("cancelAgentRun")
                 }
             }
-            if !run.status.isTerminal {
+            if !run.isFinished {
                 AssistantProgressBar(value: activeRecord?.progress, tint: DCTheme.agentTint)
             }
         }
-        .dcCard(tint: run.status.isTerminal ? .clear : DCTheme.agentTint)
+        .dcCard(tint: run.isFinished ? .clear : DCTheme.agentTint)
     }
 
     private func statusBadge(_ status: WorkStatus) -> some View {
@@ -504,7 +342,7 @@ struct AgentView: View {
             String(localized: "\(run.steps.count) steps", comment: "Ask the forum run progress: tool calls made"),
             String(localized: "\(run.readTopicCount) topics read", comment: "Ask the forum run progress: topics read")
         ].joined(separator: " · ")
-        switch run.status {
+        switch app.status(of: run) {
         case .queued:
             return String(localized: "Waiting for a worker · \(steps)", comment: "Run status; the placeholder is “3 steps · 1 topics read”")
         case .running:
@@ -524,7 +362,7 @@ struct AgentView: View {
     }
 
     private func isStepsExpanded(_ run: AgentRun) -> Bool {
-        stepsExpanded ?? (!run.status.isTerminal || run.answer.isEmpty)
+        stepsExpanded ?? (!run.isFinished || run.answer.isEmpty)
     }
 
     private func stepTimeline(_ run: AgentRun) -> some View {
@@ -566,7 +404,7 @@ struct AgentView: View {
                         stepRow(
                             step,
                             isLast: index == run.steps.count - 1,
-                            isActive: !run.status.isTerminal && index == run.steps.count - 1
+                            isActive: !run.isFinished && index == run.steps.count - 1
                         )
                     }
                 }
@@ -681,7 +519,7 @@ struct AgentView: View {
                     }
                 }
                 Spacer(minLength: 0)
-                if run.status.isTerminal {
+                if run.isFinished {
                     TranslateButton(app: app, title: String(localized: "Answer"), text: answer, compact: true)
                         .buttonStyle(DCIconButtonStyle())
                 }
@@ -702,7 +540,7 @@ struct AgentView: View {
                     }
                     .disabled(answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .accessibilityIdentifier("reportAgentAnswer")
-                    if run.status.isTerminal {
+                    if run.isFinished {
                         Button(role: .destructive) {
                             app.deleteAgentRun(id: run.id)
                         } label: {
@@ -822,51 +660,6 @@ struct AgentView: View {
                     .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
         }
-    }
-
-    private func followUpComposer(_ run: AgentRun) -> some View {
-        HStack(alignment: .bottom, spacing: 4) {
-            TextField("Ask a follow-up…", text: $app.agentFollowUpDraft, axis: .vertical)
-                .lineLimit(1...6)
-                .padding(.leading, 14)
-                .padding(.vertical, 11)
-                .focused($followUpFocused)
-                .onChange(of: followUpFocused) { composerFocusChanged(followUpFocused) }
-                .accessibilityIdentifier("agentFollowUpInput")
-                .onSubmit { send(run) }
-
-            let canSend = !app.agentFollowUpDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            Button {
-                send(run)
-            } label: {
-                Image(systemName: "arrow.up")
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 32, height: 32)
-                    .background(
-                        canSend ? AnyShapeStyle(DCTheme.agentTint) : AnyShapeStyle(Color.secondary.opacity(0.35)),
-                        in: Circle()
-                    )
-                    .frame(width: DCTheme.controlHeight - 2, height: DCTheme.controlHeight - 2)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .hoverEffect(.highlight)
-            .dcSendShortcut(followUpFocused)
-            .disabled(!canSend)
-            .accessibilityLabel("Send follow-up")
-        }
-        .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(followUpFocused ? DCTheme.agentTint : DCTheme.border, lineWidth: followUpFocused ? 1.5 : 1)
-        }
-    }
-
-    private func send(_ run: AgentRun) {
-        followUpFocused = false
-        DCHaptics.tap()
-        app.continueAgentRun(id: run.id, question: app.agentFollowUpDraft)
     }
 
     // MARK: Presentation helpers

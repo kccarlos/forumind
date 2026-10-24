@@ -71,16 +71,10 @@ enum RootPresentation: Identifiable, Equatable {
         }
     }
 
-    /// Covers the whole screen instead of a sheet. The expanded panel is a
-    /// cover on iPad; on iPhone (Post & responses from the drawer) a sheet.
+    /// Covers the whole screen instead of a sheet.
     var isFullScreen: Bool {
         switch self {
         case .onboarding, .termsGate: true
-        // The consent page takes the place of whatever is up (it ranks over
-        // the routed items), so it uses the expanded panel's style: the
-        // same presenter swaps its item instead of a sheet giving way to a
-        // cover. On iPhone a large sheet that only an answer closes.
-        case .expanded, .aiConsent: UIDevice.current.userInterfaceIdiom != .phone
         #if DEBUG
         case .debugSettings: true
         #endif
@@ -127,7 +121,27 @@ enum DrawerPhase: Equatable {
     var isPresented: Bool { self == .presenting || self == .shown }
 }
 
-/// Heights of the iPhone AI drawer.
+/// Whether the split layout's AI panel shows: collapsed on Home, shown on
+/// pages, until the reader hides or shows it (back to `.auto` when Home
+/// comes or goes).
+enum SplitPanelMode: Equatable {
+    case auto, shown, hidden
+
+    func isVisible(onHome: Bool) -> Bool {
+        switch self {
+        case .auto: !onHome
+        case .shown: true
+        case .hidden: false
+        }
+    }
+
+    /// The mode after the toggle button.
+    func toggled(onHome: Bool) -> SplitPanelMode {
+        isVisible(onHome: onHome) ? .hidden : .shown
+    }
+}
+
+/// Heights of the AI drawer.
 enum DrawerDetent: String, CaseIterable {
     /// Header and one line.
     case peek
@@ -163,7 +177,20 @@ final class PresentationRouter: ObservableObject {
     @Published var keychainProbeResult: String?
     #endif
 
-    // MARK: Drawer (iPhone)
+    // MARK: Window layout (Phase 8)
+
+    /// Side by side (page left, AI panel right) or the drawer layout, by
+    /// window width (`WorkspaceMetrics.nextIsSplit`, with hysteresis). nil
+    /// until the first size is known.
+    @Published var splitLayout: Bool?
+    /// Whether the split layout's AI panel shows.
+    @Published var splitPanelMode: SplitPanelMode = .auto
+
+    /// The bottom bar and the AI drawer: iPhone, and iPad windows narrower
+    /// than the split threshold.
+    var usesDrawer: Bool { splitLayout != true }
+
+    // MARK: Drawer (iPhone and narrow windows)
 
     /// The user (or a hand-off) wants the AI drawer; it shows on web pages,
     /// not on the Forums home (`AppModel.syncDrawer`).

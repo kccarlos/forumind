@@ -98,9 +98,6 @@ private struct RootView: View {
             // UI, so their sheets and panes can show.
             .task {
                 SystemEntry.attach(app)
-                // Apple Intelligence became an ordinary favorite (§6): a
-                // user running a role on it keeps it in the model menus.
-                app.starActiveAppleIntelligenceOnce()
                 // Siri learns the forum names for "Ask … in Forumind".
                 app.forumsDidChangeForShortcuts()
             }

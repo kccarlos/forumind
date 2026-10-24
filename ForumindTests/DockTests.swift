@@ -5,13 +5,12 @@ import XCTest
 /// Dock's text.
 final class DockTests: XCTestCase {
     private func layer(
-        phone: Bool = true,
         drawer: Bool = false,
         voice: Bool = false,
         answer: Bool = false,
         podcast: Bool = false
     ) -> BottomLayer {
-        BottomLayer.resolve(usesDrawer: phone, drawerOpen: drawer, voiceShowing: voice, answerReady: answer, podcastPlaying: podcast)
+        BottomLayer.resolve(drawerOpen: drawer, voiceShowing: voice, answerReady: answer, podcastPlaying: podcast)
     }
 
     func testBrowsingShowsTheBarAlone() {
@@ -34,11 +33,6 @@ final class DockTests: XCTestCase {
 
     func testAnswerReadyComesBeforeThePodcastRow() {
         XCTAssertEqual(layer(answer: true, podcast: true), .barWithAnswerReady)
-    }
-
-    func testWithoutADrawerOnlyVoiceFloats() {
-        XCTAssertEqual(layer(phone: false, drawer: true, answer: true, podcast: true), .bar)
-        XCTAssertEqual(layer(phone: false, voice: true), .dock)
     }
 
     func testClock() {

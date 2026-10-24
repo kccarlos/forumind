@@ -1,12 +1,10 @@
 import SwiftUI
 import UIKit
 
-// iPad workspace: one layout for both the side-by-side (split) and the
-// single-pane arrangement, so crossing the split threshold (rotation, Split
-// View, Slide Over, Stage Manager resizing) only moves views. The browser bar,
-// the web view and the assistant panel keep their identity — no web view
-// reload, and the panel keeps its sheets, Settings sub-page and scroll
-// position.
+// Window layout rules: the split layout (page left, AI panel right) at 850 pt
+// and wider, the drawer layout below, on iPad as on iPhone. Crossing the
+// threshold (rotation, Split View, Slide Over, Stage Manager resizing) keeps
+// the web view's identity — no reload.
 
 /// Width rules for the workspace. Pure, so unit tests pin them.
 enum WorkspaceMetrics {
@@ -20,6 +18,8 @@ enum WorkspaceMetrics {
     static let browserMinimumWidth: CGFloat = 460
     /// Keyboard nudge for the resize handle (VoiceOver adjust).
     static let panelWidthStep: CGFloat = 40
+    static let dividerWidth: CGFloat = 1
+    static let handleHitWidth: CGFloat = 16
 
     /// The layout after a width change, given the current one.
     static func nextIsSplit(
@@ -49,83 +49,6 @@ enum WorkspaceMetrics {
     }
 }
 
-/// Places the browser bar, the page, the assistant panel and the resize
-/// handle (always these four subviews, in this order).
-///
-/// - Split: bar over the page column; panel on the right at full height;
-///   handle on the divider.
-/// - Single pane: bar across the window; the page fills the content rect and
-///   the panel covers it when shown (parked off the trailing edge when not);
-///   handle collapsed.
-struct WorkspaceLayout: Layout {
-    var isSplit: Bool
-    var panelWidth: CGFloat
-    var barPosition: BrowserBarPosition
-    /// False while the bottom bar steps aside for the keyboard.
-    var showsChrome: Bool
-    /// Single pane showing the page: the panel waits just off the trailing
-    /// edge (same size, so it keeps its layout and state) where it can't
-    /// take the page's touches.
-    var parksPanel = false
-
-    static let dividerWidth: CGFloat = 1
-    static let handleHitWidth: CGFloat = 16
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        proposal.replacingUnspecifiedDimensions()
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        guard subviews.count == 4 else { return }
-        let chrome = subviews[0], page = subviews[1], panel = subviews[2], handle = subviews[3]
-        let columnWidth = isSplit ? max(0, bounds.width - panelWidth - Self.dividerWidth) : bounds.width
-
-        let chromeSize = chrome.sizeThatFits(ProposedViewSize(width: columnWidth, height: nil))
-        let chromeHeight = showsChrome ? min(chromeSize.height, bounds.height) : 0
-        let chromeY: CGFloat
-        if barPosition == .top {
-            chromeY = showsChrome ? bounds.minY : bounds.minY - chromeSize.height
-        } else {
-            chromeY = showsChrome ? bounds.maxY - chromeHeight : bounds.maxY
-        }
-        chrome.place(
-            at: CGPoint(x: bounds.minX, y: chromeY),
-            proposal: ProposedViewSize(width: columnWidth, height: chromeSize.height)
-        )
-
-        let contentY = barPosition == .top ? bounds.minY + chromeHeight : bounds.minY
-        let contentHeight = max(0, bounds.height - chromeHeight)
-        page.place(
-            at: CGPoint(x: bounds.minX, y: contentY),
-            proposal: ProposedViewSize(width: columnWidth, height: contentHeight)
-        )
-
-        if isSplit {
-            panel.place(
-                at: CGPoint(x: bounds.minX + columnWidth + Self.dividerWidth, y: bounds.minY),
-                proposal: ProposedViewSize(width: panelWidth, height: bounds.height)
-            )
-            handle.place(
-                at: CGPoint(x: bounds.minX + columnWidth + Self.dividerWidth / 2, y: bounds.midY),
-                anchor: .center,
-                proposal: ProposedViewSize(width: Self.handleHitWidth, height: bounds.height)
-            )
-        } else {
-            panel.place(
-                at: CGPoint(x: parksPanel ? bounds.maxX + Self.dividerWidth : bounds.minX, y: contentY),
-                proposal: ProposedViewSize(width: bounds.width, height: contentHeight)
-            )
-            // Off the trailing edge: its UIKit pan/pointer view must not sit
-            // over the page's edge.
-            handle.place(
-                at: CGPoint(x: bounds.maxX + Self.handleHitWidth, y: bounds.midY),
-                anchor: .center,
-                proposal: ProposedViewSize(width: Self.handleHitWidth, height: bounds.height)
-            )
-        }
-    }
-}
-
 // MARK: - Resize handle
 
 /// The divider between the page and the assistant panel. Drag to resize,
@@ -146,14 +69,14 @@ struct PanelResizeHandle: View {
         ZStack {
             Rectangle()
                 .fill(active ? Color.accentColor.opacity(0.6) : DCTheme.border)
-                .frame(width: active ? 2 : WorkspaceLayout.dividerWidth)
+                .frame(width: active ? 2 : WorkspaceMetrics.dividerWidth)
                 .ignoresSafeArea()
             Capsule()
                 .fill(active ? Color.accentColor : Color.secondary.opacity(0.35))
                 .frame(width: active ? 6 : 4, height: active ? 52 : 36)
                 .shadow(color: .black.opacity(active ? 0.15 : 0), radius: 3)
         }
-        .frame(width: WorkspaceLayout.handleHitWidth)
+        .frame(width: WorkspaceMetrics.handleHitWidth)
         .frame(maxHeight: .infinity)
         .overlay {
             ResizeHandleInteractionView(
@@ -260,6 +183,7 @@ private struct ResizeHandleInteractionView: UIViewRepresentable {
 enum WorkspaceCommand: String {
     case focusAddress, reload, back, forward, forumsHome, settings, history
     case summary, chat, agent
+    case togglePanel, nextResult, previousResult, playPause
 }
 
 extension Notification.Name {
@@ -315,6 +239,15 @@ struct WorkspaceCommands: Commands {
                 Divider()
                 Button("History") { WorkspaceCommand.history.post() }
                     .keyboardShortcut("y", modifiers: [.command, .shift])
+                Button("Show or Hide AI Panel") { WorkspaceCommand.togglePanel.post() }
+                    .keyboardShortcut("0", modifiers: [.command, .option])
+                Divider()
+                Button("Next Result") { WorkspaceCommand.nextResult.post() }
+                    .keyboardShortcut("j", modifiers: .command)
+                Button("Previous Result") { WorkspaceCommand.previousResult.post() }
+                    .keyboardShortcut("k", modifiers: .command)
+                Button("Play or Pause") { WorkspaceCommand.playPause.post() }
+                    .keyboardShortcut(.space, modifiers: [])
             }
         }
     }

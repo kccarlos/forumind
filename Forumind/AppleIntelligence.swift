@@ -168,7 +168,7 @@ enum AppleIntelligenceDefaults {
     /// keys, no edited configurations, no favorites.
     static func isUntouched(_ settings: AppSettings) -> Bool {
         let stock = AppSettings()
-        guard settings.selectedProvider == .openRouter, settings.favoriteModels.isEmpty,
+        guard settings.favoriteModels.isEmpty,
               settings.assistantModel == stock.assistantModel, settings.agentModel == stock.agentModel
         else {
             return false
