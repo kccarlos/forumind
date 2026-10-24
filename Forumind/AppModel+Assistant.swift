@@ -190,7 +190,7 @@ struct AssistantDebugSeed {
 /// - `-dc-page-state <state>`          loading | notForum | maybe | forumHome | topic (default)
 /// - `-dc-topic meta|makers`           which sample topic is open (default meta)
 /// - `-dc-assistant-mode <mode>`       summary | chat | agent
-/// - `-dc-open-manage`                 opens Manage
+/// - `-dc-open-history`                opens History
 /// - `-dc-no-provider`                 leaves the AI provider unconfigured
 /// - `-dc-agent-model <provider>:<model>` a different Ask the forum model (e.g.
 ///                                     `deepseek:deepseek-v4-flash`), with a placeholder key
@@ -202,7 +202,7 @@ struct AssistantDebugSeed {
 /// - `-dc-fake-summary`                Create summary streams the sample summary (no network, no AI)
 /// - `-dc-ask-ai-consent`              no AI data consent yet: the consent page comes first
 /// - `-dc-scroll-sources`              Agent: scrolls to the answer's sources
-/// - `-dc-manage-kind <kind>`          Manage: all | summaries | agent | watched | activity
+/// - `-dc-history-segment <segment>`   History: all | summaries | asks | watching
 /// - `-dc-chat-typing`                 with `-dc-chat-streaming`: no text yet (typing dots)
 /// - `-dc-stale-summary`               the makers topic's summary is behind (stale notice)
 /// - `-dc-forums-home`                 keeps the Forums home up (no sample page load)
@@ -541,7 +541,7 @@ extension AppModel {
         if let mode = AssistantDebug.value("-dc-assistant-mode")?.lowercased() {
             assistantMode = AssistantMode.allCases.first { $0.rawValue.lowercased() == mode } ?? .summary
         }
-        if AssistantDebug.has("-dc-open-manage") { panelRoute = .activity }
+        if AssistantDebug.has("-dc-open-history") { panelRoute = .history }
         // The run on the open forum: the featured one, or the older run.
         selectedAgentRunID = (openForum.siteURL == makers.siteURL ? currentRun : olderRun).id
         if !sampleTickers.isEmpty {

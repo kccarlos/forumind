@@ -9,6 +9,7 @@ import SwiftUI
 struct ResultCardsOverlay: View {
     @ObservedObject var app: AppModel
     @ObservedObject var browser: ForumBrowserModel
+    @ObservedObject var voice: VoiceController
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -57,39 +58,58 @@ struct ResultCardsOverlay: View {
 
     // MARK: Strip
 
+    /// The card the strip is on: the cursor's, and a settled swipe moves it.
+    private var stripPosition: Binding<Int?> {
+        Binding(
+            get: { cursor.index },
+            set: { index in
+                guard let index, index != cursor.index, cursor.items.indices.contains(index) else { return }
+                Task { await app.openCard(index, includeContent: false) }
+            }
+        )
+    }
+
     private var strip: some View {
         VStack(alignment: .leading, spacing: DCTheme.spacingXS) {
             header
-            ScrollViewReader { proxy in
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: DCTheme.spacingS) {
-                        ForEach(Array(cursor.items.enumerated()), id: \.element.id) { index, item in
-                            ResultCard(
-                                number: index + 1,
-                                item: item,
-                                isCurrent: cursor.index == index,
-                                tint: tint
-                            ) {
-                                Task { await app.openCard(index, includeContent: false) }
-                            }
-                            .id(index)
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: DCTheme.spacingS) {
+                    ForEach(Array(cursor.items.enumerated()), id: \.element.id) { index, item in
+                        ResultCard(
+                            number: index + 1,
+                            count: cursor.items.count,
+                            item: item,
+                            isCurrent: cursor.index == index,
+                            tint: tint
+                        ) {
+                            Task { await app.openCard(index, includeContent: false) }
                         }
+                        .id(index)
                     }
-                    .padding(.horizontal, DCTheme.spacingS)
+                }
+                .scrollTargetLayout()
+                .padding(.horizontal, DCTheme.spacingS)
+                .padding(.bottom, DCTheme.spacingS)
+            }
+            // The strip follows the current card (next, previous, voice); a
+            // swipe that settles on another card opens it and the page jumps.
+            .scrollPosition(id: stripPosition, anchor: .center)
+            .scrollTargetBehavior(.viewAligned)
+            // Only as tall as a card (an overlay offers the whole page).
+            .fixedSize(horizontal: false, vertical: true)
+            .modifier(NoScrollEdgeEffect())
+            if voice.isActive {
+                Text("Say “next” or swipe", comment: "Result cards while voice runs: how to move to the next card")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, DCTheme.spacingM)
                     .padding(.bottom, DCTheme.spacingS)
-                }
-                // Only as tall as a card (an overlay offers the whole page).
-                .fixedSize(horizontal: false, vertical: true)
-                .modifier(NoScrollEdgeEffect())
-                .onChange(of: cursor.index, initial: true) { _, index in
-                    guard let index else { return }
-                    withAnimation(DCMotion.respecting(reduceMotion)) { proxy.scrollTo(index, anchor: .center) }
-                }
             }
         }
         .sensoryFeedback(.selection, trigger: cursor.index)
         .frame(maxWidth: DCTheme.contentMaxWidth)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: DCTheme.cardCornerRadius, style: .continuous))
+        // Content, not glass: opaque.
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: DCTheme.cardCornerRadius, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: DCTheme.cardCornerRadius, style: .continuous)
                 .stroke(DCTheme.border)
@@ -213,6 +233,7 @@ private struct NoScrollEdgeEffect: ViewModifier {
 /// One numbered card: title, post number and author, one line of text.
 private struct ResultCard: View {
     let number: Int
+    let count: Int
     let item: BrowseItem
     let isCurrent: Bool
     let tint: Color
@@ -260,7 +281,7 @@ private struct ResultCard: View {
             .padding(.horizontal, DCTheme.spacingM)
             .padding(.vertical, DCTheme.spacingS)
             .background(
-                isCurrent ? tint.opacity(0.12) : Color.primary.opacity(0.04),
+                isCurrent ? tint.opacity(0.12) : Color(uiColor: .tertiarySystemFill),
                 in: RoundedRectangle(cornerRadius: DCTheme.controlCornerRadius, style: .continuous)
             )
             .overlay {
@@ -273,7 +294,7 @@ private struct ResultCard: View {
         .hoverEffect(.highlight)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text(verbatim: "\(number). \(item.title)"))
-        .accessibilityValue(Text(detail))
+        .accessibilityValue(Text("\(number) of \(count). \(detail)", comment: "Result card VoiceOver value: its place in the list, then its details"))
         .accessibilityAddTraits(isCurrent ? .isSelected : [])
         .accessibilityHint(Text("Opens it in the browser", comment: "Accessibility hint of a result card over the page"))
         .accessibilityIdentifier("resultCard-\(number)")

@@ -95,8 +95,17 @@ final class PodcastController: ObservableObject {
             self.player = made
         }
         self.player.blocksRemotePlay = { [weak self] in self?.voice?.isActive ?? false }
-        // The player's changes redraw the views that observe this controller.
-        playerSubscription = self.player.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        // The player's state changes redraw the views that observe this
+        // controller; its time ticks (twice a second) do not: the views that
+        // show the time observe the player.
+        let player = self.player
+        playerSubscription = Publishers.MergeMany(
+            player.$playlist.dropFirst().map { _ in () }.eraseToAnyPublisher(),
+            player.$state.dropFirst().map { _ in () }.eraseToAnyPublisher(),
+            player.$chapterIndex.dropFirst().map { _ in () }.eraseToAnyPublisher(),
+            player.$isSuspendedForVoice.dropFirst().map { _ in () }.eraseToAnyPublisher(),
+            player.$failure.dropFirst().map { _ in () }.eraseToAnyPublisher()
+        ).sink { [weak self] in self?.objectWillChange.send() }
     }
 
     static var isFake: Bool {

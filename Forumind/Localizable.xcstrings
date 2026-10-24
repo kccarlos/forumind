@@ -183,6 +183,28 @@
     "%@ · %@" : {
       "shouldTranslate" : false
     },
+    "%@ · %lld min left today" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · %lld min left today"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · 今天还剩 %2$lld 分钟"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · 今天還剩 %2$lld 分鐘"
+          }
+        }
+      }
+    },
     "%@ · Logged in as %@" : {
       "comment" : "Forum menu header; placeholders: the forum's host, the user's forum username",
       "localizations" : {
@@ -702,6 +724,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已完成 %lld/%lld"
+          }
+        }
+      }
+    },
+    "%lld of %lld. %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld of %lld. %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第 %1$lld 个，共 %2$lld 个。%3$@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第 %1$lld 個，共 %2$lld 個。%3$@"
           }
         }
       }
@@ -1585,6 +1629,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已填入建議的預設模型。點一下列表按鈕即可查看所有模型。"
+          }
+        }
+      }
+    },
+    "A live conversation about the page you are reading. It can find, open and read posts for you, hands-free." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A live conversation about the page you are reading. It can find, open and read posts for you, hands-free."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与你正在阅读的页面实时对话。它可以免提为你查找、打开并朗读帖子。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "與你正在閱讀的頁面即時對話。它可以免持為你尋找、開啟並朗讀貼文。"
           }
         }
       }
@@ -3532,6 +3598,23 @@
         }
       }
     },
+    "Asks" : {
+      "comment" : "History segment: Ask the forum runs",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "提问"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "提問"
+          }
+        }
+      }
+    },
     "Asks first" : {
       "comment" : "Settings › Data & privacy: the consent page shows before the first request",
       "localizations" : {
@@ -4264,6 +4347,23 @@
         }
       }
     },
+    "Cancel and delete" : {
+      "comment" : "History: swipe action on work in progress",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消并删除"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消並刪除"
+          }
+        }
+      }
+    },
     "Cancel editing" : {
       "localizations" : {
         "zh-Hans" : {
@@ -4435,6 +4535,23 @@
         }
       }
     },
+    "Chapters" : {
+      "comment" : "Now Playing: the chapter list's title",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "章节"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "章節"
+          }
+        }
+      }
+    },
     "Chat" : {
       "comment" : "Assistant mode: chat about the open topic",
       "localizations" : {
@@ -4562,6 +4679,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "除非保留該話題，否則聊天會在一天後過期。"
+          }
+        }
+      }
+    },
+    "Chats expire after a day unless you keep the topic. Swipe to keep or delete." : {
+      "comment" : "History footnote under Summaries & chats",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "除非保留话题,否则聊天一天后过期。滑动即可保留或删除。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "除非保留主題,否則聊天一天後過期。滑動即可保留或刪除。"
           }
         }
       }
@@ -10298,6 +10432,28 @@
         }
       }
     },
+    "Not Now" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not Now"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以后再说"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以後再說"
+          }
+        }
+      }
+    },
     "Not a Discourse forum" : {
       "localizations" : {
         "zh-Hans" : {
@@ -11041,6 +11197,23 @@
         }
       }
     },
+    "Open Today" : {
+      "comment" : "Now Playing menu: opens the Today page",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开今日"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打開今日"
+          }
+        }
+      }
+    },
     "Open Today’s Digest" : {
       "localizations" : {
         "zh-Hans" : {
@@ -11217,6 +11390,23 @@
         }
       }
     },
+    "Open at #%lld" : {
+      "comment" : "Now Playing: opens the chapter's topic at the post it talks about",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开 #%lld"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打開 #%lld"
+          }
+        }
+      }
+    },
     "Open forum sign in" : {
       "localizations" : {
         "zh-Hans" : {
@@ -11358,6 +11548,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "打開話題"
+          }
+        }
+      }
+    },
+    "Open topic" : {
+      "comment" : "Now Playing: opens the chapter's topic",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开话题"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打開主題"
           }
         }
       }
@@ -12142,6 +12349,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Podcast"
+          }
+        }
+      }
+    },
+    "Podcast paused at %@ · resumes when you end" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcast paused at %@ · resumes when you end"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "播客已在 %@ 暂停 · 结束通话后继续"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcast 已在 %@ 暫停 · 結束通話後繼續"
           }
         }
       }
@@ -14365,6 +14594,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "請說出或輸入要問的問題。"
+          }
+        }
+      }
+    },
+    "Say “next” or swipe" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Say “next” or swipe"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "说“下一个”或滑动"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "說「下一個」或滑動"
           }
         }
       }
@@ -17815,6 +18066,23 @@
         }
       }
     },
+    "Today · %@" : {
+      "comment" : "Now Playing: the title; the placeholder is the episode's date",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今日 · %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今日 · %@"
+          }
+        }
+      }
+    },
     "Today · Topic %lld of %lld · %@ left" : {
       "comment" : "AI drawer status row while the Today podcast plays: chapter, chapter count, time left",
       "localizations" : {
@@ -17867,6 +18135,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "今日摘要可以產生了"
+          }
+        }
+      }
+    },
+    "Today’s podcast" : {
+      "comment" : "Now Playing: above the title before anything plays",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今日播客"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今日 Podcast"
           }
         }
       }
@@ -17967,6 +18252,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "話題"
+          }
+        }
+      }
+    },
+    "Topic %lld of %lld" : {
+      "comment" : "Now Playing: the topic chapter being played, then the number of topic chapters",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "话题 %1$lld / %2$lld"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主題 %1$lld / %2$lld"
           }
         }
       }
@@ -18324,6 +18626,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "試試這些"
+          }
+        }
+      }
+    },
+    "Try saying" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Try saying"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "试着说"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "試著說"
           }
         }
       }
@@ -19361,6 +19685,28 @@
         }
       }
     },
+    "Voice uses Google Gemini. Key ready." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voice uses Google Gemini. Key ready."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音使用 Google Gemini。密钥已就绪。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "語音使用 Google Gemini。金鑰已就緒。"
+          }
+        }
+      }
+    },
     "Voices" : {
       "localizations" : {
         "zh-Hans" : {
@@ -20209,6 +20555,23 @@
         }
       }
     },
+    "Wrap-up" : {
+      "comment" : "Now Playing: the closing chapter",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "总结"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "總結"
+          }
+        }
+      }
+    },
     "Writes the summary again" : {
       "comment" : "Accessibility hint of the summary's Retry button",
       "localizations" : {
@@ -21021,6 +21384,28 @@
         }
       }
     },
+    "“Find posts about backups.”" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“Find posts about backups.”"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“找出关于备份的帖子。”"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「找出關於備份的貼文。」"
+          }
+        }
+      }
+    },
     "“Most replies agree the new version fixes it…”" : {
       "localizations" : {
         "zh-Hans" : {
@@ -21033,6 +21418,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "「多數回覆都認為新版本解決了這個問題…」"
+          }
+        }
+      }
+    },
+    "“Read the accepted answer.”" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“Read the accepted answer.”"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“读一下被采纳的回答。”"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「讀一下被採納的回答。」"
+          }
+        }
+      }
+    },
+    "“What is this thread about?”" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“What is this thread about?”"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“这个帖子在讲什么？”"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「這個討論串在講什麼？」"
           }
         }
       }

@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 enum ExpandedPanelRoute: String, Identifiable {
     case topic
     case post
-    case activity
+    case history
     case settings
 
     var id: String { rawValue }
@@ -14,7 +14,7 @@ enum ExpandedPanelRoute: String, Identifiable {
         switch self {
         case .topic: String(localized: "Assistant")
         case .post: String(localized: "Post & responses")
-        case .activity: String(localized: "Manage", comment: "Screen title: manage saved summaries, chats, runs and activity")
+        case .history: String(localized: "History", comment: "Screen title: saved summaries, chats, Ask the forum runs and watched topics")
         case .settings: String(localized: "Settings")
         }
     }
@@ -112,7 +112,7 @@ struct AssistantPanel: View {
                 peekLine
                 Spacer(minLength: 0)
             } else if isDrawer, app.panelRoute == .topic {
-                DrawerStatusRow(app: app, podcast: app.podcast, router: app.router)
+                DrawerStatusRow(app: app, podcast: app.podcast, router: app.router, voice: app.voice)
                 drawerHeader
                 topicContent
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -170,10 +170,10 @@ struct AssistantPanel: View {
                 Divider()
                 topicContent
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            case .activity:
-                subHeader("Manage")
+            case .history:
+                subHeader("History")
                 Divider()
-                ActivityPanel(app: app)
+                HistoryView(app: app)
             case .settings:
                 SettingsPanel(app: app) {
                     withAnimation(DCMotion.respecting(reduceMotion)) {
@@ -290,8 +290,8 @@ struct AssistantPanel: View {
         HStack(spacing: 0) {
             // Same cross-fade as the back buttons, so opening and
             // leaving Manage/Settings feel alike.
-            headerIcon("tray.full", label: "Manage", identifier: "openManage") {
-                withAnimation(DCMotion.respecting(reduceMotion)) { app.panelRoute = .activity }
+            headerIcon("clock.arrow.circlepath", label: "History", identifier: "openHistory") {
+                withAnimation(DCMotion.respecting(reduceMotion)) { app.panelRoute = .history }
             }
             headerIcon("gearshape", label: "Settings", identifier: "openSettings") {
                 withAnimation(DCMotion.respecting(reduceMotion)) { app.panelRoute = .settings }
@@ -343,7 +343,7 @@ struct AssistantPanel: View {
     private var drawerTitle: String {
         switch app.panelRoute {
         case .topic: bodyKind == .agent ? AssistantMode.agent.title : AssistantMode.summary.title
-        case .activity: String(localized: "Manage", comment: "Screen title: manage saved summaries, chats, runs and activity")
+        case .history: String(localized: "History", comment: "Screen title: saved summaries, chats, Ask the forum runs and watched topics")
         case .settings: String(localized: "Settings")
         }
     }
@@ -526,13 +526,12 @@ struct AssistantPanel: View {
                 .accessibilityIdentifier("toggleWatchTopic")
                 .disabled(app.currentTopic == nil)
 
-                // History is Manage until Phase 7 builds it.
                 Button {
-                    withAnimation(DCMotion.respecting(reduceMotion)) { app.panelRoute = .activity }
+                    withAnimation(DCMotion.respecting(reduceMotion)) { app.panelRoute = .history }
                 } label: {
                     Label("History", systemImage: "clock.arrow.circlepath")
                 }
-                .accessibilityIdentifier("openHistory")
+                .accessibilityIdentifier("openHistoryMenu")
             }
 
             if app.assistantMode != .agent {
@@ -1914,8 +1913,8 @@ struct ExpandedPanel: View {
                     AssistantPanel(app: app, onExpand: nil, onOpenURL: { _ in dismiss() })
                 case .post:
                     PostPreviewView(app: app)
-                case .activity:
-                    ActivityPanel(app: app)
+                case .history:
+                    HistoryView(app: app)
                 case .settings:
                     SettingsRootView(app: app)
                 }
@@ -2134,23 +2133,19 @@ private struct DrawerStatusRow: View {
     @ObservedObject var app: AppModel
     @ObservedObject var podcast: PodcastController
     @ObservedObject var router: PresentationRouter
+    @ObservedObject var voice: VoiceController
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var inAgentMode: Bool { app.assistantMode == .agent }
 
-    private var research: WorkRecord? {
-        app.activities.first { $0.type == .agent && !$0.status.isTerminal }
-    }
-
-    private var readyAnswer: WorkRecord? {
-        app.activities.first {
-            $0.type == .agent && $0.status == .completed && ($0.completedAt ?? .distantPast) > router.answersSeenAt
-        }
-    }
+    private var research: WorkRecord? { app.activeResearch }
+    private var readyAnswer: WorkRecord? { app.readyAnswer }
 
     var body: some View {
         VStack(spacing: 0) {
-            if !inAgentMode, let research {
+            if let session = voice.session, voice.isActive {
+                DrawerVoiceStatus(session: session) { voice.end() }
+            } else if !inAgentMode, let research {
                 row(systemImage: "magnifyingglass", text: research.statusText, progress: research.progress) {
                     showAgent()
                 }
@@ -2164,8 +2159,7 @@ private struct DrawerStatusRow: View {
                 }
             } else if podcast.isPlayingEpisode, let episode = podcast.episode {
                 DrawerPodcastStatus(player: podcast.player, episode: episode) {
-                    // Now Playing comes in Phase 7; the Today page has the player.
-                    app.showsTodayPage = true
+                    app.router.item = .nowPlaying
                 }
             }
         }
@@ -2197,19 +2191,44 @@ private struct DrawerPodcastStatus: View {
     let action: () -> Void
 
     var body: some View {
-        let timeline = PodcastTimeline(durations: episode.entries.map { $0.isReady ? $0.duration : nil })
-        let left = max(0, timeline.total - timeline.elapsed(player.position))
-        let text = String(
-            localized: "Today · Topic \(player.chapterIndex + 1) of \(episode.entries.count) · \(PodcastMiniPlayer.time(left)) left",
-            comment: "AI drawer status row while the Today podcast plays: chapter, chapter count, time left"
-        )
+        let text = DockText.podcastLine(player: player, episode: episode)
         if player.isActive {
             Button(action: action) {
                 DrawerStatusLabel(systemImage: "headphones", text: text, progress: nil)
             }
             .buttonStyle(.plain)
+            .nowPlayingZoomSource()
             .accessibilityIdentifier("drawerStatusRow")
         }
+    }
+}
+
+/// Voice while the drawer is up (the Dock is under it): state, time, End.
+private struct DrawerVoiceStatus: View {
+    @ObservedObject var session: VoiceSession
+    let end: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            DrawerStatusLabel(
+                systemImage: "waveform",
+                text: "\(VoiceSessionBar.stateText(session)) · \(DockText.clock(session.connectedSeconds))",
+                progress: nil,
+                showsChevron: false
+            )
+            Button(action: end) {
+                Image(systemName: "phone.down.fill")
+                    .foregroundStyle(.white)
+                    .frame(width: 34, height: 34)
+                    .background(DCTheme.danger, in: Circle())
+            }
+            .buttonStyle(DCIconButtonStyle())
+            .accessibilityLabel(Text("End voice"))
+            .accessibilityIdentifier("drawerVoiceEnd")
+            .padding(.trailing, 12)
+            .padding(.top, 10)
+        }
+        .accessibilityIdentifier("drawerStatusRow")
     }
 }
 
@@ -2217,6 +2236,7 @@ private struct DrawerStatusLabel: View {
     let systemImage: String
     let text: String
     let progress: Double?
+    var showsChevron = true
 
     var body: some View {
         HStack(spacing: 10) {
@@ -2232,10 +2252,12 @@ private struct DrawerStatusLabel: View {
                     .frame(width: 44)
                     .tint(DCTheme.brandBlue)
             }
-            Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
+            if showsChevron {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
         }
         .padding(.horizontal, 16)
         .frame(height: 44)

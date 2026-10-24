@@ -258,7 +258,7 @@ private struct ResizeHandleInteractionView: UIViewRepresentable {
 /// Menu-bar / ⌘-hold commands. They reach the window's ContentView through
 /// a notification (one scene), which owns the pane and address-bar state.
 enum WorkspaceCommand: String {
-    case focusAddress, reload, back, forward, forumsHome, settings
+    case focusAddress, reload, back, forward, forumsHome, settings, history
     case summary, chat, agent
 }
 
@@ -312,6 +312,9 @@ struct WorkspaceCommands: Commands {
                     .keyboardShortcut("2", modifiers: .command)
                 Button("Whole Forum") { WorkspaceCommand.agent.post() }
                     .keyboardShortcut("3", modifiers: .command)
+                Divider()
+                Button("History") { WorkspaceCommand.history.post() }
+                    .keyboardShortcut("y", modifiers: [.command, .shift])
             }
         }
     }

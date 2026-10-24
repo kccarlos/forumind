@@ -210,7 +210,7 @@ final class DrawerUITests: DCUITestCase {
         XCTAssertTrue(runGoal.waitForExistence(timeout: 10), "The run did not show.")
         XCTAssertEqual(runGoal.label, question)
 
-        // History (Manage until Phase 7) lists the run.
+        // History lists the run under Asks.
         let more = app.buttons["assistantMoreMenu"]
         XCTAssertTrue(waitForHittable(more))
         more.tap()
@@ -220,12 +220,11 @@ final class DrawerUITests: DCUITestCase {
             .firstMatch
         XCTAssertTrue(history.waitForExistence(timeout: 10))
         history.tap()
-        XCTAssertTrue(app.staticTexts["Active tasks"].waitForExistence(timeout: 10))
-        let row = app.descendants(matching: .any)
-            .matching(identifier: "agentRunRow")
-            .containing(NSPredicate(format: "label == %@", question))
-            .firstMatch
-        XCTAssertTrue(reveal(row, in: app), "The new run is not listed in History.")
+        let asks = app.buttons["historySegment-asks"]
+        XCTAssertTrue(asks.waitForExistence(timeout: 10), "History did not open.")
+        asks.tap()
+        // Running it shows in progress, finished under Asks; either way the goal is listed.
+        XCTAssertTrue(reveal(app.staticTexts[question], in: app), "The new run is not listed under Asks.")
     }
 
     // MARK: Helpers

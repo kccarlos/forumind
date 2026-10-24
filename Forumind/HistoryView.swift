@@ -1,34 +1,20 @@
 import SwiftUI
 
-/// Manage: running work, watched topics, agent runs, saved summaries and
-/// recent activity, grouped by forum (pinned first) with a kind and a forum
-/// filter. "All" keeps every section on one scrolling list.
-struct ActivityPanel: View {
-    @ObservedObject var app: AppModel
-    @State private var pendingDeletion: TopicSession?
-    @State private var kind: Kind = .all
-    /// nil shows every forum.
-    @State private var forumFilter: String?
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    enum Kind: String, CaseIterable, Identifiable {
-        case all = "All"
-        case summaries = "Summaries & chats"
-        case agent = "Agent runs"
-        case watched = "Watched"
-        case activity = "Activity"
+/// What History shows, computed from the app's records: nothing here is
+/// stored. `segment` picks which sections apply; `forum` (a site URL) narrows
+/// every list, nil shows all forums.
+struct HistoryFeed {
+    enum Segment: String, CaseIterable, Identifiable {
+        case all, summaries, asks, watching
 
         var id: String { rawValue }
 
-        /// The filter chip's title (the raw value stays the English
-        /// identifier used by `manageKind-…` and `-dc-manage-kind`).
         var title: String {
             switch self {
-            case .all: String(localized: "All", comment: "Manage filter chip: show everything")
-            case .summaries: String(localized: "Summaries & chats", comment: "Manage filter chip")
-            case .agent: String(localized: "Agent runs", comment: "Manage filter chip: Ask the forum runs")
-            case .watched: String(localized: "Watched", comment: "Manage filter chip: watched topics")
-            case .activity: String(localized: "Activity", comment: "Manage filter chip: running and recent tasks")
+            case .all: String(localized: "All", comment: "History segment: show everything")
+            case .summaries: String(localized: "Summaries & chats", comment: "History segment")
+            case .asks: String(localized: "Asks", comment: "History segment: Ask the forum runs")
+            case .watching: String(localized: "Watching", comment: "History segment: watched topics")
             }
         }
 
@@ -36,113 +22,152 @@ struct ActivityPanel: View {
             switch self {
             case .all: "square.stack"
             case .summaries: "text.alignleft"
-            case .agent: "sparkle.magnifyingglass"
-            case .watched: "eye"
-            case .activity: "clock"
+            case .asks: "sparkle.magnifyingglass"
+            case .watching: "eye"
             }
         }
     }
 
-    // MARK: Data
+    /// Queued or running work (summaries, chats, pulls and Ask runs).
+    let inProgress: [WorkRecord]
+    /// Finished work that is not an Ask run (those show as `asks`).
+    let recent: [WorkRecord]
+    let saved: [TopicSession]
+    /// Ask runs that are not in progress.
+    let asks: [AgentRun]
+    let watching: [WatchedTopic]
 
-    private func matchesForum(_ siteURL: String) -> Bool {
-        forumFilter == nil || forumFilter == siteURL
-    }
+    static let recentLimit = 30
 
-    private var active: [WorkRecord] {
-        app.activities.filter { !$0.status.isTerminal && matchesForum($0.siteURL) }
-    }
-
-    private var recent: [WorkRecord] {
-        Array(app.activities.filter { $0.status.isTerminal && matchesForum($0.siteURL) }.prefix(30))
-    }
-
-    private var saved: [TopicSession] {
-        app.sessions.values
-            .filter { ($0.hasSummary || !$0.history.isEmpty) && matchesForum($0.siteURL) }
+    init(
+        forum: String?,
+        activities: [WorkRecord],
+        sessions: [TopicSession],
+        runs: [AgentRun],
+        watched: [WatchedTopic]
+    ) {
+        func matches(_ siteURL: String) -> Bool { forum == nil || forum == siteURL }
+        let active = activities.filter { !$0.status.isTerminal && matches($0.siteURL) }
+        let activeAskTopics = Set(active.filter { $0.type == .agent }.map(\.topicID))
+        inProgress = active
+        recent = Array(
+            activities.filter { $0.status.isTerminal && $0.type != .agent && matches($0.siteURL) }
+                .prefix(Self.recentLimit)
+        )
+        saved = sessions
+            .filter { ($0.hasSummary || !$0.history.isEmpty) && matches($0.siteURL) }
             .sorted {
                 if $0.kept != $1.kept { return $0.kept && !$1.kept }
                 return $0.updatedAt > $1.updatedAt
             }
+        asks = runs.filter { matches($0.siteURL) && !activeAskTopics.contains(AppModel.agentTopicPrefix + $0.id.uuidString) }
+        watching = watched.filter { matches($0.siteURL) }
     }
 
-    private var watched: [WatchedTopic] {
-        app.watchedTopics.filter { matchesForum($0.siteURL) }
+    func inProgress(in segment: Segment) -> [WorkRecord] {
+        switch segment {
+        case .all: inProgress
+        case .summaries: inProgress.filter { $0.type != .agent }
+        case .asks: inProgress.filter { $0.type == .agent }
+        case .watching: []
+        }
     }
 
-    private var runs: [AgentRun] {
-        app.agentRuns.filter { matchesForum($0.siteURL) }
+    func count(_ segment: Segment) -> Int {
+        switch segment {
+        case .all: inProgress.count + recent.count + saved.count + asks.count + watching.count
+        case .summaries: saved.count
+        case .asks: asks.count + inProgress.filter { $0.type == .agent }.count
+        case .watching: watching.count
+        }
     }
 
-    private var forums: [Forum] { app.manageForums }
-
-    /// Items grouped by forum in `manageForums` order.
-    private func grouped<Item>(_ items: [Item], siteURL: (Item) -> String) -> [(Forum, [Item])] {
+    /// Items grouped by forum in `forums` order; forums without items drop out.
+    static func grouped<Item>(_ items: [Item], forums: [Forum], siteURL: (Item) -> String) -> [(Forum, [Item])] {
         forums.compactMap { forum in
             let matching = items.filter { siteURL($0) == forum.siteURL }
             return matching.isEmpty ? nil : (forum, matching)
         }
+    }
+}
+
+/// History: work in progress, saved summaries and chats, Ask the forum runs
+/// and watched topics, grouped by forum (pinned first) with a segment and a
+/// forum filter. "All" keeps every section on one scrolling list.
+struct HistoryView: View {
+    @ObservedObject var app: AppModel
+    @State private var pendingDeletion: TopicSession?
+    @State private var segment: Segment = .all
+    /// nil shows every forum.
+    @State private var forumFilter: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    typealias Segment = HistoryFeed.Segment
+
+    // MARK: Data
+
+    private var feed: HistoryFeed {
+        HistoryFeed(
+            forum: forumFilter,
+            activities: app.activities,
+            sessions: Array(app.sessions.values),
+            runs: app.agentRuns,
+            watched: app.watchedTopics
+        )
+    }
+
+    private var forums: [Forum] { app.manageForums }
+
+    private func grouped<Item>(_ items: [Item], siteURL: (Item) -> String) -> [(Forum, [Item])] {
+        HistoryFeed.grouped(items, forums: forums, siteURL: siteURL)
     }
 
     private var showsForumHeaders: Bool {
         forumFilter == nil && forums.count > 1
     }
 
-    private func count(_ kind: Kind) -> Int {
-        switch kind {
-        case .all: active.count + watched.count + runs.count + saved.count + recent.count
-        case .summaries: saved.count
-        case .agent: runs.count
-        case .watched: watched.count
-        case .activity: active.count + recent.count
-        }
-    }
-
     // MARK: Body
 
     var body: some View {
+        let feed = feed
         VStack(spacing: 0) {
-            filterBar
+            filterBar(feed)
             Divider()
             List {
-                switch kind {
+                let running = feed.inProgress(in: segment)
+                switch segment {
                 case .all:
-                    activeSection
-                    watchedSection
-                    agentSection
-                    savedSection
-                    recentSection
+                    inProgressSection(running)
+                    savedSection(feed.saved)
+                    asksSection(feed.asks)
+                    watchingSection(feed.watching)
+                    recentSection(feed.recent)
                 case .summaries:
-                    perForumSections(saved, siteURL: \.siteURL, empty: "Summaries and chats you create will appear here.") {
-                        savedRow($0)
-                    }
-                case .agent:
-                    perForumSections(runs, siteURL: \.siteURL, empty: "Questions you ask the forum will appear here.") {
-                        agentRunRow($0)
-                    }
-                case .watched:
-                    perForumSections(watched, siteURL: \.siteURL, empty: "Watch a topic from the Assistant menu, or let the agent watch one.") {
-                        watchedRow($0)
-                    }
-                case .activity:
-                    activeSection
-                    recentSection
+                    inProgressSection(running, showsEmpty: false)
+                    savedSection(feed.saved)
+                    recentSection(feed.recent)
+                case .asks:
+                    inProgressSection(running, showsEmpty: false)
+                    asksSection(feed.asks)
+                case .watching:
+                    watchingSection(feed.watching)
                 }
             }
             .listStyle(.insetGrouped)
-            .animation(DCMotion.respecting(reduceMotion), value: kind)
+            .animation(DCMotion.respecting(reduceMotion), value: segment)
             .animation(DCMotion.respecting(reduceMotion), value: forumFilter)
         }
         .background(DCTheme.pageBackground)
+        .accessibilityIdentifier("historyView")
         // The filtered forum was removed or its data cleared: back to All.
         .onChange(of: app.manageForums.map(\.siteURL)) { _, siteURLs in
             if let forumFilter, !siteURLs.contains(forumFilter) { self.forumFilter = nil }
         }
         #if DEBUG
         .onAppear {
-            if let value = AssistantDebug.value("-dc-manage-kind")?.lowercased(),
-               let match = Kind.allCases.first(where: { $0.rawValue.lowercased().hasPrefix(value) }) {
-                kind = match
+            if let value = AssistantDebug.value("-dc-history-segment")?.lowercased(),
+               let match = Segment.allCases.first(where: { $0.rawValue.hasPrefix(value) }) {
+                segment = match
             }
         }
         #endif
@@ -170,24 +195,23 @@ struct ActivityPanel: View {
 
     // MARK: Filters
 
-    private var filterBar: some View {
+    private func filterBar(_ feed: HistoryFeed) -> some View {
         HStack(spacing: 8) {
             ScrollViewReader { proxy in
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
-                        ForEach(Kind.allCases) { item in
-                            kindChip(item).id(item)
+                        ForEach(Segment.allCases) { item in
+                            segmentChip(item, count: feed.count(item)).id(item)
                         }
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                 }
-                // Keep the selected filter visible (e.g. "Watched" opened
-                // from elsewhere sits past the edge on a phone).
-                .onAppear { proxy.scrollTo(kind, anchor: .center) }
-                .onChange(of: kind) {
+                // Keep the selected segment visible on a narrow phone.
+                .onAppear { proxy.scrollTo(segment, anchor: .center) }
+                .onChange(of: segment) {
                     withAnimation(DCMotion.respecting(reduceMotion, DCMotion.quick)) {
-                        proxy.scrollTo(kind, anchor: .center)
+                        proxy.scrollTo(segment, anchor: .center)
                     }
                 }
             }
@@ -195,18 +219,18 @@ struct ActivityPanel: View {
                 .padding(.trailing, 10)
         }
         .background(DCTheme.toolbar)
-        .sensoryFeedback(.selection, trigger: kind)
+        .sensoryFeedback(.selection, trigger: segment)
     }
 
-    private func kindChip(_ item: Kind) -> some View {
-        let selected = kind == item
+    private func segmentChip(_ item: Segment, count: Int) -> some View {
+        let selected = segment == item
         return Button {
-            withAnimation(DCMotion.respecting(reduceMotion, DCMotion.quick)) { kind = item }
+            withAnimation(DCMotion.respecting(reduceMotion, DCMotion.quick)) { segment = item }
         } label: {
             HStack(spacing: 5) {
                 Text(item.title)
-                if item != .all, count(item) > 0 {
-                    Text("\(count(item))")
+                if item != .all, count > 0 {
+                    Text("\(count)")
                         .font(.caption2.weight(.bold).monospacedDigit())
                         .padding(.horizontal, 5)
                         .padding(.vertical, 1)
@@ -222,7 +246,7 @@ struct ActivityPanel: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])
-        .accessibilityIdentifier("manageKind-\(item.rawValue)")
+        .accessibilityIdentifier("historySegment-\(item.rawValue)")
     }
 
     private var forumMenu: some View {
@@ -271,35 +295,36 @@ struct ActivityPanel: View {
                 String(localized: "Forum: \(app.forumInfo(siteURL: $0).displayName)", comment: "Accessibility label of Manage's forum filter; the placeholder is a forum name")
             } ?? String(localized: "Forum: all forums")
         )
-        .accessibilityIdentifier("manageForumFilter")
+        .accessibilityIdentifier("historyForumFilter")
     }
 
-    // MARK: Sections (All)
+    // MARK: Sections
 
-    private var activeSection: some View {
+    private func inProgressSection(_ records: [WorkRecord], showsEmpty: Bool = true) -> some View {
         Section {
-            if active.isEmpty {
+            ForEach(records) { record in
+                taskRow(record, canCancel: true)
+            }
+            if records.isEmpty, showsEmpty {
                 emptyRow("No work is currently running.", systemImage: "checkmark.circle")
-            } else {
-                ForEach(active) { record in
-                    taskRow(record, canCancel: true)
-                }
             }
         } header: {
-            sectionHeader("Active tasks", count: active.count)
+            if showsEmpty || !records.isEmpty {
+                sectionHeader("In progress", count: records.count)
+            }
         }
     }
 
-    private var watchedSection: some View {
+    private func watchingSection(_ items: [WatchedTopic]) -> some View {
         Section {
-            if watched.isEmpty {
+            if items.isEmpty {
                 emptyRow("Watch a topic from the Assistant menu, or let the agent watch one.", systemImage: "eye")
             } else {
-                forumGrouped(watched, siteURL: \.siteURL) { watchedRow($0) }
+                forumGrouped(items, siteURL: \.siteURL) { watchedRow($0) }
             }
         } header: {
             HStack {
-                sectionHeader("Watched topics", count: watched.count)
+                sectionHeader("Watching", count: items.count)
                 Spacer()
                 if !app.watchedTopics.isEmpty {
                     Button("Check now") {
@@ -314,43 +339,43 @@ struct ActivityPanel: View {
         }
     }
 
-    private var agentSection: some View {
+    private func asksSection(_ items: [AgentRun]) -> some View {
         Section {
-            if runs.isEmpty {
+            if items.isEmpty {
                 emptyRow("Questions you ask the forum will appear here.", systemImage: "sparkle.magnifyingglass")
             } else {
-                forumGrouped(runs, siteURL: \.siteURL) { agentRunRow($0) }
+                forumGrouped(items, siteURL: \.siteURL) { agentRunRow($0) }
             }
         } header: {
-            sectionHeader("Agent runs", count: runs.count)
+            sectionHeader("Asks", count: items.count)
         }
     }
 
-    private var savedSection: some View {
+    private func savedSection(_ items: [TopicSession]) -> some View {
         Section {
-            if saved.isEmpty {
-                emptyRow("Summaries you create will appear here.", systemImage: "text.alignleft")
+            if items.isEmpty {
+                emptyRow("Summaries and chats you create will appear here.", systemImage: "text.alignleft")
             } else {
-                forumGrouped(saved, siteURL: \.siteURL) { savedRow($0) }
+                forumGrouped(items, siteURL: \.siteURL) { savedRow($0) }
             }
         } header: {
-            sectionHeader("Saved summaries", count: saved.count)
+            sectionHeader("Summaries & chats", count: items.count)
         } footer: {
-            Text("Chats expire after a day unless you keep the topic.")
+            Text("Chats expire after a day unless you keep the topic. Swipe to keep or delete.")
         }
     }
 
-    private var recentSection: some View {
+    private func recentSection(_ records: [WorkRecord]) -> some View {
         Section {
-            if recent.isEmpty {
+            if records.isEmpty {
                 emptyRow("No recent tasks.", systemImage: "clock")
             } else {
-                ForEach(recent) { record in
+                ForEach(records) { record in
                     taskRow(record, canCancel: false, allowsDelete: true)
                 }
             }
         } header: {
-            sectionHeader("Recent activity", count: recent.count)
+            sectionHeader("Recent activity", count: records.count)
         }
     }
 
@@ -418,54 +443,7 @@ struct ActivityPanel: View {
         .listRowBackground(Color.primary.opacity(0.035))
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
-        .accessibilityIdentifier("manageForumHeader")
-    }
-
-    // MARK: Sections (one kind, per forum)
-
-    @ViewBuilder
-    private func perForumSections<Item: Identifiable, Row: View>(
-        _ items: [Item],
-        siteURL: @escaping (Item) -> String,
-        empty: LocalizedStringKey,
-        @ViewBuilder row: @escaping (Item) -> Row
-    ) -> some View {
-        if items.isEmpty {
-            Section {
-                emptyRow(empty, systemImage: kind.systemImage)
-            }
-        } else {
-            ForEach(grouped(items, siteURL: siteURL), id: \.0.id) { forum, forumItems in
-                Section {
-                    ForEach(forumItems) { item in
-                        row(item)
-                    }
-                } header: {
-                    HStack(spacing: 8) {
-                        AssistantForumIcon(forum: forum, size: 22)
-                        Text(forum.displayName)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundColor(.primary)
-                            .textCase(nil)
-                            .lineLimit(1)
-                        Text(forum.host)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .textCase(nil)
-                            .lineLimit(1)
-                        Spacer(minLength: 4)
-                        Text("\(forumItems.count)")
-                            .font(.caption2.weight(.bold).monospacedDigit())
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 1)
-                            .background(Color.primary.opacity(0.07), in: Capsule())
-                    }
-                    .accessibilityElement(children: .combine)
-                    .accessibilityIdentifier("manageForumHeader")
-                }
-            }
-        }
+        .accessibilityIdentifier("historyForumHeader")
     }
 
     // MARK: Rows
@@ -502,7 +480,10 @@ struct ActivityPanel: View {
             HStack(alignment: .top, spacing: 10) {
                 typeIcon(record.type)
                 VStack(alignment: .leading, spacing: 3) {
-                    rowTitle(record.title)
+                    HStack(spacing: 6) {
+                        rowTitle(record.title)
+                        if originOf(record) == .voice { voiceTag }
+                    }
                     Text("\(forumCaption(record.siteURL)) · \(record.statusText)")
                         .font(.caption)
                         .foregroundStyle(record.status == .failed ? DCTheme.danger : .secondary)
@@ -539,17 +520,30 @@ struct ActivityPanel: View {
         .padding(.vertical, 4)
         .accessibilityIdentifier(allowsDelete ? "recentActivityRow" : "activityRow")
 
-        if allowsDelete {
-            row.swipeActions(edge: .leading, allowsFullSwipe: true) {
-                Button(role: .destructive) {
-                    app.deleteActivity(id: record.id)
-                } label: {
-                    Label("Delete recent activity", systemImage: "trash")
-                }
+        row.swipeActions(edge: .leading, allowsFullSwipe: true) {
+            Button(role: .destructive) {
+                app.removeActivity(id: record.id)
+            } label: {
+                Label(allowsDelete ? "Delete recent activity" : "Cancel and delete", systemImage: "trash")
             }
-        } else {
-            row
         }
+    }
+
+    /// An Ask record's run decides the Voice tag; other work has none.
+    private func originOf(_ record: WorkRecord) -> AgentRunOrigin? {
+        guard record.type == .agent, let runID = app.agentRunID(for: record) else { return nil }
+        return app.agentRuns.first { $0.id == runID }?.origin
+    }
+
+    private var voiceTag: some View {
+        Label("Voice", systemImage: "waveform")
+            .labelStyle(.titleAndIcon)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(DCTheme.agentTint)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(DCTheme.agentTint.opacity(0.12), in: Capsule())
+            .accessibilityIdentifier("historyVoiceTag")
     }
 
     private func typeIcon(_ type: WorkType) -> some View {
@@ -732,7 +726,10 @@ struct ActivityPanel: View {
             HStack(alignment: .top, spacing: 10) {
                 typeIcon(.agent)
                 VStack(alignment: .leading, spacing: 3) {
-                    rowTitle(run.goal)
+                    HStack(spacing: 6) {
+                        rowTitle(run.goal)
+                        if run.origin == .voice { voiceTag }
+                    }
                     Text(runDetail(run))
                         .font(.caption)
                         .foregroundStyle(run.status == .failed ? DCTheme.danger : .secondary)
@@ -748,25 +745,16 @@ struct ActivityPanel: View {
                     Label("Open", systemImage: "arrow.up.right")
                 }
                 .tint(DCTheme.agentTint)
-                if let record = app.activeRecord(forAgentRun: run.id) {
-                    Button(role: .destructive) {
-                        app.cancel(record: record)
-                    } label: {
-                        Label("Cancel", systemImage: "xmark")
-                    }
-                }
             }
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("agentRunRow")
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
-            if run.status.isTerminal {
-                Button(role: .destructive) {
-                    app.deleteAgentRun(id: run.id)
-                } label: {
-                    Label("Delete agent run", systemImage: "trash")
-                }
+            Button(role: .destructive) {
+                app.deleteAgentRun(id: run.id)
+            } label: {
+                Label("Delete agent run", systemImage: "trash")
             }
         }
     }

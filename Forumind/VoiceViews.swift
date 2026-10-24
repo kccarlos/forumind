@@ -46,8 +46,28 @@ struct VoiceConsentSheet: View {
                         .font(.system(size: 52))
                         .foregroundStyle(DCTheme.brandGradient)
                         .accessibilityHidden(true)
-                    Text("Voice uses Google Gemini")
+                    Text("Talk to Forumind", comment: "Voice first start: title")
                         .font(.title2.weight(.bold))
+                    Text("A live conversation about the page you are reading. It can find, open and read posts for you, hands-free.", comment: "Voice first start: what voice does")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    VStack(alignment: .leading, spacing: DCTheme.spacingXS) {
+                        Text("Try saying", comment: "Voice first start: heading of the examples")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Text("“What is this thread about?”", comment: "Voice first start: example")
+                        Text("“Read the accepted answer.”", comment: "Voice first start: example")
+                        Text("“Find posts about backups.”", comment: "Voice first start: example")
+                    }
+                    .font(.subheadline)
+                    .accessibilityIdentifier("voiceTrySaying")
+                    Label {
+                        Text("Voice uses Google Gemini. Key ready.", comment: "Voice first start: the provider and that its key is set up")
+                    } icon: {
+                        Image(systemName: "checkmark.seal.fill").foregroundStyle(DCTheme.success)
+                    }
+                    .font(.subheadline.weight(.semibold))
                     VoiceDisclosure(provider: provider, settings: settings)
                 }
                 .padding(DCTheme.spacingXL)
@@ -62,7 +82,9 @@ struct VoiceConsentSheet: View {
                     }
                     .buttonStyle(DCPrimaryButtonStyle())
                     .accessibilityIdentifier("voiceConsentAgree")
-                    Button("Cancel", role: .cancel, action: onCancel)
+                    Button(role: .cancel, action: onCancel) {
+                        Text("Not Now", comment: "Voice first start: decline")
+                    }
                         .frame(minHeight: DCTheme.controlHeight)
                         .accessibilityIdentifier("voiceConsentCancel")
                 }
@@ -141,18 +163,19 @@ struct VoiceDisclosure: View {
     }
 }
 
-// MARK: - Voice bar
+// MARK: - Voice Dock
 
-/// A compact bar over the page while voice runs: the state, the live
-/// transcript line, mute and end, and the Health row behind a tap. It sits
-/// under the result cards, so both stay visible.
-struct VoiceBar: View {
+/// The Dock while voice runs (spec §8.2), in place of the browser bar: the
+/// last lines above, the state with the level bars, the time left, mute and
+/// end, and the Health row behind a tap. The material comes from `DockLayer`.
+struct VoiceDock: View {
     @ObservedObject var voice: VoiceController
+    @ObservedObject var player: PodcastPlayer
 
     var body: some View {
         Group {
             if let session = voice.session {
-                VoiceSessionBar(voice: voice, session: session)
+                VoiceSessionBar(voice: voice, session: session, player: player)
             } else if let failure = voice.startFailure {
                 VoiceBarFrame {
                     HStack(spacing: DCTheme.spacingS) {
@@ -174,9 +197,10 @@ struct VoiceBar: View {
     }
 }
 
-private struct VoiceSessionBar: View {
+struct VoiceSessionBar: View {
     @ObservedObject var voice: VoiceController
     @ObservedObject var session: VoiceSession
+    @ObservedObject var player: PodcastPlayer
     @State private var showsHealth = false
     @State private var draft = ""
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -184,14 +208,22 @@ private struct VoiceSessionBar: View {
     var body: some View {
         VoiceBarFrame {
             VStack(alignment: .leading, spacing: 2) {
-                header
                 if !transcript.isEmpty {
                     Text(transcript)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                         .padding(.horizontal, DCTheme.spacingM)
+                        .padding(.top, DCTheme.spacingS)
                         .accessibilityIdentifier("voiceTranscript")
+                }
+                header
+                if player.isSuspendedForVoice, !session.state.isOver {
+                    Label(DockText.podcastPaused(at: player.timeline.elapsed(player.position)), systemImage: "headphones")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, DCTheme.spacingM)
+                        .accessibilityIdentifier("dockPodcastPaused")
                 }
                 if let engine = voice.audioEngine {
                     VoiceEngineStatus(engine: engine, showsHealth: showsHealth)
@@ -211,16 +243,27 @@ private struct VoiceSessionBar: View {
                 showsHealth.toggle()
             } label: {
                 HStack(spacing: DCTheme.spacingS) {
-                    Image(systemName: stateSymbol)
-                        .foregroundStyle(stateTint)
-                        .symbolEffect(.variableColor.iterative, isActive: session.state == .speaking && !reduceMotion)
-                        .frame(width: 22)
-                        .accessibilityHidden(true)
-                    Text(stateText)
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                        .accessibilityIdentifier("voiceBarState")
+                    if let mode = barsMode {
+                        VoiceLevelBars(mode: mode, levels: voice.audioEngine?.levels, tint: stateTint)
+                    } else {
+                        Image(systemName: stateSymbol)
+                            .foregroundStyle(stateTint)
+                            .frame(width: 30)
+                            .accessibilityHidden(true)
+                    }
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(stateText)
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                            .accessibilityIdentifier("voiceBarState")
+                        if !session.state.isOver {
+                            Text(timeLine)
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                                .accessibilityIdentifier("voiceTimeLine")
+                        }
+                    }
                     if voice.audioEngine != nil {
                         Image(systemName: showsHealth ? "chevron.up" : "chevron.down")
                             .font(.caption2.weight(.bold))
@@ -304,7 +347,26 @@ private struct VoiceSessionBar: View {
         }
     }
 
-    private var stateText: String {
+    private var barsMode: VoiceLevelBars.Mode? {
+        switch session.state {
+        case .listening: session.isMuted ? .idle : .input
+        case .speaking: .output
+        case .thinking: .thinking
+        default: nil
+        }
+    }
+
+    private var timeLine: String {
+        let settings = session.configuration.settings
+        return DockText.sessionLine(
+            connected: session.connectedSeconds,
+            minutesLeft: DockText.minutesLeft(limitMinutes: settings.dailyLimitMinutes, usedSeconds: session.todaySeconds)
+        )
+    }
+
+    private var stateText: String { Self.stateText(session) }
+
+    static func stateText(_ session: VoiceSession) -> String {
         switch session.state {
         case .idle, .connecting:
             return String(localized: "Connecting…", comment: "Voice bar state")
@@ -319,7 +381,7 @@ private struct VoiceSessionBar: View {
         case .reconnecting:
             return String(localized: "Reconnecting…", comment: "Voice bar state")
         case .ended(let reason):
-            return Self.endText(reason, settings: session.configuration.settings)
+            return VoiceSessionBar.endText(reason, settings: session.configuration.settings)
         case .failed(let failure):
             return failure.message
         }
@@ -449,12 +511,6 @@ private struct VoiceBarFrame<Content: View>: View {
     var body: some View {
         content
             .frame(maxWidth: DCTheme.contentMaxWidth)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: DCTheme.cardCornerRadius, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: DCTheme.cardCornerRadius, style: .continuous)
-                    .stroke(DCTheme.border)
-            }
-            .shadow(color: .black.opacity(0.12), radius: 10, y: 4)
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("voiceBar")
     }

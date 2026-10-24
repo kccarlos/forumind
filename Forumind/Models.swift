@@ -727,6 +727,11 @@ struct AgentStep: Codable, Identifiable, Equatable {
     var finishedAt: Date?
 }
 
+/// How an Ask the forum run was started; History tags voice runs.
+enum AgentRunOrigin: String, Codable, CaseIterable {
+    case typed, voice, shortcut
+}
+
 /// A goal-driven run of the forum agent, kept so it can be reopened and
 /// continued with follow-up questions.
 struct AgentRun: Codable, Identifiable, Equatable {
@@ -749,14 +754,16 @@ struct AgentRun: Codable, Identifiable, Equatable {
     var error = ""
     var provider: AIProvider
     var model: String
+    var origin: AgentRunOrigin = .typed
     var createdAt = Date()
     var updatedAt = Date()
     var completedAt: Date?
 
     var readTopicCount: Int { topicIDs.count }
 
-    init(id: UUID = UUID(), siteURL: String, goal: String, provider: AIProvider, model: String) {
+    init(id: UUID = UUID(), siteURL: String, goal: String, provider: AIProvider, model: String, origin: AgentRunOrigin = .typed) {
         self.id = id
+        self.origin = origin
         self.siteURL = siteURL
         self.goal = goal
         self.provider = provider
@@ -765,7 +772,7 @@ struct AgentRun: Codable, Identifiable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case id, siteURL, goal, status, steps, transcript, answer, initialAnswer, followUps
-        case topicIDs, error, provider, model, createdAt, updatedAt, completedAt
+        case topicIDs, error, provider, model, origin, createdAt, updatedAt, completedAt
     }
 
     // Runs saved before multi-forum have no site URL; `AppSnapshot` fills it.
@@ -784,6 +791,7 @@ struct AgentRun: Codable, Identifiable, Equatable {
         error = try container.decode(String.self, forKey: .error)
         provider = try container.decode(AIProvider.self, forKey: .provider)
         model = try container.decode(String.self, forKey: .model)
+        origin = try container.decode(AgentRunOrigin.self, forKey: .origin)
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         updatedAt = try container.decode(Date.self, forKey: .updatedAt)
         completedAt = try container.decodeIfPresent(Date.self, forKey: .completedAt)

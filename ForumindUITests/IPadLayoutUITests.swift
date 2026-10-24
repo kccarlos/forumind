@@ -143,7 +143,7 @@ final class IPadLayoutUITests: DCUITestCase {
         app.typeKey(".", modifierFlags: .command)
         XCTAssertTrue(waitForGone(field, timeout: 5), "⌘. should leave the address unchanged.")
 
-        app.buttons["openManage"].tap()
+        app.buttons["openHistory"].tap()
         XCTAssertTrue(waitForGone(modes, timeout: 5))
         app.typeKey(".", modifierFlags: .command)
         XCTAssertTrue(modes.waitForExistence(timeout: 5), "⌘. should close Manage.")

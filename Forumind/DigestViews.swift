@@ -41,7 +41,7 @@ struct TodayPage: View {
                 .listRowInsets(EdgeInsets(top: DCTheme.spacingS, leading: 4, bottom: 0, trailing: 4))
             if let today = app.todaysDigest {
                 if today.cards.contains(where: { $0.state == .done }) {
-                    PodcastTodaySection(app: app, podcast: app.podcast, digest: today, onOpen: onOpen)
+                    PodcastTodaySection(app: app, podcast: app.podcast, digest: today)
                 }
                 todaySections(today)
             } else {

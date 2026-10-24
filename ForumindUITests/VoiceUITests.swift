@@ -22,13 +22,16 @@ final class VoiceUITests: DCUITestCase {
         XCTAssertTrue(agree.waitForExistence(timeout: 10), "The consent sheet did not appear.")
         XCTAssertTrue(any(app, "voiceTermsLink").exists, "The sheet links to Google's terms.")
         if isEnglish(app) {
-            XCTAssertTrue(app.staticTexts["Voice uses Google Gemini"].exists)
+            XCTAssertTrue(app.staticTexts["Talk to Forumind"].exists)
+            XCTAssertTrue(any(app, "voiceTrySaying").exists, "The first-start page lists examples.")
         }
         agree.tap()
 
         // The bar connects, listens and shows the model's greeting.
         let bar = any(app, "voiceBar")
-        XCTAssertTrue(bar.waitForExistence(timeout: 10), "The voice bar did not appear.")
+        XCTAssertTrue(bar.waitForExistence(timeout: 10), "The voice Dock did not appear.")
+        // The Dock replaces the bar (iPhone): one floating layer.
+        if isPhone { XCTAssertFalse(app.buttons["aiButton"].exists, "The bar shows under the Dock.") }
         let transcript = any(app, "voiceTranscript")
         XCTAssertTrue(transcript.waitForExistence(timeout: 10), "No transcript line.")
         if isEnglish(app) {
@@ -53,6 +56,8 @@ final class VoiceUITests: DCUITestCase {
         XCTAssertTrue(close.waitForExistence(timeout: 5), "An ended session keeps its bar until closed.")
         close.tap()
         XCTAssertTrue(waitForGone(bar, timeout: 5))
+        // Ending returns the bar.
+        if isPhone { XCTAssertTrue(waitForBarItem(app.buttons["forumSwitcher"], timeout: 10), "The bar did not come back.") }
 
         // Consent is remembered: the next tap starts at once.
         startVoice(in: app)

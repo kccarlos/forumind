@@ -36,7 +36,7 @@ final class TodayUITests: DCUITestCase {
 
     /// The podcast on the sample digest with the fake engine
     /// (`-dc-podcast-fake`: fixed lines, a few seconds of silence per turn): Make
-    /// and Play, then the mini player plays and moves between chapters. No
+    /// and Play, then Now Playing plays, pauses and moves between chapters. No
     /// network, no AI key, no TTS.
     func testTodayPageMakesAndPlaysThePodcast() throws {
         let app = launch(
@@ -52,27 +52,50 @@ final class TodayUITests: DCUITestCase {
         XCTAssertTrue(waitForHittable(play))
         play.tap()
 
-        // The mini player replaces Make / Play, with the chapter list:
-        // intro, the two summarized cards (not the waiting one), outro.
-        let mini = any(app, "podcastMiniPlayer")
-        XCTAssertTrue(mini.waitForExistence(timeout: 10), "The mini player did not appear.")
-        XCTAssertTrue(any(app, "podcastChapter-0").waitForExistence(timeout: 5))
+        // The Now Playing row replaces Make / Play; it opens the player.
+        let row = app.buttons["podcastNowPlayingRow"]
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "The Now Playing row did not appear.")
+        XCTAssertFalse(any(app, "podcastMiniPlayer").exists, "no second player on the Today page")
+        row.tap()
+        XCTAssertTrue(any(app, "nowPlaying").waitForExistence(timeout: 10), "Now Playing did not open.")
+
+        // The chapter list: intro, the two summarized cards (not the waiting one), outro.
+        XCTAssertTrue(any(app, "podcastChapter-0").waitForExistence(timeout: 5) || reveal(any(app, "podcastChapter-0"), in: app))
         XCTAssertTrue(reveal(any(app, "podcastChapter-3"), in: app))
         XCTAssertFalse(any(app, "podcastChapter-4").exists, "the waiting card has no chapter")
         XCTAssertTrue(any(app, "podcastChapterOpen-1").exists, "a topic chapter opens its topic")
         XCTAssertFalse(any(app, "podcastChapterOpen-0").exists, "the intro has no topic")
 
-        // It plays (the pause button shows), and moves to the next chapter.
-        XCTAssertTrue(reveal(mini, in: app))
+        // It plays (the pause button shows), pauses and plays again, and moves to the next chapter.
         let toggle = app.buttons["podcastPlay"]
-        XCTAssertTrue(wait(timeout: 15) { toggle.exists && toggle.label != "Play" } || !isEnglish(app), toggle.label)
+        XCTAssertTrue(wait(timeout: 15) { toggle.exists && toggle.label == "Pause" } || !isEnglish(app), toggle.label)
+        if isEnglish(app) {
+            toggle.tap()
+            XCTAssertTrue(wait(timeout: 5) { toggle.label == "Play" }, "Pause did not pause: \(toggle.label)")
+            toggle.tap()
+            XCTAssertTrue(wait(timeout: 5) { toggle.label == "Pause" }, "Play did not play: \(toggle.label)")
+        }
         let status = any(app, "podcastStatus")
         let next = app.buttons["podcastNextChapter"]
         XCTAssertTrue(wait(timeout: 15) { next.isEnabled })
         let before = status.label
         next.tap()
         XCTAssertTrue(wait(timeout: 10) { status.label != before }, "Next chapter changed nothing: \(before)")
-        XCTAssertTrue(app.buttons["todayMenu"].exists)
+
+        // Close; leaving the page, the podcast goes on in a row above the
+        // bar, which opens Now Playing again.
+        app.buttons["nowPlayingClose"].tap()
+        XCTAssertTrue(waitForGone(any(app, "nowPlaying"), timeout: 10))
+        let back = app.navigationBars["Today"].buttons.element(boundBy: 0)
+        XCTAssertTrue(waitForHittable(back))
+        back.tap()
+        if isPhone {
+            let dock = any(app, "dockPodcastRow")
+            XCTAssertTrue(dock.waitForExistence(timeout: 10), "No podcast row while it plays.")
+            XCTAssertTrue(app.buttons["dockPodcastToggle"].exists)
+            app.buttons["dockPodcastOpen"].tap()
+            XCTAssertTrue(any(app, "nowPlaying").waitForExistence(timeout: 10), "The mini row did not open Now Playing.")
+        }
     }
 
     private func isEnglish(_ app: XCUIApplication) -> Bool {

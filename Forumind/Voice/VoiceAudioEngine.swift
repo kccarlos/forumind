@@ -49,6 +49,9 @@ final class VoiceAudioEngine: ObservableObject, VoiceAudioIO {
     @Published private(set) var notice: String?
     /// iOS paused the audio and didn't offer to resume: `resume()`.
     @Published private(set) var needsResume = false
+    /// Loudness for the Dock's level bars (not published: it changes
+    /// many times a second).
+    let levels = VoiceLevels()
     /// Capture stopped and couldn't be rebuilt (a route change took the
     /// microphone away). The session ends.
     var onStopped: ((String) -> Void)?
@@ -135,6 +138,7 @@ final class VoiceAudioEngine: ObservableObject, VoiceAudioIO {
     func play(_ pcm: Data) {
         let samples = [Int16](pcm16LE: pcm)
         guard !samples.isEmpty else { return }
+        levels.setOutput(Float(PCMLevel.peak(of: samples)) / 32_768, at: Date.timeIntervalSinceReferenceDate)
         schedule(queue.push(samples, now: Self.now))
         updateSpeaking()
     }
@@ -351,6 +355,7 @@ final class VoiceAudioEngine: ObservableObject, VoiceAudioIO {
         if let change = watchdog.observe(peak: PCMLevel.peak(of: samples), at: Self.now) {
             signalChanged(change)
         }
+        levels.setInput(isMuted ? 0 : Float(PCMLevel.peak(of: samples)) / 32_768)
         guard !isMuted else { return }
         for frame in chunker.push(samples) {
             let out = gate.push(frame)

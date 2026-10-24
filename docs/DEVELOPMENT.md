@@ -236,8 +236,8 @@ They never overwrite real saved data, and Release builds ignore them.
 | `-dc-page-state <state>` | `loading`, `notForum`, `maybe`, `forumHome`, or `topic` (default). |
 | `-dc-topic meta\|makers` | Which sample topic is open: Discourse Meta, or the fictional Maker Space Community. Default: `meta`, but `makers` with `-dc-assistant-mode agent`, so Ask the forum shows the run from the open forum. With `-dc-topic meta` in agent mode, the run on Discourse Meta is shown. |
 | `-dc-assistant-mode <mode>` | `summary`, `chat`, or `agent`. |
-| `-dc-open-manage` | Opens Manage. |
-| `-dc-manage-kind <kind>` | Manage filter: `all`, `summaries`, `agent`, `watched`, `activity`. |
+| `-dc-open-history` | Opens History. |
+| `-dc-history-segment <segment>` | History segment: `all`, `summaries`, `asks`, `watching`. |
 | `-dc-no-provider` | Leaves the AI provider unconfigured. |
 | `-dc-agent-model <provider>:<model>` | Gives Ask the forum its own model (for example `deepseek:deepseek-v4-flash`) with a placeholder key; the sample Ask the forum runs are labeled with it, and both models become favorites. |
 | `-dc-no-agent-key` | With `-dc-agent-model`: that provider has no key, so only Ask the forum shows the setup card. |
@@ -503,7 +503,7 @@ and the capture list. To retake the captures:
    | `iphone-69-3-chat`, `ipad-13-2-chat` | common + `-dc-topic makers -dc-assistant-mode chat` |
    | `iphone-69-4-agent`, `ipad-13-3-agent` | common + `-dc-assistant-mode agent` (English iPhone also `-dc-scroll-sources`) |
    | `iphone-69-5-privacy` | `-dc-sample -dc-onboarding-step privacy` |
-   | `ipad-13-4-manage` | common + `-dc-open-manage` |
+   | `ipad-13-4-history` | common + `-dc-open-history` |
    | `ipad-13-5-sync` | common + `-dc-panel-settings sync -dc-sync-status upToDate -dc-sync-explain` |
 
 4. Wait for the screen to settle (about 6 s), then

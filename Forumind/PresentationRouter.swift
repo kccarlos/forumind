@@ -37,6 +37,8 @@ enum RootPresentation: Identifiable, Equatable {
     case reportAIOutput(ReportTarget)
     case translatePosts
     case addForum
+    /// The Today podcast's player (NowPlaying.swift).
+    case nowPlaying
     case voiceConsent(VoiceProvider)
     case podcastConsent(VoiceProvider)
     /// Before the first request that sends forum content to a third-party
@@ -59,6 +61,7 @@ enum RootPresentation: Identifiable, Equatable {
         case .reportAIOutput(let target): "reportAIOutput-\(target.id)"
         case .translatePosts: "translatePosts"
         case .addForum: "addForum"
+        case .nowPlaying: "nowPlaying"
         case .voiceConsent(let provider): "voiceConsent-\(provider.id)"
         case .podcastConsent(let provider): "podcastConsent-\(provider.id)"
         case .aiConsent(let provider): "aiConsent-\(provider.id)"
@@ -489,6 +492,9 @@ struct RouterHost: ViewModifier {
             PostsTranslationSheet(app: app)
         case .addForum:
             AddForumSheet(app: app, onAdded: onForumAdded)
+        case .nowPlaying:
+            NowPlayingView(app: app, podcast: podcast)
+                .nowPlayingZoomDestination()
         case .voiceConsent(let provider):
             VoiceConsentSheet(
                 provider: provider,

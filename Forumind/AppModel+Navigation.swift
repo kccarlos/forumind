@@ -603,7 +603,7 @@ extension AppModel {
         researchGeneration += 1
         let generation = researchGeneration
         let forum = siteURL ?? pageContext.siteURL
-        let task = Task { @MainActor in try await self.performAgentRun(goal: request, siteURL: forum) }
+        let task = Task { @MainActor in try await self.performAgentRun(goal: request, siteURL: forum, origin: .voice) }
         researchTask = task
         let outcome: AgentRunOutcome
         do {

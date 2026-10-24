@@ -55,12 +55,12 @@ final class PhysicalDeviceSmokeTests: DCUITestCase {
         XCTAssertTrue(app.buttons["settingsRow-provider"].exists)
         app.buttons["backToTopic"].tap()
 
-        app.buttons["openManage"].tap()
+        app.buttons["openHistory"].tap()
         XCTAssertTrue(
-            app.staticTexts["Active tasks"].waitForExistence(timeout: 10),
+            app.staticTexts["In progress"].waitForExistence(timeout: 10),
             "The Manage panel did not render."
         )
-        XCTAssertTrue(reveal(app.staticTexts["Saved summaries"], in: app))
+        XCTAssertTrue(reveal(app.staticTexts["Summaries & chats"], in: app))
         XCTAssertTrue(reveal(app.staticTexts["Recent activity"], in: app))
         app.buttons["backToTopic"].tap()
         XCTAssertTrue(modePicker.waitForExistence(timeout: 10))
@@ -88,7 +88,7 @@ final class PhysicalDeviceSmokeTests: DCUITestCase {
             app.segmentedControls["assistantModePicker"].waitForExistence(timeout: 10),
             "The Assistant workspace did not appear."
         )
-        XCTAssertTrue(app.buttons["openManage"].exists)
+        XCTAssertTrue(app.buttons["openHistory"].exists)
         XCTAssertTrue(app.buttons["openSettings"].exists)
         // The Assistant pane shows only the workspace switch, not the address bar.
         XCTAssertFalse(app.buttons["Back"].exists)
@@ -223,8 +223,7 @@ final class PhysicalDeviceSmokeTests: DCUITestCase {
             let history = app.buttons["History"]
             XCTAssertTrue(history.waitForExistence(timeout: 10))
             history.tap()
-            XCTAssertTrue(app.staticTexts["Active tasks"].waitForExistence(timeout: 10))
-            XCTAssertTrue(reveal(app.staticTexts["Saved summaries"], in: app))
+            XCTAssertTrue(app.buttons["historySegment-all"].waitForExistence(timeout: 10))
             app.buttons["backToTopic"].tap()
             XCTAssertTrue(any(app, "askScopeButton").waitForExistence(timeout: 10))
             return
@@ -264,9 +263,9 @@ final class PhysicalDeviceSmokeTests: DCUITestCase {
         }
 
         // Manage and Settings show in place with a way back to the topic.
-        app.buttons["openManage"].tap()
-        XCTAssertTrue(app.staticTexts["Active tasks"].waitForExistence(timeout: 10))
-        XCTAssertTrue(reveal(app.staticTexts["Saved summaries"], in: app))
+        app.buttons["openHistory"].tap()
+        XCTAssertTrue(app.staticTexts["In progress"].waitForExistence(timeout: 10))
+        XCTAssertTrue(reveal(app.staticTexts["Summaries & chats"], in: app))
         app.buttons["backToTopic"].tap()
 
         // Settings is a root list; summary batching lives in Summaries & chat.
@@ -382,15 +381,15 @@ final class PhysicalDeviceSmokeTests: DCUITestCase {
         if isPhone {
             // Manage is the drawer menu's History for now.
             app.buttons.matching(NSPredicate(
-                format: "identifier == 'openHistory' OR (label == 'History' AND identifier != 'agentHistoryMenu')"
+                format: "identifier == 'openHistoryMenu' OR (label == 'History' AND identifier != 'agentHistoryMenu')"
             )).firstMatch.tap()
         } else {
             dismissMenu(in: app)
         }
 
         // Manage lists the watched topic and the agent run, grouped by forum.
-        if !isPhone { app.buttons["openManage"].tap() }
-        XCTAssertTrue(app.staticTexts["Active tasks"].waitForExistence(timeout: 10))
+        if !isPhone { app.buttons["openHistory"].tap() }
+        XCTAssertTrue(app.staticTexts["In progress"].waitForExistence(timeout: 10))
         let watchedRow = any(app, "watchedTopicRow-999999")
         XCTAssertTrue(reveal(watchedRow, in: app), "The watched topic is not listed in Manage.")
         XCTAssertTrue(app.buttons["checkWatchedTopics"].exists)
@@ -398,9 +397,9 @@ final class PhysicalDeviceSmokeTests: DCUITestCase {
         if !runRow.exists { reveal(runRow, in: app) }
         XCTAssertTrue(runRow.exists, "The agent run is not listed in Manage.")
         // The Watched filter shows only watched topics; unwatch from the row.
-        let watchedChip = app.buttons["manageKind-Watched"]
+        let watchedChip = app.buttons["historySegment-watching"]
         // The chips scroll sideways; the Watched chip may start off screen.
-        for _ in 0..<3 where !watchedChip.isHittable { app.buttons["manageKind-All"].swipeLeft() }
+        for _ in 0..<3 where !watchedChip.isHittable { app.buttons["historySegment-all"].swipeLeft() }
         XCTAssertTrue(waitForHittable(watchedChip))
         watchedChip.tap()
         XCTAssertTrue(watchedRow.waitForExistence(timeout: 5))
@@ -539,19 +538,19 @@ final class PhysicalDeviceSmokeTests: DCUITestCase {
         if isPhone {
             // No page, so no AI drawer: Manage from the bar's menu.
             openBrowserMenuIfCompact(in: app)
-            let item = app.buttons["Manage"].firstMatch
-            XCTAssertTrue(item.waitForExistence(timeout: 10), "Manage is missing from the browser menu.")
+            let item = app.buttons["History"].firstMatch
+            XCTAssertTrue(item.waitForExistence(timeout: 10), "History is missing from the browser menu.")
             item.tap()
         } else {
             let workspace = app.segmentedControls["workspacePicker"]
             if workspace.waitForExistence(timeout: 20) {
                 workspace.buttons["Assistant"].tap()
             }
-            let openManage = app.buttons["openManage"]
-            XCTAssertTrue(openManage.waitForExistence(timeout: 10))
-            openManage.tap()
+            let openHistory = app.buttons["openHistory"]
+            XCTAssertTrue(openHistory.waitForExistence(timeout: 10))
+            openHistory.tap()
         }
-        XCTAssertTrue(app.staticTexts["Active tasks"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["In progress"].waitForExistence(timeout: 10))
         XCTAssertTrue(reveal(app.staticTexts["Recent activity"], in: app))
 
         let recentRow = app.staticTexts["Swipe test recent activity"]
@@ -840,7 +839,7 @@ final class PhysicalDeviceSmokeTests: DCUITestCase {
         )
         XCTAssertTrue(app.buttons["Add Forum…"].exists)
         XCTAssertTrue(app.buttons["Home · Today & all forums"].exists)
-        XCTAssertTrue(app.buttons["Manage"].exists)
+        XCTAssertTrue(app.buttons["History"].exists)
 
         help.tap()
         XCTAssertTrue(app.navigationBars["Forum Login"].waitForExistence(timeout: 10))

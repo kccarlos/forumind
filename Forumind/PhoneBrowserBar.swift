@@ -18,6 +18,8 @@ import WebKit
 struct PhoneBrowser<Page: View>: View {
     @ObservedObject var app: AppModel
     @ObservedObject var browser: ForumBrowserModel
+    /// The voice Dock replaces the bottom bar while a session shows.
+    @ObservedObject var voice: VoiceController
     /// Resolved: `.top` or `.bottom`.
     let position: BrowserBarPosition
     let actions: BrowserActions
@@ -46,7 +48,7 @@ struct PhoneBrowser<Page: View>: View {
     }
 
     private var showsToolbar: Bool {
-        position == .bottom && !isEditingAddress && !showsStrip
+        position == .bottom && !isEditingAddress && !showsStrip && !voice.showsBar
     }
 
     var body: some View {
@@ -580,13 +582,36 @@ struct PhoneAIButton: View {
     let onOpen: () -> Void
 
     private var canTalk: Bool { app.showsVoiceButton }
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// The research progress around the button; a short arc while the
+    /// progress is not known.
+    @ViewBuilder
+    private var researchRing: some View {
+        if let research = app.activeResearch {
+            Circle()
+                .trim(from: 0, to: max(0.08, research.progress ?? 0.25))
+                .stroke(DCTheme.brandGradient, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .padding(4)
+                .animation(reduceMotion ? nil : .linear(duration: 0.3), value: research.progress)
+                .accessibilityIdentifier("researchRing")
+        } else if app.readyAnswer != nil {
+            Circle()
+                .stroke(DCTheme.brandGradient, lineWidth: 2.5)
+                .padding(4)
+        }
+    }
 
     var body: some View {
         Image(systemName: voice.isActive ? "waveform" : "sparkles")
             .font(.body.weight(.semibold))
             .foregroundStyle(isAvailable ? AnyShapeStyle(DCTheme.brandGradient) : AnyShapeStyle(.tertiary))
             .symbolEffect(.pulse, isActive: voice.isActive)
+            // Done: one bounce (not with Reduce Motion).
+            .symbolEffect(.bounce, value: reduceMotion ? nil : app.readyAnswer?.id)
             .frame(width: DCTheme.controlHeight, height: DCTheme.controlHeight)
+            .overlay { researchRing }
             .contentShape(Circle())
             .onTapGesture {
                 guard isAvailable else { return }
@@ -681,8 +706,8 @@ struct ForumMenuButton: View {
                 }
                 .accessibilityIdentifier("switcherAllForums")
                 if let openPanel = actions.openPanel {
-                    Button { openPanel(.activity) } label: {
-                        Label("Manage", systemImage: "tray.full")
+                    Button { openPanel(.history) } label: {
+                        Label("History", systemImage: "clock.arrow.circlepath")
                     }
                 }
             }

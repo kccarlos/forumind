@@ -54,7 +54,7 @@ import UserNotifications
 
 enum PanelRoute: String, CaseIterable {
     case topic = "Topic"
-    case activity = "Manage"
+    case history = "History"
     case settings = "Settings"
 }
 
@@ -305,7 +305,7 @@ final class AppModel: ObservableObject {
     /// Delay before coalesced settings edits are written.
     var settingsSaveDelay: Duration = .milliseconds(400)
     private static let watchInterval: TimeInterval = 30 * 60
-    private static let agentTopicPrefix = "agent:"
+    static let agentTopicPrefix = "agent:"
     /// Runs started from code that wait for their outcome (in memory only).
     private var agentRunCompletions: [UUID: (AgentRunOutcome) -> Void] = [:]
     /// When true, agent tools and watch checks call the forum through
@@ -785,7 +785,7 @@ final class AppModel: ObservableObject {
         if activities.contains(where: {
             $0.topicKey == topic.topicKey && $0.type == .summary && !$0.status.isTerminal
         }) {
-            panelRoute = .activity
+            panelRoute = .history
             return
         }
         enqueueSummary(for: topic, batchLimit: batchLimit, regenerate: regenerate)
@@ -1059,10 +1059,10 @@ final class AppModel: ObservableObject {
 
     /// Starts an agent run on `siteURL` (default: `agentSiteURL`, else the
     /// current forum). Every tool call and follow-up stays on that forum.
-    func startAgentRun(goal rawGoal: String, siteURL: String? = nil) {
+    func startAgentRun(goal rawGoal: String, siteURL: String? = nil, origin: AgentRunOrigin = .typed) {
         guard !rawGoal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         do {
-            selectedAgentRunID = try enqueueAgentRun(goal: rawGoal, siteURL: siteURL)
+            selectedAgentRunID = try enqueueAgentRun(goal: rawGoal, siteURL: siteURL, origin: origin)
             agentGoalDraft = ""
         } catch {
             presentError(error.localizedDescription)
@@ -1079,21 +1079,22 @@ final class AppModel: ObservableObject {
     func startAgentRun(
         goal: String,
         siteURL: String? = nil,
+        origin: AgentRunOrigin = .typed,
         completion: @escaping (AgentRunOutcome) -> Void
     ) throws -> UUID {
-        let id = try enqueueAgentRun(goal: goal, siteURL: siteURL)
+        let id = try enqueueAgentRun(goal: goal, siteURL: siteURL, origin: origin)
         agentRunCompletions[id] = completion
         return id
     }
 
     /// `startAgentRun(goal:siteURL:completion:)` as an async call. Cancelling
     /// the calling task cancels the run.
-    func performAgentRun(goal: String, siteURL: String? = nil) async throws -> AgentRunOutcome {
+    func performAgentRun(goal: String, siteURL: String? = nil, origin: AgentRunOrigin = .typed) async throws -> AgentRunOutcome {
         let started = StartedRun()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 do {
-                    let id = try startAgentRun(goal: goal, siteURL: siteURL) { continuation.resume(returning: $0) }
+                    let id = try startAgentRun(goal: goal, siteURL: siteURL, origin: origin) { continuation.resume(returning: $0) }
                     started.id = id
                     // Cancelled before the run existed: the handler saw no id.
                     if Task.isCancelled { cancelAgentRun(id: id) }
@@ -1124,7 +1125,7 @@ final class AppModel: ObservableObject {
         cancel(record: record)
     }
 
-    private func enqueueAgentRun(goal rawGoal: String, siteURL: String?) throws -> UUID {
+    private func enqueueAgentRun(goal rawGoal: String, siteURL: String?, origin: AgentRunOrigin) throws -> UUID {
         let goal = rawGoal.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !goal.isEmpty else { throw AgentError.missingArgument("goal") }
         guard let forumSiteURL = (siteURL ?? agentSiteURL ?? currentForum?.siteURL)
@@ -1138,7 +1139,8 @@ final class AppModel: ObservableObject {
             siteURL: forumSiteURL,
             goal: goal,
             provider: selection.provider,
-            model: selection.model
+            model: selection.model,
+            origin: origin
         )
         run.transcript = [AgentPrompt.goalMessage(goal)]
         agentRuns.insert(run, at: 0)
@@ -1516,7 +1518,7 @@ final class AppModel: ObservableObject {
         if activities.contains(where: {
             $0.topicKey == topic.topicKey && $0.type == .pull && !$0.status.isTerminal
         }) {
-            panelRoute = .activity
+            panelRoute = .history
             return
         }
         guard activeTaskCount < 50 else {
@@ -1603,6 +1605,14 @@ final class AppModel: ObservableObject {
             }
         }
         save()
+    }
+
+    /// Delete from History: a record in progress is cancelled first.
+    func removeActivity(id: UUID) {
+        if let record = activities.first(where: { $0.id == id }), !record.status.isTerminal {
+            cancel(record: record)
+        }
+        deleteActivity(id: id)
     }
 
     func deleteActivity(id: UUID) {
@@ -2481,7 +2491,7 @@ final class AppModel: ObservableObject {
 
     // MARK: Agent runner
 
-    private func agentRunID(for record: WorkRecord) -> UUID? {
+    func agentRunID(for record: WorkRecord) -> UUID? {
         guard record.topicID.hasPrefix(Self.agentTopicPrefix) else { return nil }
         return UUID(uuidString: String(record.topicID.dropFirst(Self.agentTopicPrefix.count)))
     }

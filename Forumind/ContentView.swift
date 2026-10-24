@@ -32,6 +32,7 @@ struct ContentView: View {
     /// window narrows from split to single pane.
     @State private var focusedPane: AppPane = .browser
     @State private var keyboardVisible = false
+    @Namespace private var nowPlayingNamespace
     @State private var addressFocusRequest = 0
     /// The last `AppModel.assistantRequest` shown.
     @State private var handledAssistantRequest = 0
@@ -124,6 +125,7 @@ struct ContentView: View {
             active: router.rootHostIsActive,
             onForumAdded: forumAdded
         ))
+        .environment(\.nowPlayingNamespace, nowPlayingNamespace)
     }
 
     /// Home's History and Settings: sheets on iPhone (Home has no drawer),
@@ -132,7 +134,7 @@ struct ContentView: View {
         if Self.usesDrawer {
             app.router.item = .expanded(route)
         } else {
-            withAnimation(DCMotion.respecting(reduceMotion)) { app.panelRoute = route == .settings ? .settings : .activity }
+            withAnimation(DCMotion.respecting(reduceMotion)) { app.panelRoute = route == .settings ? .settings : .history }
             showPane(.assistant)
         }
     }
@@ -209,7 +211,7 @@ struct ContentView: View {
             },
             openDigestLink: openDigestLink,
             // Phase 7 replaces this with the History page.
-            openHistory: { openPanelRoute(.activity) },
+            openHistory: { openPanelRoute(.history) },
             openSettings: { openPanelRoute(.settings) }
         )
     }
@@ -232,6 +234,7 @@ struct ContentView: View {
         return PhoneBrowser(
             app: app,
             browser: app.browser,
+            voice: app.voice,
             position: app.settings.browserBarPosition.resolved(isSplit: false),
             actions: actions,
             addressFocusRequest: addressFocusRequest,
@@ -396,6 +399,9 @@ struct ContentView: View {
         case .settings:
             withAnimation(DCMotion.respecting(reduceMotion)) { app.panelRoute = .settings }
             showPane(.assistant)
+        case .history:
+            withAnimation(DCMotion.respecting(reduceMotion)) { app.panelRoute = .history }
+            showPane(.assistant)
         case .summary, .chat, .agent:
             let mode: AssistantMode = command == .summary ? .summary : command == .chat ? .chat : .agent
             // The drawer: ⌘2 / ⌘3 pick the Ask box's scope and focus it.
@@ -482,15 +488,16 @@ struct BrowserContent: View {
             }
         }
         .overlay(alignment: .bottom) {
-            // The voice bar sits under the cards, and stays over the Forums
-            // home (a session can start there).
-            VStack(spacing: DCTheme.spacingS) {
-                if !showsHome { ResultCardsOverlay(app: app, browser: browser) }
-                if voice.showsBar {
-                    VoiceBar(voice: voice)
-                        .transition(DCMotion.slide(.bottom, reduceMotion: reduceMotion))
-                }
-            }
+            // Cards, then the Dock or a row (Dock.swift); the Dock stays over
+            // the Forums home (a session can start there).
+            DockLayer(
+                app: app,
+                browser: browser,
+                voice: voice,
+                router: app.router,
+                podcast: app.podcast,
+                showsHome: showsHome
+            )
             .padding(.horizontal, DCTheme.spacingM)
             .padding(.bottom, DCTheme.spacingS + cardsBottomInset)
             .background(alignment: .bottom) {
@@ -502,8 +509,9 @@ struct BrowserContent: View {
             }
         }
         .onPreferenceChange(CoveredHeightKey.self) { height in
-            let noCards = app.browseCursor.cards == .hidden || app.browseCursor.isEmpty
-            browser.setCoveredBottomInset(noCards && !voice.showsBar ? 0 : height)
+            // Only the padding: nothing floats over the page.
+            let covers = height > DCTheme.spacingS + cardsBottomInset + 1
+            browser.setCoveredBottomInset(covers ? height : 0)
         }
         #if DEBUG
         .overlay(alignment: .topLeading) {
@@ -512,7 +520,6 @@ struct BrowserContent: View {
         #endif
         .animation(DCMotion.respecting(reduceMotion), value: showsHome)
         .animation(DCMotion.respecting(reduceMotion, DCMotion.spring), value: browser.showsCrashNotice)
-        .animation(DCMotion.respecting(reduceMotion, DCMotion.spring), value: voice.showsBar)
     }
 }
 
@@ -916,8 +923,8 @@ struct BrowserChrome: View {
             }
             if let openPanel = actions.openPanel {
                 Section {
-                    Button { openPanel(.activity) } label: {
-                        Label("Manage", systemImage: "tray.full")
+                    Button { openPanel(.history) } label: {
+                        Label("History", systemImage: "clock.arrow.circlepath")
                     }
                     Button { openPanel(.settings) } label: {
                         Label("Settings", systemImage: "gearshape")

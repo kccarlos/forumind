@@ -1,26 +1,22 @@
 import SwiftUI
 
-// The podcast UI: the Today page's podcast section (Make, Play, the mini
-// player and the chapter list), the consent sheet for Google's voices, the
+// The podcast UI: the Today page's podcast section (Make, Play and the row
+// that opens Now Playing, NowPlaying.swift), the consent sheet for Google's voices, the
 // read-aloud button, and the podcast part of Settings › Daily digest. The
 // logic is in Podcast/PodcastController.swift.
 
 // MARK: - Today page
 
-/// Make / Play before an episode exists; the mini player and the chapters
-/// after.
+/// Make / Play before an episode exists; the Now Playing row after.
 struct PodcastTodaySection: View {
     @ObservedObject var app: AppModel
     @ObservedObject var podcast: PodcastController
     let digest: DailyDigest
-    /// Opens a chapter's topic at its post (the page closes).
-    let onOpen: (URL, DigestCard) -> Void
 
     var body: some View {
         Section {
             if let episode = podcast.episode, episode.digestID == digest.id {
-                PodcastMiniPlayer(app: app, podcast: podcast, episode: episode, onOpen: onOpen)
-                PodcastChapterList(app: app, podcast: podcast, episode: episode, digest: digest, onOpen: onOpen)
+                PodcastNowPlayingRow(app: app, podcast: podcast, episode: episode)
             } else {
                 startCard
             }
@@ -96,271 +92,46 @@ struct PodcastTodaySection: View {
     }
 }
 
-/// Now playing on the Today page: the chapter, the progress, the controls
-/// and "Ask about this".
-struct PodcastMiniPlayer: View {
+/// The episode on the Today page: one row that opens Now Playing, where the
+/// controls and the chapters are.
+struct PodcastNowPlayingRow: View {
     @ObservedObject var app: AppModel
     @ObservedObject var podcast: PodcastController
     let episode: PodcastEpisode
-    let onOpen: (URL, DigestCard) -> Void
-
-    private var player: PodcastPlayer { podcast.player }
-    private var isThisEpisode: Bool { podcast.isPlayingEpisode }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: DCTheme.spacingS) {
+        Button {
+            DCHaptics.tap()
+            app.router.item = .nowPlaying
+        } label: {
             HStack(spacing: DCTheme.spacingS) {
                 Image(systemName: "headphones")
                     .foregroundStyle(DigestStyle.tint)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 0) {
-                    Text(chapterTitle)
+                    Text(episode.title)
                         .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
                         .lineLimit(2)
-                    Text(status)
+                    Text(podcast.statusLine(for: episode))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
-                        .accessibilityIdentifier("podcastStatus")
                 }
+                .multilineTextAlignment(.leading)
                 Spacer(minLength: 0)
-                if podcast.activity.isRunning || player.state == .waiting && isThisEpisode {
+                if podcast.activity.isRunning {
                     ProgressView().controlSize(.small)
                 }
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
             }
-
-            ProgressView(value: progress.elapsed, total: max(progress.total, 1))
-                .tint(DigestStyle.tint)
-                .accessibilityLabel(Text("Position", comment: "Podcast progress bar"))
-                .accessibilityValue(Text(verbatim: "\(Self.time(progress.elapsed)) / \(Self.time(progress.total))"))
-            HStack {
-                Text(Self.time(progress.elapsed))
-                Spacer()
-                Text(Self.time(progress.total))
-            }
-            .font(.caption2.monospacedDigit())
-            .foregroundStyle(.secondary)
-            .accessibilityHidden(true)
-
-            controls
-
-            if let error = podcast.lastError ?? player.failure {
-                Label(error, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundStyle(DCTheme.danger)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            if needsContinue {
-                Button {
-                    podcast.make(play: false)
-                } label: {
-                    Label("Make Podcast", systemImage: "waveform")
-                }
-                .buttonStyle(DCActionButtonStyle(prominent: false))
-                .disabled(!podcast.canMake && podcast.episode == nil)
-                .accessibilityIdentifier("makePodcast")
-            }
-            if let chapter = askChapter, podcast.canAsk(about: chapter) {
-                Button {
-                    DCHaptics.tap()
-                    ask(chapter)
-                } label: {
-                    Label("Ask about this", systemImage: "waveform.circle")
-                        .font(.subheadline.weight(.semibold))
-                }
-                .buttonStyle(.borderless)
-                .accessibilityHint(Text("Pauses the podcast and starts a voice conversation about this topic", comment: "Podcast: what Ask about this does"))
-                .accessibilityIdentifier("podcastAsk")
-            }
+            .contentShape(Rectangle())
         }
-        .padding(.vertical, DCTheme.spacingXS)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("podcastMiniPlayer")
-    }
-
-    private var controls: some View {
-        HStack(spacing: 0) {
-            control("backward.end.fill", Text("Previous chapter"), id: "podcastPreviousChapter") { player.previousChapter() }
-            control("gobackward.15", Text("Back 15 seconds"), id: "podcastSkipBack") { player.skip(by: -15) }
-            Button {
-                DCHaptics.tap()
-                if isThisEpisode { player.toggle() } else { podcast.playEpisode() }
-            } label: {
-                Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                    .font(.system(size: 44))
-                    .foregroundStyle(DigestStyle.tint)
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderless)
-            .disabled(!episode.hasAudio)
-            .accessibilityLabel(isPlaying ? Text("Pause") : Text("Play"))
-            .accessibilityIdentifier("podcastPlay")
-            control("goforward.15", Text("Forward 15 seconds"), id: "podcastSkipForward") { player.skip(by: 15) }
-            control("forward.end.fill", Text("Next chapter"), id: "podcastNextChapter") { player.nextChapter() }
-        }
-    }
-
-    private func control(_ symbol: String, _ label: Text, id: String, action: @escaping () -> Void) -> some View {
-        Button {
-            DCHaptics.tap()
-            if !isThisEpisode { podcast.playEpisode() }
-            action()
-        } label: {
-            Image(systemName: symbol)
-                .font(.title3)
-                .frame(maxWidth: .infinity, minHeight: DCTheme.controlHeight)
-        }
-        .buttonStyle(.borderless)
-        .disabled(!episode.hasAudio)
-        .accessibilityLabel(label)
-        .accessibilityIdentifier(id)
-    }
-
-    private var isPlaying: Bool { isThisEpisode && player.isActive }
-
-    private var progress: (elapsed: TimeInterval, total: TimeInterval) {
-        let timeline = PodcastTimeline(durations: episode.entries.map { $0.isReady ? $0.duration : nil })
-        guard isThisEpisode else { return (0, timeline.total) }
-        return (timeline.elapsed(player.position), timeline.total)
-    }
-
-    private var chapterTitle: String {
-        if isThisEpisode, let item = player.currentItem { return item.title }
-        return episode.title
-    }
-
-    private var needsContinue: Bool {
-        !podcast.activity.isRunning && (!episode.isComplete || episode.entries.contains { $0.state == .failed })
-    }
-
-    private var status: String {
-        switch podcast.activity {
-        case .scripting(let id):
-            return String(localized: "Writing “\(title(of: id))”…", comment: "Podcast: a chapter's dialogue is being written; the placeholder is its title")
-        case .speaking(let id):
-            return String(localized: "Recording “\(title(of: id))”…", comment: "Podcast: a chapter is being spoken; the placeholder is its title")
-        case .unreachable:
-            return String(localized: "Offline. The podcast continues when you’re back online.", comment: "Podcast: couldn't reach the AI provider or Google")
-        case .idle:
-            if isThisEpisode, player.state == .waiting {
-                return String(localized: "Waiting for the next chapter…", comment: "Podcast: playback waits for the next chapter to be recorded")
-            }
-            if isThisEpisode, player.playlist != nil {
-                let index = player.chapterIndex
-                return String(localized: "Chapter \(index + 1) of \(episode.entries.count)", comment: "Podcast: the current chapter, then the number of chapters")
-            }
-            return episode.isComplete
-                ? String(localized: "Ready to play", comment: "Podcast: every chapter is recorded")
-                : String(localized: "\(episode.readyCount) of \(episode.entries.count) chapters ready", comment: "Podcast progress: chapters recorded so far, then the number of chapters")
-        }
-    }
-
-    private func title(of id: String) -> String {
-        episode.entries.first { $0.id == id }?.chapter.title ?? ""
-    }
-
-    /// The chapter being played, or the first topic.
-    private var askChapter: PodcastChapter? {
-        if let current = podcast.currentChapter, current.kind == .topic { return current }
-        return nil
-    }
-
-    private func ask(_ chapter: PodcastChapter) {
-        podcast.ask(about: chapter) { url in
-            guard let card = app.todaysDigest?.cards.first(where: { $0.topicKey == chapter.id }) else { return }
-            onOpen(url, card)
-        }
-    }
-
-    static func time(_ seconds: TimeInterval) -> String {
-        Duration.seconds(max(0, seconds.rounded(.down))).formatted(.time(pattern: .minuteSecond))
-    }
-}
-
-/// The episode's chapters: tap to play one; a topic's arrow opens it at the
-/// post the chapter talks about.
-struct PodcastChapterList: View {
-    @ObservedObject var app: AppModel
-    @ObservedObject var podcast: PodcastController
-    let episode: PodcastEpisode
-    let digest: DailyDigest
-    let onOpen: (URL, DigestCard) -> Void
-
-    var body: some View {
-        ForEach(Array(episode.entries.enumerated()), id: \.element.id) { index, entry in
-            HStack(spacing: DCTheme.spacingS) {
-                Button {
-                    DCHaptics.tap()
-                    if podcast.isPlayingEpisode {
-                        podcast.player.playChapter(index)
-                    } else {
-                        podcast.playEpisode(chapter: index)
-                    }
-                } label: {
-                    HStack(spacing: DCTheme.spacingS) {
-                        Image(systemName: symbol(index, entry))
-                            .font(.footnote)
-                            .foregroundStyle(isCurrent(index) ? DigestStyle.tint : .secondary)
-                            .frame(width: 20)
-                            .accessibilityHidden(true)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(entry.chapter.title)
-                                .font(.subheadline)
-                                .foregroundStyle(.primary)
-                                .lineLimit(2)
-                                .multilineTextAlignment(.leading)
-                            Text(detail(entry))
-                                .font(.caption)
-                                .foregroundStyle(entry.state == .failed ? DCTheme.danger : .secondary)
-                                .lineLimit(1)
-                        }
-                        Spacer(minLength: 0)
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.borderless)
-                .disabled(!entry.isReady)
-                .accessibilityIdentifier("podcastChapter-\(index)")
-                if let url = entry.chapter.topicURL, let card = digest.cards.first(where: { $0.topicKey == entry.chapter.id }) {
-                    Button {
-                        DCHaptics.tap()
-                        onOpen(url, card)
-                    } label: {
-                        Image(systemName: "arrow.up.right.square")
-                            .font(.body)
-                    }
-                    .buttonStyle(.borderless)
-                    .accessibilityLabel(Text("Open the topic", comment: "Podcast chapter list: opens the chapter's topic at the post it talks about"))
-                    .accessibilityIdentifier("podcastChapterOpen-\(index)")
-                }
-            }
-        }
-    }
-
-    private func isCurrent(_ index: Int) -> Bool {
-        podcast.isPlayingEpisode && podcast.player.chapterIndex == index
-    }
-
-    private func symbol(_ index: Int, _ entry: PodcastEpisode.Entry) -> String {
-        if isCurrent(index) { return podcast.player.isActive ? "speaker.wave.2.fill" : "pause.fill" }
-        switch entry.state {
-        case .ready: return entry.chapter.kind == .topic ? "text.bubble" : "sparkles"
-        case .failed: return "exclamationmark.triangle"
-        case .pending, .working: return "clock"
-        }
-    }
-
-    private func detail(_ entry: PodcastEpisode.Entry) -> String {
-        switch entry.state {
-        case .ready:
-            return entry.duration.map(PodcastMiniPlayer.time) ?? ""
-        case .working:
-            return String(localized: "Recording…", comment: "Podcast chapter: being written or spoken")
-        case .pending:
-            return String(localized: "Waiting", comment: "Podcast chapter: queued behind other chapters")
-        case .failed:
-            return entry.error.isEmpty ? String(localized: "Couldn’t be recorded", comment: "Podcast chapter error without details") : entry.error
-        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("podcastNowPlayingRow")
     }
 }
 

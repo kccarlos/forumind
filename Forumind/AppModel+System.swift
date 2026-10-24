@@ -57,7 +57,7 @@ extension AppModel: SystemEntryRouting {
             if !isProviderReady(for: .agent) { needsProviderSetup = .agent }
             return
         }
-        startAgentRun(goal: question, siteURL: siteURL)
+        startAgentRun(goal: question, siteURL: siteURL, origin: .shortcut)
     }
 
     /// Voice with its consent gate (`VoiceController.start()` asks once per
