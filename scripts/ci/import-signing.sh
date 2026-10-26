@@ -8,6 +8,11 @@
 # Optional:
 #   APPLE_CERTIFICATE_P12_BASE64 + APPLE_CERTIFICATE_PASSWORD
 #     -> imported into a temporary keychain that is added to the search list.
+#   APPLE_DEV_CERTIFICATE_P12_BASE64 + APPLE_DEV_CERTIFICATE_PASSWORD
+#     -> a stable Apple Development identity imported into the same keychain.
+#        The archive step signs for development with automatic signing; without
+#        an identity on the runner, Xcode creates a new development certificate
+#        on every run until the account hits Apple's certificate limit.
 #   APPLE_PROVISIONING_PROFILES_BASE64
 #     -> base64 of a single .mobileprovision, or of a .zip / .tar.gz of them;
 #        installed where Xcode looks for profiles.
@@ -41,6 +46,14 @@ if [[ -n "${APPLE_CERTIFICATE_P12_BASE64:-}" ]]; then
   security set-keychain-settings -lut 21600 "$keychain"
   security unlock-keychain -p "$keychain_password" "$keychain"
   security import "$p12" -P "${APPLE_CERTIFICATE_PASSWORD:-}" -A -t cert -f pkcs12 -k "$keychain"
+  if [[ -n "${APPLE_DEV_CERTIFICATE_P12_BASE64:-}" ]]; then
+    dev_p12="$runner_temp/dev-cert.p12"
+    printf '%s' "$APPLE_DEV_CERTIFICATE_P12_BASE64" | base64 --decode >"$dev_p12"
+    security import "$dev_p12" -P "${APPLE_DEV_CERTIFICATE_PASSWORD:-}" -A -t cert -f pkcs12 -k "$keychain"
+    rm -f "$dev_p12"
+  else
+    echo "::warning::APPLE_DEV_CERTIFICATE_P12_BASE64 not set; the archive step will create a new development certificate."
+  fi
   security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" >/dev/null
   # Prepend to the user search list so codesign/xcodebuild find the identity.
   # shellcheck disable=SC2046
