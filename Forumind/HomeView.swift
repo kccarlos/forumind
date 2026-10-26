@@ -815,12 +815,12 @@ private struct PodcastHomeCard: View {
         .accessibilityIdentifier("homePodcastCard")
     }
 
-    /// "6 topics · about 8 min · two hosts"; while it's made, the chapters.
+    /// "6 topics · about 8 min · Google voices"; while it's made, the chapters.
     private var subtitle: Text {
         if isMaking {
             return Text("\(facts.readyChapters) of \(facts.chapters) chapters ready", comment: "Home podcast card while the podcast is being made")
         }
-        return Text("\(facts.topics) topics · about \(facts.minutes) min · two hosts", comment: "Home podcast card: number of topics, the podcast's length in minutes")
+        return Text("\(facts.topics) topics · about \(facts.minutes) min · \(episode.engine.label)", comment: "Home podcast card: number of topics, the podcast's length in minutes, then which voices read it (Google or on-device)")
     }
 
     private var reasons: String {

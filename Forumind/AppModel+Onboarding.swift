@@ -100,6 +100,17 @@ enum OnboardingStep: Int, CaseIterable, Identifiable, Hashable, Comparable {
 }
 
 extension AppModel {
+    /// The walkthrough's top Skip from `step` (`OnboardingStep.skipTarget`):
+    /// on to Privacy, since the Terms of Use can't be skipped; from Privacy
+    /// to Done once they are agreed, which accepts them. nil: stay.
+    func skipOnboarding(from step: OnboardingStep, termsAgreed: Bool) -> OnboardingStep? {
+        let target = step.skipTarget
+        guard target == .done else { return target }
+        guard termsAgreed else { return nil }
+        acceptTerms()
+        return target
+    }
+
     /// "Try It in Safari" on the Share how-to opens this page.
     nonisolated static let shareTryURL = URL(string: "https://meta.discourse.org/latest")!
 
@@ -397,14 +408,14 @@ extension AppModel {
     /// - `-dc-onboarding-step N`   walkthrough on step N (1-based) or a step name
     /// - `-dc-skip-onboarding`     marks the walkthrough done (UI tests)
     /// - `-dc-show-settings <page>` Settings on launch (root, provider, forums, …)
-    /// - `-dc-panel-settings`      opens Settings inside the assistant panel
+    /// - `-dc-panel-settings [page]` opens Settings (a sheet) once the page is up
     /// - `-dc-keychain-sync-probe` also skips the walkthrough so the probe alert shows
     /// - `-dc-terms-gate`          shows the Terms of Use sheet past the walkthrough
     func applyOnboardingDebugArguments() {
         let arguments = OnboardingDebug.arguments
         if arguments.contains("-dc-panel-settings") {
+            // The route itself is set once the page is up (ForumindApp).
             settings.hasCompletedOnboarding = true
-            panelRoute = .settings
         }
         if arguments.contains("-dc-reset") || OnboardingDebug.initialStep != nil {
             settings.hasCompletedOnboarding = false

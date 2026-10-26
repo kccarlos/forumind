@@ -295,7 +295,6 @@ struct SettingsWatchedPage: View {
         Form {
             Section {
                 HStack(spacing: DCTheme.spacingM) {
-                    SettingsIcon(symbol: "bell.badge.fill", tint: SettingsPage.watched.tint)
                     Text("Notifications")
                     Spacer()
                     if app.notificationsAuthorized {
@@ -310,18 +309,16 @@ struct SettingsWatchedPage: View {
                 }
                 Toggle(isOn: $app.settings.watchAutoRefreshSummaries) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Refresh summaries of watched topics")
-                        Text("Updates the saved summary when new replies arrive.")
+                        Text("Refresh their summaries")
+                        Text("When new replies arrive, with your Summaries & chat model")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
                 .tint(DCTheme.brandBlue)
                 .accessibilityIdentifier("watchAutoRefresh")
-            } header: {
-                Text("Watched topics & notifications")
             } footer: {
-                Text("Watch a topic from the assistant’s ⋯ menu. Watched topics are checked every 30 minutes while the app is open and, when iOS allows, in the background.")
+                Text("Checked when you open Forumind, every 30 minutes while it’s open, and now and then in the background.")
             }
 
             Section {
@@ -350,11 +347,21 @@ struct SettingsWatchedPage: View {
                     }
                 }
             } header: {
-                Text("Watching")
-            } footer: {
-                if !app.watchedTopics.isEmpty {
-                    Text("Swipe left to stop watching.")
+                HStack {
+                    Text("Watching · \(app.watchedTopics.count)", comment: "Settings › Watched topics section header with the number of watched topics")
+                    Spacer()
+                    if !app.watchedTopics.isEmpty {
+                        Button("Check now") {
+                            DCHaptics.tap()
+                            Task { await app.checkWatchedTopics(reason: .manual) }
+                        }
+                        .font(.footnote.weight(.semibold))
+                        .textCase(nil)
+                        .accessibilityIdentifier("checkWatchedTopics")
+                    }
                 }
+            } footer: {
+                Text("Swipe left to stop watching. Watch a topic from the drawer’s ⋯ menu or the forum menu.")
             }
         }
         .formStyle(.grouped)
@@ -398,6 +405,10 @@ struct SettingsBrowserPage: View {
                 VStack(alignment: .leading, spacing: DCTheme.spacingXS) {
                     Text("The bar shrinks while you scroll down a forum page and comes back when you scroll up or tap it. Bottom keeps it within reach of your thumb.")
                     Text("Automatic puts it at the bottom on iPhone and in narrow windows, and at the top when the assistant is beside the page.")
+                    if UIDevice.current.userInterfaceIdiom == .pad {
+                        Text("With the assistant beside the page, the bar is always at the top: Top and Bottom apply to the single-column layout.", comment: "Settings › Browser footer on iPad: the bar position setting has no effect in the side-by-side layout")
+                            .accessibilityIdentifier("browserBarSplitNote")
+                    }
                 }
             }
 

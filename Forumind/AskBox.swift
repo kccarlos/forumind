@@ -509,7 +509,7 @@ struct AskBox: View {
                 .foregroundStyle(.white)
                 .frame(width: 32, height: 32)
                 .background(canSend ? AnyShapeStyle(tint) : AnyShapeStyle(Color.secondary.opacity(0.35)), in: Circle())
-                .frame(width: DCTheme.controlHeight - 2, height: DCTheme.controlHeight - 2)
+                .frame(width: DCTheme.controlHeight, height: DCTheme.controlHeight)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

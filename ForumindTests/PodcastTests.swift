@@ -258,6 +258,13 @@ final class PodcastTests: XCTestCase {
 
     // MARK: Engine selection
 
+    func testAnEpisodeNamesTheVoicesItWasMadeWith() {
+        XCTAssertEqual(PodcastEngineKind.aiStudio.label, PodcastEngineChoice.google.label)
+        XCTAssertEqual(PodcastEngineKind.vertex.label, PodcastEngineChoice.google.label)
+        XCTAssertEqual(PodcastEngineKind.onDevice.label, PodcastEngineChoice.onDevice.label)
+        XCTAssertNotEqual(PodcastEngineKind.vertex.label, PodcastEngineKind.onDevice.label)
+    }
+
     func testGoogleVoicesNeedAKeyAndConsentOtherwiseTheDeviceSpeaks() {
         var settings = AppSettings()
         // No key: the device's voices, whatever the choice.

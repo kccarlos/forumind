@@ -296,7 +296,7 @@ runs are labeled as Apple Intelligence runs and it is the selected provider.
 | `-dc-scroll-bottom`, `-dc-focus` | Walkthrough: scroll to the bottom / focus the key field. |
 | `-dc-skip-onboarding` | Marks the walkthrough done. |
 | `-dc-show-settings <page>` | Presents Settings: `root`, or a page: `provider` (AI models), `sync`, `forums`, `summaries`, `agent`, `watched`, `digest`, `browser`, `data`, `help`, `sharing`, `about`, `acknowledgements`. |
-| `-dc-panel-settings [page]` | Opens Settings inside the Assistant panel. |
+| `-dc-panel-settings [page]` | Opens Settings (a sheet) once the page is up, on that sub-page if given. |
 
 ### Sync
 
@@ -304,7 +304,6 @@ runs are labeled as Apple Intelligence runs and it is the selected provider.
 | --- | --- |
 | `-dc-keychain-sync-probe` | Checks that synchronizable Keychain items work with this build's signing: adds, reads back, and deletes a test item, then shows the result in an alert and prints `DCPROBE` log lines. Skips the walkthrough so the alert can show. |
 | `-dc-sync-status <status>` | Shows a fake sync status in Settings › iCloud Sync and the walkthrough (the toggle follows it): `off`, `noAccount`, `restricted`, `unavailable`, `syncing`, `upToDate` (or `on`), `error`. The engine is untouched. |
-| `-dc-sync-explain` | Settings › iCloud Sync: expands "What syncs". |
 | `-dc-cloudkit-probe` | CloudKit builds: logs the iCloud account status and a save/fetch/delete round trip through a test record. |
 
 Sync stays off under `-dc-sample` and the UI tests' `-ui-test-*` arguments,
@@ -504,7 +503,7 @@ and the capture list. To retake the captures:
    | `iphone-69-4-agent`, `ipad-13-3-agent` | common + `-dc-assistant-mode agent` (English iPhone also `-dc-scroll-sources`) |
    | `iphone-69-5-privacy` | `-dc-sample -dc-onboarding-step privacy` |
    | `ipad-13-4-history` | common + `-dc-open-history` |
-   | `ipad-13-5-sync` | common + `-dc-panel-settings sync -dc-sync-status upToDate -dc-sync-explain` |
+   | `ipad-13-5-sync` | common + `-dc-panel-settings sync -dc-sync-status upToDate` |
 
 4. Wait for the screen to settle (about 6 s), then
    `xcrun simctl io <udid> screenshot appstore/screenshots-raw/<locale>/<name>.png`,

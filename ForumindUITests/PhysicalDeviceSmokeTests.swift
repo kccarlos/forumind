@@ -291,6 +291,7 @@ final class PhysicalDeviceSmokeTests: DCUITestCase {
     }
 
     func testAgentModeAndWatchedTopics() throws {
+        try skipUnlessPhone("The iPad branch drove the old iPad shell (workspacePicker, assistantModePicker), removed in Phase 8; the split layout is covered by IPadLayoutUITests.")
         let app = launch(["-ui-test-sample-session"])
         // iPhone: the AI drawer, whose Ask box scope picks This topic or
         // Whole forum; iPad: the panel's mode picker.

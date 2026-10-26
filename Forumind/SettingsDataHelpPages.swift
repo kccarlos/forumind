@@ -21,17 +21,27 @@ struct SettingsDataPage: View {
 
             Section {
                 Toggle(isOn: $app.settings.spotlightEnabled) {
-                    Label("Spotlight", systemImage: "magnifyingglass")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Show in Spotlight")
+                        Text("Topics you read and their saved summaries")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 .accessibilityIdentifier("spotlightEnabled")
                 Toggle(isOn: $app.settings.donatesTopicActivity) {
-                    Label("Siri Suggestions", systemImage: "sparkle.magnifyingglass")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Siri Suggestions")
+                        Text("Lets Siri suggest topics you read")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 .accessibilityIdentifier("donatesTopicActivity")
             } header: {
-                Text("Search and suggestions")
+                Text("Search & suggestions")
             } footer: {
-                Text("Topics you read and their summaries can be found in Spotlight, and Siri can suggest them again. Both stay on this device. Turning Spotlight off removes Forumind’s entries from Spotlight.")
+                Text("Both stay on this device. Turning Spotlight off removes Forumind’s entries from Spotlight.")
             }
 
             Section {
@@ -74,14 +84,14 @@ struct SettingsDataPage: View {
                 Button(role: .destructive) {
                     confirmingClearAll = true
                 } label: {
-                    Label("Clear all saved data", systemImage: "trash")
+                    Text("Clear All Saved Data…")
                 }
                 .disabled(forumsWithData.isEmpty)
                 .accessibilityIdentifier("clearAllData")
                 Button(role: .destructive) {
                     confirmingReset = true
                 } label: {
-                    Label("Reset settings to defaults", systemImage: "arrow.counterclockwise")
+                    Text("Reset Settings to Defaults…")
                 }
                 .accessibilityIdentifier("resetSettings")
             } footer: {

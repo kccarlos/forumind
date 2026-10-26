@@ -198,8 +198,11 @@ struct AssistantDebugSeed {
 /// - `-dc-summary-running`             a summary in progress (streaming text)
 /// - `-dc-chat-streaming`              a chat answer in progress
 /// - `-dc-agent-running`               the agent run is still working
+/// - `-dc-answer-ready`                the run not selected (on the other forum) just
+///                                     finished: "Answer ready" shows
 /// - `-dc-no-summary`                  the open topic has no summary yet
 /// - `-dc-fake-summary`                Create summary streams the sample summary (no network, no AI)
+/// - `-dc-fake-summary-fails`          with `-dc-fake-summary`: the first run fails, Retry works
 /// - `-dc-ask-ai-consent`              no AI data consent yet: the consent page comes first
 /// - `-dc-scroll-sources`              Agent: scrolls to the answer's sources
 /// - `-dc-history-segment <segment>`   History: all | summaries | asks | watching
@@ -491,6 +494,22 @@ extension AppModel {
             context = PageContext(url: nil, state: .loading)
         }
 
+        // The run on the open forum is the selected one (below); the other
+        // one finished a minute ago and is unseen.
+        let readyRun = openForum.siteURL == makers.siteURL ? olderRun : currentRun
+        if AssistantDebug.has("-dc-answer-ready"), !AssistantDebug.has("-dc-agent-running") {
+            var readyRecord = WorkRecord(
+                type: .agent, siteURL: readyRun.siteURL, topicID: "agent:" + readyRun.id.uuidString,
+                title: readyRun.goal, url: makers.latestURL!, provider: sampleAgent.provider, model: sampleAgent.model
+            )
+            readyRecord.status = .completed
+            readyRecord.statusText = String(localized: "Answered")
+            readyRecord.progress = 1
+            readyRecord.createdAt = ago(3)
+            readyRecord.completedAt = ago(1)
+            activities.insert(readyRecord, at: 0)
+        }
+
         applyDebugSeed(AssistantDebugSeed(
             forums: [meta, makers, homeLab],
             sessions: sessions,
@@ -542,6 +561,7 @@ extension AppModel {
             assistantMode = AssistantMode.allCases.first { $0.rawValue.lowercased() == mode } ?? .summary
         }
         if AssistantDebug.has("-dc-open-history") { panelRoute = .history }
+        if AssistantDebug.has("-dc-answer-ready") { router.answersSeenAt = ago(5) }
         // The run on the open forum: the featured one, or the older run.
         selectedAgentRunID = (openForum.siteURL == makers.siteURL ? currentRun : olderRun).id
         if !sampleTickers.isEmpty {

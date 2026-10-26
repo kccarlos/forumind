@@ -203,4 +203,41 @@ final class WorkProgressTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(10))
         }
     }
+
+    // MARK: Summary run state
+
+    private func summaryRecord(_ topic: String, _ status: WorkStatus, error: String = "", age: TimeInterval = 0, type: WorkType = .summary) -> WorkRecord {
+        var record = WorkRecord(type: type, siteURL: "https://a.example.org", topicID: topic, title: "T", url: URL(string: "https://a.example.org/t/\(topic)")!, provider: .ollama, model: "m")
+        record.status = status
+        record.error = error
+        record.createdAt = Date(timeIntervalSince1970: 1_000 + age)
+        return record
+    }
+
+    func testAFailedSummaryShowsItsErrorUntilANewerRunReplacesIt() {
+        let key = summaryRecord("1", .failed).topicKey
+        XCTAssertEqual(SummaryRunState.resolve([], topicKey: key), .idle)
+
+        let failed = summaryRecord("1", .failed, error: "Offline", age: 0)
+        XCTAssertEqual(SummaryRunState.resolve([failed], topicKey: key), .failed(message: "Offline"))
+
+        // Retry queues a newer run: it is running, not failed.
+        let retry = summaryRecord("1", .queued, age: 10)
+        XCTAssertEqual(SummaryRunState.resolve([failed, retry], topicKey: key), .running)
+        var done = retry
+        done.status = .completed
+        XCTAssertEqual(SummaryRunState.resolve([failed, done], topicKey: key), .idle)
+        // A later failure shows again, whatever the record order.
+        let again = summaryRecord("1", .failed, error: "Timeout", age: 20)
+        XCTAssertEqual(SummaryRunState.resolve([again, done, failed], topicKey: key), .failed(message: "Timeout"))
+    }
+
+    func testSummaryRunStateIgnoresOtherTopicsOtherWorkAndCancelledRuns() {
+        let key = summaryRecord("1", .failed).topicKey
+        let other = summaryRecord("2", .failed, error: "x")
+        let chat = summaryRecord("1", .failed, error: "chat", type: .chat)
+        XCTAssertEqual(SummaryRunState.resolve([other, chat], topicKey: key), .idle)
+        let cancelled = summaryRecord("1", .cancelled, age: 5)
+        XCTAssertEqual(SummaryRunState.resolve([summaryRecord("1", .failed, error: "e"), cancelled], topicKey: key), .idle)
+    }
 }

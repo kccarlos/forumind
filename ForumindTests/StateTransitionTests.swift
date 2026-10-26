@@ -543,7 +543,7 @@ final class StateTransitionTests: XCTestCase {
         app.settings.hasCompletedOnboarding = true
         harness.deliver(topicPage(topic("1")))
         app.assistantMode = .chat
-        app.panelRoute = .settings
+        app.panelRoute = .history
         XCTAssertTrue(app.enqueueSummary(for: topic("1")))
         try await waitUntil { harness.ai.waiting == 1 }
 
@@ -553,7 +553,7 @@ final class StateTransitionTests: XCTestCase {
         app.completeOnboarding()
         XCTAssertTrue(app.settings.hasCompletedOnboarding)
         XCTAssertEqual(app.assistantMode, .chat)
-        XCTAssertEqual(app.panelRoute, .settings)
+        XCTAssertEqual(app.panelRoute, .history)
         XCTAssertEqual(app.currentTopic?.topicKey, topic("1").topicKey)
         XCTAssertEqual(app.activities.first?.status, .running)
 
@@ -642,7 +642,7 @@ final class StateTransitionTests: XCTestCase {
         let harness = makeHarness()
         let app = harness.app
         select(app, .ollama, model: "model-a")
-        app.panelRoute = .settings
+        app.panelRoute = .history
 
         let first = IncomingLinkRequest(url: topic("11").url, action: .summary)
         let second = IncomingLinkRequest(url: topic("12").url, action: .summary)

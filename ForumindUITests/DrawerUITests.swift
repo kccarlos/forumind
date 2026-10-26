@@ -189,6 +189,29 @@ final class DrawerUITests: DCUITestCase {
         XCTAssertTrue(landed, "The page did not scroll to post 12 and mark it: \(browse.label)")
     }
 
+    /// A summary run that fails shows the error in the drawer with Retry;
+    /// Retry writes the summary (`-dc-fake-summary-fails` fails until then).
+    func testAFailedSummaryShowsItsErrorAndRetryWritesIt() throws {
+        try skipUnlessPhone("The AI drawer is an iPhone behavior.")
+        try requireNetwork()
+        let app = launch(sample + ["-dc-no-summary", "-dc-fake-summary", "-dc-fake-summary-fails", "-dc-browse-debug"])
+        let state = drawerState(in: app)
+        XCTAssertTrue(waitOrDump(state, timeout: 20, in: app), "The sample did not open the drawer.")
+        let summarize = app.buttons["createSummary"].firstMatch
+        XCTAssertTrue(waitForHittable(summarize), "Create summary is missing.")
+        summarize.tap()
+
+        let alert = app.alerts.firstMatch
+        if alert.waitForExistence(timeout: 10) { alert.buttons["OK"].tap() }
+        let retry = app.buttons["retryFailedSummary"].firstMatch
+        XCTAssertTrue(waitOrDump(retry, timeout: 15, in: app), "A failed summary shows no Retry.")
+        XCTAssertTrue(any(app, "summaryFailureMessage").exists, "The failure does not say what went wrong.")
+        retry.tap()
+        XCTAssertTrue(wait(timeout: 30) { app.buttons["retrySummary"].exists },
+                      "Retry did not write the summary.")
+        XCTAssertFalse(retry.exists, "The failure stays after a successful run.")
+    }
+
     /// §5 and the citation chips (no network: `-dc-no-provider` fails a run
     /// at once). Text typed under This topic moves along to Whole forum and
     /// to a new question; the run it starts shows in History. The sample
@@ -261,6 +284,40 @@ final class DrawerUITests: DCUITestCase {
         asks.tap()
         // Running it shows in progress, finished under Asks; either way the goal is listed.
         XCTAssertTrue(reveal(app.staticTexts[question], in: app), "The new run is not listed under Asks.")
+    }
+
+    /// "Answer ready" over the bar (iPhone: drawer closed; iPad split: panel
+    /// hidden) brings the AI view forward on the run that finished, not the
+    /// selected one, and the row goes (audit A1, A2).
+    func testAnswerReadyShowsTheFinishedRunInTheAIView() throws {
+        let app = launch(sample + ["-dc-answer-ready"], orientation: isPhone ? .portrait : .landscapeLeft)
+        let split = !usesDrawerLayout(app)
+        let panel = any(app, "aiPanel")
+        if split {
+            XCTAssertTrue(waitOrDump(panel, timeout: 20, in: app), "The sample did not show the panel.")
+            // After the sample's second "show the assistant" (1.2 s in).
+            RunLoop.current.run(until: Date().addingTimeInterval(3))
+            app.buttons["aiPanelToggle"].tap()
+            XCTAssertTrue(waitForGone(panel, timeout: 5), "The panel did not hide.")
+        } else {
+            XCTAssertTrue(waitOrDump(drawerState(in: app), timeout: 20, in: app), "The sample did not open the drawer.")
+            RunLoop.current.run(until: Date().addingTimeInterval(2))
+            closeDrawer(in: app)
+        }
+        let row = app.buttons["dockAnswerReady"]
+        XCTAssertTrue(waitOrDump(row, timeout: 10, in: app), "No Answer ready row.")
+        row.tap()
+        if split {
+            XCTAssertTrue(panel.waitForExistence(timeout: 5), "Answer ready did not show the panel.")
+        } else {
+            XCTAssertTrue(drawerState(in: app).waitForExistence(timeout: 10), "Answer ready did not open the drawer.")
+        }
+        let goal = app.staticTexts["agentRunGoal"]
+        XCTAssertTrue(goal.waitForExistence(timeout: 10), "Ask the forum did not show a run.")
+        if Locale.preferredLanguages.first?.hasPrefix("en") ?? true {
+            XCTAssertTrue(goal.label.contains("layer shifts"), "Not the finished run: \(goal.label)")
+        }
+        XCTAssertTrue(waitForGone(row, timeout: 5), "Answer ready stayed after it was shown.")
     }
 
     // MARK: Helpers

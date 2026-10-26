@@ -108,12 +108,42 @@ final class VoiceUITests: DCUITestCase {
         if end.waitForExistence(timeout: 5) { end.tap() }
     }
 
+    /// Split layout: with History open in the AI panel, the voice status row
+    /// stays above it with Mute and End (audit A7).
+    func testVoiceCanBeMutedAndEndedOverHistoryInThePanel() throws {
+        try skipUnlessPad("The split layout's panel hosts History; iPhone shows it as a sheet.")
+        let app = launch(["-dc-sample", "-dc-page-state", "topic", "-dc-voice-fake"], orientation: .landscapeLeft)
+        let panel = any(app, "aiPanel")
+        XCTAssertTrue(waitOrDump(panel, timeout: 20, in: app))
+        RunLoop.current.run(until: Date().addingTimeInterval(2))
+        startVoice(in: app)
+        let agree = app.buttons["voiceConsentAgree"]
+        if agree.waitForExistence(timeout: 10) { agree.tap() }
+        let mute = app.buttons["drawerVoiceMute"]
+        XCTAssertTrue(waitOrDump(mute, timeout: 15, in: app), "No voice status row in the panel.")
+
+        let more = app.buttons["browserMoreMenu"]
+        XCTAssertTrue(waitForHittable(more))
+        more.tap()
+        let history = app.buttons["History"].firstMatch
+        XCTAssertTrue(history.waitForExistence(timeout: 5))
+        history.tap()
+        XCTAssertTrue(app.buttons["backToTopic"].waitForExistence(timeout: 10), "History did not open in the panel.")
+        XCTAssertTrue(mute.exists, "The voice row went under History.")
+        mute.tap()
+        if isEnglish(app) { XCTAssertTrue(wait(timeout: 5) { mute.label == "Unmute" }, mute.label) }
+        let end = app.buttons["drawerVoiceEnd"]
+        XCTAssertTrue(waitForHittable(end))
+        end.tap()
+        XCTAssertTrue(waitForGone(mute, timeout: 10), "End did not end voice.")
+    }
+
     /// The bar's microphone (the iPhone Forums home has one too; on a page a
     /// long press on the AI button starts voice).
     private func startVoice(in app: XCUIApplication) {
         // Bar items: iOS 27's toolbar reports them as not hittable, so
         // wait for a frame on screen and tap the coordinate.
-        let mic = app.buttons["voiceButton"]
+        let mic = app.buttons.matching(identifier: "voiceButton").firstMatch
         if waitForBarItem(mic, timeout: 5) {
             tapBarItem(mic)
             return

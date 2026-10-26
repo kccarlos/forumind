@@ -471,6 +471,13 @@ struct ProviderSettingsPage: View {
         return String(localized: "Used for \(roles.map(\.title).joined(separator: ", "))", comment: "Provider settings: the model roles that use this provider, e.g. Summaries & chat, Ask the forum")
     }
 
+    /// "Get a key in …", the download page, or Apple's page.
+    private var guideLink: some View {
+        Link(destination: guide.link) {
+            Label(guide.linkTitle, systemImage: provider.isAppleIntelligence ? "info.circle" : guide.isLocal ? "arrow.down.circle" : "key.horizontal")
+        }
+    }
+
     var body: some View {
         Form {
             Section {
@@ -485,8 +492,9 @@ struct ProviderSettingsPage: View {
                 }
                 .padding(.vertical, DCTheme.spacingXS)
                 .accessibilityElement(children: .combine)
-                Link(destination: guide.link) {
-                    Label(guide.linkTitle, systemImage: provider.isAppleIntelligence ? "info.circle" : guide.isLocal ? "arrow.down.circle" : "key.horizontal")
+                // Providers with a key link to it under the key field.
+                if !provider.requiresAPIKey {
+                    guideLink
                 }
             } footer: {
                 Text(guide.blurb)
@@ -501,6 +509,7 @@ struct ProviderSettingsPage: View {
             if provider.requiresAPIKey {
                 Section {
                     APIKeyField(app: app, provider: provider)
+                    guideLink
                 } header: {
                     Text("API key")
                 } footer: {
@@ -524,7 +533,7 @@ struct ProviderSettingsPage: View {
                         }
                     }
                 } header: {
-                    Text(provider.requiresAPIKey ? "Base URL" : "Server address")
+                    Text(provider.requiresAPIKey ? "Advanced" : "Server address")
                 } footer: {
                     Text(guide.note ?? String(localized: "Leave this as is unless you use a proxy or a compatible gateway."))
                 }
@@ -537,15 +546,20 @@ struct ProviderSettingsPage: View {
                         }
                     } label: {
                         HStack {
-                            Label("Test & save", systemImage: "bolt.horizontal.circle")
-                            Spacer()
-                            if testState == .testing { ProgressView() }
+                            if testState == .testing { ProgressView().tint(.white) }
+                            Text("Test & Save")
                         }
+                        .frame(maxWidth: .infinity)
                     }
+                    .buttonStyle(DCActionButtonStyle(prominent: true))
                     .disabled(testState == .testing)
                     .accessibilityIdentifier("testProvider")
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
                     if testState != .idle && testState != .testing {
                         ProviderTestStatusView(state: testState)
+                            .frame(maxWidth: .infinity)
+                            .listRowBackground(Color.clear)
                     }
                 }
             }

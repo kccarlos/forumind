@@ -148,7 +148,15 @@ final class OnboardingUITests: DCUITestCase {
             app.swipeUp()
         }
         XCTAssertTrue(waitForHittable(agree), "The Terms of Use toggle is missing.")
-        // Tap the switch itself (right edge), not its label.
-        agree.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+        // "Hittable" under the floating Continue bar too: clear of it first.
+        let bottomBar = app.buttons["onboardingContinue"]
+        for _ in 0..<4 where bottomBar.exists && agree.frame.maxY > bottomBar.frame.minY - 8 {
+            app.swipeUp()
+        }
+        // Tap the switch itself (right edge), not its label; again if missed.
+        for _ in 0..<2 where (agree.value as? String) != "1" {
+            agree.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+            _ = wait(timeout: 2) { (agree.value as? String) == "1" }
+        }
     }
 }

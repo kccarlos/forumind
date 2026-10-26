@@ -123,3 +123,65 @@ final class OnboardingTests: XCTestCase {
         XCTAssertEqual(AppVersion.text(info: nil), "— (—)")
     }
 }
+
+/// "Show onboarding again" from a Settings sheet: the sheet goes first,
+/// then the walkthrough covers the screen; Settings doesn't come back
+/// (audit A6).
+@MainActor
+final class OnboardingReplayTests: XCTestCase {
+    private func model() throws -> AppModel {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let store = PersistentStore(fileURL: directory.appendingPathComponent("state.json"), keys: InMemoryProviderKeyStore())
+        let app = AppModel(store: store)
+        app.settings.hasCompletedOnboarding = true
+        app.acceptTerms()
+        return app
+    }
+
+    func testFromASettingsSheetTheSheetGoesFirst() async throws {
+        let app = try model()
+        let delay = PresentationRouter.settleDelay
+        PresentationRouter.settleDelay = .milliseconds(10)
+        defer { PresentationRouter.settleDelay = delay }
+        app.router.item = .expanded(.settings)
+        XCTAssertEqual(app.rootPresentation, .expanded(.settings))
+        app.replayOnboarding()
+        XCTAssertEqual(app.router.onboardingReplay, .waitingForSheet)
+        XCTAssertNil(app.rootPresentation, "nothing while the sheet leaves")
+        app.replayOnboarding()
+        XCTAssertEqual(app.router.onboardingReplay, .waitingForSheet, "a second tap changes nothing")
+        app.rootSheetDismissed()
+        XCTAssertNil(app.rootPresentation, "a beat for the sheet to leave for good")
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertEqual(app.rootPresentation, .onboarding)
+        app.dismissRootPresentation(.onboarding)
+        XCTAssertEqual(app.router.onboardingReplay, .none)
+        XCTAssertNil(app.rootPresentation, "Settings does not come back")
+    }
+
+    func testWithoutASheetTheWalkthroughShowsAtOnce() throws {
+        let app = try model()
+        app.replayOnboarding()
+        XCTAssertEqual(app.rootPresentation, .onboarding)
+    }
+}
+
+/// The walkthrough's top Skip is a model intent on `skipTarget` (audit A12).
+@MainActor
+final class OnboardingSkipTests: XCTestCase {
+    func testSkipGoesToPrivacyThenFinishesOnceTheTermsAreAgreed() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let app = AppModel(store: PersistentStore(fileURL: directory.appendingPathComponent("state.json"), keys: InMemoryProviderKeyStore()))
+        app.settings.acceptedTermsVersion = 0
+        for step in [OnboardingStep.welcome, .provider, .forums, .daily] {
+            XCTAssertEqual(app.skipOnboarding(from: step, termsAgreed: false), .privacy, "\(step)")
+        }
+        XCTAssertTrue(app.needsTermsAcceptance, "skipping to Privacy accepts nothing")
+        XCTAssertNil(app.skipOnboarding(from: .privacy, termsAgreed: false), "not past the Terms unagreed")
+        XCTAssertTrue(app.needsTermsAcceptance)
+        XCTAssertEqual(app.skipOnboarding(from: .privacy, termsAgreed: true), .done)
+        XCTAssertFalse(app.needsTermsAcceptance, "agreed and skipped: accepted")
+    }
+}

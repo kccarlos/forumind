@@ -89,6 +89,27 @@ struct SummaryProgressTracker: Equatable {
     }
 }
 
+/// Where a topic's summary stands, from its newest summary job: the drawer
+/// shows progress while it runs and the error with Retry when it failed. A
+/// newer run (Retry, a watched refresh) replaces an older failure; cancelled
+/// or finished jobs leave nothing to show.
+enum SummaryRunState: Equatable {
+    case idle
+    case running
+    case failed(message: String)
+
+    static func resolve(_ records: [WorkRecord], topicKey: String) -> SummaryRunState {
+        let newest = records
+            .filter { $0.type == .summary && $0.topicKey == topicKey }
+            .max { $0.createdAt < $1.createdAt }
+        switch newest?.status {
+        case .queued?, .running?: return .running
+        case .failed?: return .failed(message: newest?.error ?? "")
+        case .completed?, .cancelled?, nil: return .idle
+        }
+    }
+}
+
 /// Maps each work type's phases onto the record's single 0…1 progress.
 enum WorkProgress {
     /// The share of the bar the forum fetch fills before the AI phase.

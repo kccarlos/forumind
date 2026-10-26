@@ -438,61 +438,32 @@ struct MailComposer: UIViewControllerRepresentable {
 
 // MARK: Settings
 
-/// Settings › Data & privacy: blocked users, filtered words, terms, report.
+/// Settings › Data & privacy › Safety: blocked users and filtered words (each
+/// its own page, with the count), Terms of Use, and the report-by-email link.
 struct ModerationSettingsSections: View {
     @ObservedObject var app: AppModel
     @Environment(\.openURL) private var openURL
-    @State private var newWord = ""
 
     var body: some View {
         Section {
-            if app.settings.blockedUsers.isEmpty {
-                Text("No one is blocked. To block someone, open a topic, then ⋯ › Report or block.")
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(app.settings.blockedUsers.sorted { $0.blockedAt > $1.blockedAt }) { user in
-                    HStack {
-                        VStack(alignment: .leading) {
-                            Text(verbatim: "@\(user.username)")
-                            Text(name(for: user.siteURL))
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Button("Unblock") { app.unblock(user) }
-                            .buttonStyle(.borderless)
-                    }
-                }
+            NavigationLink {
+                BlockedUsersPage(app: app)
+            } label: {
+                LabeledContent("Blocked users", value: app.settings.blockedUsers.count.formatted())
             }
-        } header: {
-            Text("Blocked users")
-        } footer: {
-            Text("Posts from blocked users are hidden in the browser and left out of summaries, chat, and Ask the forum.")
-        }
-
-        Section {
-            ForEach(app.settings.filteredWords, id: \.self) { word in
-                Text(word)
+            .accessibilityIdentifier("blockedUsersRow")
+            NavigationLink {
+                FilteredWordsPage(app: app)
+            } label: {
+                LabeledContent("Filtered words", value: app.settings.filteredWords.count.formatted())
             }
-            .onDelete { app.removeFilteredWords(atOffsets: $0) }
-            HStack {
-                TextField("Add a word or phrase", text: $newWord)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-                    .onSubmit(addWord)
-                    .accessibilityIdentifier("filteredWordField")
-                Button("Add", action: addWord)
-                    .disabled(newWord.trimmingCharacters(in: .whitespaces).isEmpty)
-            }
-        } header: {
-            Text("Filtered words")
-        } footer: {
-            Text("Posts that contain any of these are hidden on every forum. Swipe to remove one.")
-        }
-
-        Section {
+            .accessibilityIdentifier("filteredWordsRow")
             Link(destination: ModerationTerms.url) {
-                Label("Terms of Use", systemImage: "doc.text")
+                LabeledContent {
+                    Image(systemName: "arrow.up.forward").font(.footnote.weight(.semibold))
+                } label: {
+                    Text("Terms of Use").foregroundStyle(Color.primary)
+                }
             }
             Button {
                 let subject = "Forumind report"
@@ -501,16 +472,81 @@ struct ModerationSettingsSections: View {
             } label: {
                 Label("Report a problem by email", systemImage: "envelope")
             }
+        } header: {
+            Text("Safety")
         } footer: {
-            Text("Reports are reviewed within 24 hours.")
+            Text("Blocked users’ posts are hidden in the browser and left out of everything the AI reads. Reports are reviewed within 24 hours.")
         }
+    }
+}
+
+/// Settings › Data & privacy › Blocked users.
+struct BlockedUsersPage: View {
+    @ObservedObject var app: AppModel
+
+    var body: some View {
+        Form {
+            Section {
+                if app.settings.blockedUsers.isEmpty {
+                    Text("No one is blocked. To block someone, open a topic, then ⋯ › Report or block.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(app.settings.blockedUsers.sorted { $0.blockedAt > $1.blockedAt }) { user in
+                        HStack {
+                            VStack(alignment: .leading) {
+                                Text(verbatim: "@\(user.username)")
+                                Text(app.forum(for: user.siteURL)?.displayName ?? ForumSite.host(of: user.siteURL))
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Button("Unblock") { app.unblock(user) }
+                                .buttonStyle(.borderless)
+                        }
+                    }
+                }
+            } footer: {
+                Text("Posts from blocked users are hidden in the browser and left out of summaries, chat, and Ask the forum.")
+            }
+        }
+        .formStyle(.grouped)
+        .navigationTitle("Blocked users")
+        .navigationBarTitleDisplayMode(.inline)
+        .accessibilityIdentifier("blockedUsersPage")
+    }
+}
+
+/// Settings › Data & privacy › Filtered words.
+struct FilteredWordsPage: View {
+    @ObservedObject var app: AppModel
+    @State private var newWord = ""
+
+    var body: some View {
+        Form {
+            Section {
+                ForEach(app.settings.filteredWords, id: \.self) { word in
+                    Text(word)
+                }
+                .onDelete { app.removeFilteredWords(atOffsets: $0) }
+                HStack {
+                    TextField("Add a word or phrase", text: $newWord)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .onSubmit(addWord)
+                        .accessibilityIdentifier("filteredWordField")
+                    Button("Add", action: addWord)
+                        .disabled(newWord.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            } footer: {
+                Text("Posts that contain any of these are hidden on every forum. Swipe to remove one.")
+            }
+        }
+        .formStyle(.grouped)
+        .navigationTitle("Filtered words")
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     private func addWord() {
         if app.addFilteredWord(newWord) { newWord = "" }
-    }
-
-    private func name(for siteURL: String) -> String {
-        app.forum(for: siteURL)?.displayName ?? ForumSite.host(of: siteURL)
     }
 }

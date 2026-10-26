@@ -98,6 +98,57 @@ final class TodayUITests: DCUITestCase {
         }
     }
 
+    /// Space with a hardware keyboard: plays or pauses the podcast while no
+    /// text field has focus, and types a space in one that has (the address
+    /// field), the podcast going on.
+    func testSpacePlaysAndPausesButNeverEatsASpaceInATextField() throws {
+        let app = launch(
+            ["-dc-sample", "-dc-forums-home", "-dc-digest-sample", "-dc-podcast-fake"],
+            orientation: isPhone ? .portrait : .landscapeLeft
+        )
+        try XCTSkipUnless(isEnglish(app), "reads the Play / Pause labels")
+        openToday(in: app)
+        let play = app.buttons["podcastPlay"]
+        XCTAssertTrue(waitForHittable(play))
+        play.tap()
+        let row = app.buttons["podcastNowPlayingRow"]
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "The Now Playing row did not appear.")
+        row.tap()
+        XCTAssertTrue(any(app, "nowPlaying").waitForExistence(timeout: 10))
+        let toggle = app.buttons["podcastPlay"]
+        XCTAssertTrue(wait(timeout: 15) { toggle.exists && toggle.label == "Pause" }, toggle.label)
+        // Back on Home, nothing has focus.
+        app.buttons["nowPlayingClose"].tap()
+        XCTAssertTrue(waitForGone(any(app, "nowPlaying"), timeout: 10))
+        let back = app.navigationBars["Today"].buttons.element(boundBy: 0)
+        XCTAssertTrue(waitForHittable(back))
+        back.tap()
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+
+        // A text field with focus gets the space; the podcast keeps playing.
+        app.typeKey("l", modifierFlags: .command)
+        let field = app.textFields["addressField"]
+        if !field.waitForExistence(timeout: 3) { app.typeKey("l", modifierFlags: .command) }
+        XCTAssertTrue(field.waitForExistence(timeout: 5), "⌘L should edit the address.")
+        // The field selects the whole address once editing begins; type after.
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+        app.typeKey("a", modifierFlags: [])
+        app.typeKey(" ", modifierFlags: [])
+        app.typeKey("b", modifierFlags: [])
+        XCTAssertTrue(wait(timeout: 3) { (field.value as? String)?.contains("a b") == true }, "The space was eaten: \(field.value ?? "")")
+        app.typeKey(".", modifierFlags: .command)
+        XCTAssertTrue(waitForGone(field, timeout: 5))
+
+        // No text focus: Space pauses and plays.
+        let rowToggle = app.buttons["dockPodcastToggle"]
+        XCTAssertTrue(rowToggle.waitForExistence(timeout: 10), "No podcast row while it plays.")
+        XCTAssertEqual(rowToggle.label, "Pause", "Typing a space in the field toggled the podcast.")
+        app.typeKey(" ", modifierFlags: [])
+        XCTAssertTrue(wait(timeout: 5) { rowToggle.label == "Play" }, "Space did not pause: \(rowToggle.label)")
+        app.typeKey(" ", modifierFlags: [])
+        XCTAssertTrue(wait(timeout: 5) { rowToggle.label == "Pause" }, "Space did not play: \(rowToggle.label)")
+    }
+
     private func isEnglish(_ app: XCUIApplication) -> Bool {
         Locale.preferredLanguages.first?.hasPrefix("en") ?? true
     }

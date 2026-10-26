@@ -16,7 +16,7 @@ struct SettingsForumsPage: View {
         List {
             Section {
                 if app.pinnedForums.isEmpty {
-                    Text("Pin forums to keep them at the top of the Forums screen.")
+                    Text("Pin forums to keep them on Home and in the daily digest.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 } else {
@@ -33,10 +33,18 @@ struct SettingsForumsPage: View {
                     }
                 }
             } header: {
-                Text("Pinned")
+                HStack {
+                    Text("Pinned")
+                    Spacer()
+                    if app.pinnedForums.count > 1 {
+                        EditButton()
+                            .font(.footnote.weight(.semibold))
+                            .textCase(nil)
+                    }
+                }
             } footer: {
-                if app.pinnedForums.count > 1 {
-                    Text("Tap Edit to change the order.")
+                if !app.pinnedForums.isEmpty {
+                    Text("Pinned forums are on Home and in the daily digest, in this order.")
                 }
             }
 
@@ -51,9 +59,9 @@ struct SettingsForumsPage: View {
                             }
                     }
                 } header: {
-                    Text("Other forums")
+                    Text("Other forums you visited")
                 } footer: {
-                    Text("Forums you’ve visited. Swipe left to pin or remove.")
+                    Text("Swipe left to remove a forum. You can keep or delete its saved summaries and chats.")
                 }
             }
 
@@ -75,16 +83,7 @@ struct SettingsForumsPage: View {
                                 DCHaptics.tap()
                                 withAnimation { app.pinSuggested(suggested) }
                             } label: {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "pin")
-                                    Text("Pin")
-                                }
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(DCTheme.brandBlue)
-                                .padding(.horizontal, 10)
-                                .frame(height: 30)
-                                .background(DCTheme.brandBlue.opacity(0.12), in: Capsule())
-                                .fixedSize()
+                                PinPill()
                             }
                             .buttonStyle(.borderless)
                             .accessibilityLabel("Pin \(suggested.name)")
@@ -96,11 +95,6 @@ struct SettingsForumsPage: View {
             addSection
         }
         .listStyle(.insetGrouped)
-        .toolbar {
-            if app.pinnedForums.count > 1 {
-                ToolbarItem(placement: .primaryAction) { EditButton() }
-            }
-        }
         .confirmationDialog(
             removing.map { String(localized: "Remove \($0.displayName)?", comment: "Confirmation title; the argument is a forum name") } ?? "",
             isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
@@ -137,16 +131,15 @@ struct SettingsForumsPage: View {
             }
             .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
             Spacer(minLength: DCTheme.spacingS)
-            Button {
-                withAnimation(DCMotion.quick) { app.togglePin(forum) }
-            } label: {
-                Image(systemName: forum.isPinned ? "pin.fill" : "pin")
-                    .foregroundStyle(forum.isPinned ? DCTheme.brandBlue : Color.secondary)
-                    .frame(width: 36, height: 36)
-                    .contentShape(Rectangle())
+            if !forum.isPinned {
+                Button {
+                    withAnimation(DCMotion.quick) { app.togglePin(forum) }
+                } label: {
+                    PinPill()
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Pin \(forum.displayName)")
             }
-            .buttonStyle(.borderless)
-            .accessibilityLabel(forum.isPinned ? "Unpin \(forum.displayName)" : "Pin \(forum.displayName)")
         }
         .sensoryFeedback(.impact(weight: .light), trigger: forum.isPinned)
         .contextMenu {
@@ -207,7 +200,7 @@ struct SettingsForumsPage: View {
         } header: {
             Text("Add a forum")
         } footer: {
-            Text("Enter the address of any Discourse forum, or paste a link to one of its pages.")
+            Text("Any Discourse forum, including subfolder installs like example.com/forum. You can also paste a link to one of its pages.")
         }
     }
 
@@ -228,5 +221,21 @@ struct SettingsForumsPage: View {
             }
             adding = false
         }
+    }
+}
+
+/// The "Pin" pill on forums that aren't pinned yet.
+private struct PinPill: View {
+    var body: some View {
+        Text("Pin")
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(DCTheme.brandBlue)
+            .padding(.horizontal, 12)
+            .frame(height: 30)
+            .background(DCTheme.brandBlue.opacity(0.12), in: Capsule())
+            .fixedSize()
+            // 44 pt to tap; the pill stays 30 pt.
+            .frame(minWidth: DCTheme.controlHeight, minHeight: DCTheme.controlHeight)
+            .contentShape(Rectangle())
     }
 }

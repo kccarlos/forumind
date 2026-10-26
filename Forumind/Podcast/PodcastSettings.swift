@@ -179,6 +179,15 @@ enum PodcastEngineKind: String, Codable, Equatable {
     init(_ provider: VoiceProvider) {
         self = provider == .vertex ? .vertex : .aiStudio
     }
+
+    /// "Google voices" or "On-device voices": what Now Playing and the Today
+    /// card say about the episode (derived from the engine the episode keeps).
+    var label: String {
+        switch self {
+        case .aiStudio, .vertex: PodcastEngineChoice.google.label
+        case .onDevice, .fake: PodcastEngineChoice.onDevice.label
+        }
+    }
 }
 
 enum PodcastEngineSelection: Equatable {

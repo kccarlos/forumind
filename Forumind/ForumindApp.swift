@@ -70,7 +70,7 @@ struct ForumindApp: App {
         }
         .commands {
             // Hardware keyboard: menu bar and the ⌘-hold overlay on iPad.
-            WorkspaceCommands()
+            WorkspaceCommands(playPause: app.playPauseShortcut)
         }
     }
 }
@@ -89,7 +89,7 @@ private struct RootView: View {
 
     var body: some View {
         ContentView(app: app)
-            .environment(\.replayOnboarding, ReplayOnboardingAction { app.router.replayingOnboarding = true })
+            .environment(\.replayOnboarding, ReplayOnboardingAction { app.replayOnboarding() })
             .onChange(of: app.settings.hasCompletedOnboarding) {
                 app.presentProviderSetupIfNeeded()
             }
@@ -116,7 +116,7 @@ private struct RootView: View {
                 }
             }
             // A request that arrived during the walkthrough is shown after it.
-            .onChange(of: router.replayingOnboarding) { app.presentProviderSetupIfNeeded() }
+            .onChange(of: router.onboardingReplay) { app.presentProviderSetupIfNeeded() }
             // "Sync API keys" (Settings › iCloud Sync, reset, or a synced
             // settings change): move keys between iCloud Keychain and local.
             .onChange(of: app.settings.syncAPIKeys) { _, synchronizes in
@@ -132,8 +132,12 @@ private struct RootView: View {
                 }
                 if OnboardingDebug.arguments.contains("-dc-panel-settings") {
                     try? await Task.sleep(for: .seconds(1))
-                    app.panelRoute = .settings
-                    app.requestAssistant()
+                    // Once the page is up: the AI view going away (Home at
+                    // launch) sends it back to the topic.
+                    for _ in 0..<40 where app.browser.showsForumsHome {
+                        try? await Task.sleep(for: .milliseconds(250))
+                    }
+                    app.openPanelRoute(.settings)
                 }
                 if let value = OnboardingDebug.settingsPage {
                     app.router.item = .debugSettings(SettingsPage.parse(value))

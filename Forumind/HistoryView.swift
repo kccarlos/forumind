@@ -439,6 +439,7 @@ struct HistoryView: View {
                 .font(.caption.weight(.semibold).monospacedDigit())
                 .foregroundStyle(.secondary)
         }
+        .dcStateBounce(forum.isPinned)
         .padding(.vertical, -2)
         .listRowBackground(Color.primary.opacity(0.035))
         .accessibilityElement(children: .combine)
@@ -587,6 +588,7 @@ struct HistoryView: View {
                         .accessibilityLabel("Kept")
                 }
             }
+            .dcStateBounce(session.kept)
             let text = excerpt(session.summary)
             if !text.isEmpty {
                 Text(text)

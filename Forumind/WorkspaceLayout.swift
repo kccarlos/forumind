@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 import UIKit
 
@@ -201,11 +202,49 @@ extension WorkspaceCommand {
     }
 }
 
-/// Static on purpose: observing the app or browser here rebuilds the main
-/// menu on every published change (page progress, scrolling), and key
-/// commands stop firing while it rebuilds. `ContentView.perform` ignores
-/// commands that don't apply.
+/// Space plays or pauses the Today podcast (Assistant › Play or Pause), but
+/// the bare-key command exists only while an episode is loaded and no text
+/// is being edited: unregistered, Space types its space (address, Ask box,
+/// web forms) and scrolls the page as usual. One Bool, so the menu rebuilds
+/// only when it flips.
+@MainActor
+final class PlayPauseShortcut: ObservableObject {
+    @Published private(set) var isEnabled = false
+
+    static func isEnabled(episodeLoaded: Bool, editingText: Bool) -> Bool {
+        episodeLoaded && !editingText
+    }
+
+    init(podcast: PodcastController) {
+        let center = NotificationCenter.default
+        // A native field or a web form field (WebKit shows the keyboard or
+        // its bar for those) is being edited.
+        let editing = Publishers.MergeMany(
+            center.publisher(for: UITextField.textDidBeginEditingNotification).map { _ in true },
+            center.publisher(for: UITextView.textDidBeginEditingNotification).map { _ in true },
+            center.publisher(for: UIResponder.keyboardWillShowNotification).map { _ in true },
+            center.publisher(for: UITextField.textDidEndEditingNotification).map { _ in false },
+            center.publisher(for: UITextView.textDidEndEditingNotification).map { _ in false },
+            center.publisher(for: UIResponder.keyboardWillHideNotification).map { _ in false }
+        )
+        .prepend(false)
+        // `@Published` sends before the value lands: read it on the next turn.
+        let loaded = podcast.$episode.combineLatest(podcast.player.$playlist)
+            .receive(on: RunLoop.main)
+            .map { [weak podcast] _ in podcast?.isPlayingEpisode ?? false }
+        loaded.combineLatest(editing)
+            .map { Self.isEnabled(episodeLoaded: $0, editingText: $1) }
+            .removeDuplicates()
+            .assign(to: &$isEnabled)
+    }
+}
+
+/// Observes only `PlayPauseShortcut`: observing the app or browser here
+/// rebuilds the main menu on every published change (page progress,
+/// scrolling), and key commands stop firing while it rebuilds.
+/// `ContentView.perform` ignores commands that don't apply.
 struct WorkspaceCommands: Commands {
+    @ObservedObject var playPause: PlayPauseShortcut
 
     var body: some Commands {
         CommandGroup(replacing: .appSettings) {
@@ -246,8 +285,10 @@ struct WorkspaceCommands: Commands {
                     .keyboardShortcut("j", modifiers: .command)
                 Button("Previous Result") { WorkspaceCommand.previousResult.post() }
                     .keyboardShortcut("k", modifiers: .command)
-                Button("Play or Pause") { WorkspaceCommand.playPause.post() }
-                    .keyboardShortcut(.space, modifiers: [])
+                if playPause.isEnabled {
+                    Button("Play or Pause") { WorkspaceCommand.playPause.post() }
+                        .keyboardShortcut(.space, modifiers: [])
+                }
             }
         }
     }

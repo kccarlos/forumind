@@ -30,8 +30,9 @@ enum DrawerHint {
     /// The row's trailing button.
     enum Action: Equatable {
         case summarize
-        /// The summary is stale; the count is nil when unknown.
-        case checkNew(Int?)
+        /// The summary is behind by this many replies (always known: the
+        /// row only comes with both counts).
+        case checkNew(Int)
         case setUpAI
         case allowAI
 
@@ -39,8 +40,7 @@ enum DrawerHint {
         var title: String {
             switch self {
             case .summarize: String(localized: "Summarize this topic", comment: "Hint row over the bar on a topic without a summary, and its button")
-            case .checkNew(let count?): String(localized: "Check \(count) new replies", comment: "Button on the hint row over the bar; the placeholder is the number of replies since the summary")
-            case .checkNew(nil): String(localized: "Check for new replies")
+            case .checkNew(let count): String(localized: "Check \(count) new replies", comment: "Button on the hint row over the bar; the placeholder is the number of replies since the summary")
             case .setUpAI: String(localized: "Set up AI", comment: "Hint row over the bar when no AI provider is set up, and its button")
             case .allowAI: String(localized: "Allow AI", comment: "Hint row over the bar when the AI data consent was declined, and its button: show the consent again")
             }
@@ -56,7 +56,7 @@ enum DrawerHint {
 
         /// The count on the badge ("99+" from 100), if any.
         var badge: String? {
-            guard case .checkNew(let count?) = self, count > 0 else { return nil }
+            guard case .checkNew(let count) = self, count > 0 else { return nil }
             return count > 99 ? "99+" : "\(count)"
         }
 
@@ -71,8 +71,8 @@ enum DrawerHint {
 
         var text: String {
             switch action {
-            case .checkNew(let count?): String(localized: "\(count) new replies")
-            case .summarize, .checkNew(nil), .setUpAI, .allowAI: action.title
+            case .checkNew(let count): String(localized: "\(count) new replies")
+            case .summarize, .setUpAI, .allowAI: action.title
             }
         }
     }
@@ -88,6 +88,13 @@ enum DrawerHint {
             return .checkNew(total - covered)
         }
         return nil
+    }
+
+    /// The split layout's panel toggle shows a dot for new replies while the
+    /// panel is hidden (there is no hint row there).
+    static func showsSplitNewRepliesDot(_ input: Input, panelShown: Bool) -> Bool {
+        guard !panelShown, case .checkNew? = action(input) else { return false }
+        return true
     }
 
     /// The hint row, or nil for no row. "Summarize this topic" shows only as

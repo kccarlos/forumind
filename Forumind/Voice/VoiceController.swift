@@ -130,6 +130,10 @@ final class VoiceController: ObservableObject {
     }
 
     private func sessionEnded() {
+        // `isActive` follows the session's state, which this object doesn't
+        // publish: views that only observe the controller (the drawer's
+        // status row) look again.
+        objectWillChange.send()
         app?.voiceSessionEnded()
         finished()
     }

@@ -148,7 +148,7 @@ struct PhoneBrowser<Page: View>: View {
             VoiceBarButton(voice: app.voice)
         }
         SplitMoreMenu(app: app, browser: browser, actions: actions)
-        SplitPanelToggle(isShown: split.panelShown, action: split.togglePanel)
+        SplitPanelToggle(app: app, isShown: split.panelShown, action: split.togglePanel)
     }
 
     @ViewBuilder
@@ -213,7 +213,10 @@ struct PhoneBrowser<Page: View>: View {
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity, minHeight: 30)
+            // 44 pt to tap, over the page's edge; the strip stays 30 pt.
+            .padding(.vertical, 7)
             .contentShape(Rectangle())
+            .padding(.vertical, -7)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Show browser bar")
@@ -621,27 +624,8 @@ struct PhoneAIButton: View {
     let onOpen: () -> Void
 
     private var canTalk: Bool { app.showsVoiceButton }
-    private var showsNewRepliesDot: Bool { app.bottomLayer.showsNewRepliesDot(hint: app.drawerHint) }
+    private var showsNewRepliesDot: Bool { app.showsNewRepliesDot }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    /// The research progress around the button; a short arc while the
-    /// progress is not known.
-    @ViewBuilder
-    private var researchRing: some View {
-        if let research = app.activeResearch {
-            Circle()
-                .trim(from: 0, to: max(0.08, research.progress ?? 0.25))
-                .stroke(DCTheme.brandGradient, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                .padding(4)
-                .animation(reduceMotion ? nil : .linear(duration: 0.3), value: research.progress)
-                .accessibilityIdentifier("researchRing")
-        } else if app.readyAnswer != nil {
-            Circle()
-                .stroke(DCTheme.brandGradient, lineWidth: 2.5)
-                .padding(4)
-        }
-    }
 
     var body: some View {
         Image(systemName: voice.isActive ? "waveform" : "sparkles")
@@ -651,15 +635,9 @@ struct PhoneAIButton: View {
             // Done: one bounce (not with Reduce Motion).
             .symbolEffect(.bounce, value: reduceMotion ? nil : app.readyAnswer?.id)
             .frame(width: DCTheme.controlHeight, height: DCTheme.controlHeight)
-            .overlay { researchRing }
+            .overlay { ResearchRing(app: app) }
             .overlay(alignment: .topTrailing) {
-                if showsNewRepliesDot {
-                    Circle()
-                        .fill(Color.red)
-                        .frame(width: 8, height: 8)
-                        .padding(8)
-                        .accessibilityHidden(true)
-                }
+                if showsNewRepliesDot { NewRepliesDot() }
             }
             .contentShape(Circle())
             .onTapGesture {
@@ -684,6 +662,46 @@ struct PhoneAIButton: View {
                 }
             }
             .accessibilityIdentifier("aiButton")
+    }
+}
+
+/// Ask the forum's progress around the AI button (and the split layout's
+/// panel toggle); a short arc while the progress is not known, a full ring
+/// once the answer is ready and unseen.
+struct ResearchRing: View {
+    @ObservedObject var app: AppModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        if let research = app.activeResearch {
+            Circle()
+                .trim(from: 0, to: max(0.08, research.progress ?? 0.25))
+                .stroke(DCTheme.brandGradient, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .padding(4)
+                .animation(reduceMotion ? nil : .linear(duration: 0.3), value: research.progress)
+                .allowsHitTesting(false)
+                .accessibilityIdentifier("researchRing")
+        } else if app.readyAnswer != nil {
+            Circle()
+                .stroke(DCTheme.brandGradient, lineWidth: 2.5)
+                .padding(4)
+                .allowsHitTesting(false)
+                .accessibilityIdentifier("answerReadyRing")
+        }
+    }
+}
+
+/// The AI button's (or panel toggle's) dot: the topic has new replies
+/// (`AppModel.showsNewRepliesDot`).
+struct NewRepliesDot: View {
+    var body: some View {
+        Circle()
+            .fill(Color.red)
+            .frame(width: 8, height: 8)
+            .padding(8)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 }
 

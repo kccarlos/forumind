@@ -52,10 +52,12 @@ import UserNotifications
 // `research(_:)` / `cancelResearch()`, `openLink(_:)`; the current list is
 // `browseCursor`, page changes for the voice layer arrive on `pageChanges`.
 
+/// What the AI view shows: the topic, or (split layout) History in place.
+/// Settings is always a sheet: inside the split panel its navigation stack
+/// would be nested in the page's and lose its bar.
 enum PanelRoute: String, CaseIterable {
     case topic = "Topic"
     case history = "History"
-    case settings = "Settings"
 }
 
 enum AssistantMode: String, CaseIterable, Identifiable {
@@ -314,6 +316,8 @@ final class AppModel: ObservableObject {
         controller.voice = voice
         return controller
     }()
+    /// Whether Space plays or pauses the podcast (WorkspaceLayout.swift).
+    private(set) lazy var playPauseShortcut = PlayPauseShortcut(podcast: podcast)
     /// Where podcast audio is cached (`Caches/Podcasts`; tests pass their own).
     let podcastDirectory: URL
     /// Read topics and summaries in Spotlight (AppModel+System.swift).
@@ -2325,6 +2329,10 @@ final class AppModel: ObservableObject {
     private func runSummary(recordID: UUID, record: WorkRecord, context: RunSettings) async throws {
         #if DEBUG
         if AssistantDebug.has("-dc-fake-summary") {
+            // `-dc-fake-summary-fails`: fails until Retry (`regenerate`).
+            if AssistantDebug.has("-dc-fake-summary-fails"), record.regenerate != true {
+                throw AssistantError.missingConfiguration("The sample summary failed on purpose.")
+            }
             try await runFakeSummary(recordID: recordID, record: record)
             return
         }

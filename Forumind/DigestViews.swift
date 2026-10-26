@@ -105,6 +105,7 @@ struct TodayPage: View {
                 Text(subtitle)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .contentTransition(.numericText())
             }
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(.isHeader)

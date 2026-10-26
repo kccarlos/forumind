@@ -33,7 +33,20 @@ final class ModerationUITests: DCUITestCase {
         let block = app.descendants(matching: .button)
             .matching(NSPredicate(format: "identifier BEGINSWITH 'blockUser'"))
             .firstMatch
-        XCTAssertTrue(block.waitForExistence(timeout: 15), "No posts are listed in the report sheet.")
+        // Opened while the posts were still rendering ("No posts are on
+        // screen"): close it and open it again, as a reader would.
+        if !block.waitForExistence(timeout: 10) {
+            app.buttons["Done"].firstMatch.tap()
+            RunLoop.current.run(until: Date().addingTimeInterval(3))
+            XCTAssertTrue(wait(timeout: 20) {
+                tapBarItem(menu)
+                if reportItem.waitForExistence(timeout: 3) { return true }
+                dismissMenu(in: app)
+                return false
+            })
+            reportItem.tap()
+        }
+        XCTAssertTrue(waitOrDump(block, timeout: 15, in: app), "No posts are listed in the report sheet.")
         XCTAssertTrue(app.buttons["reportTopic"].exists)
         attachScreenshot(named: "report-sheet")
         let number = String(block.identifier.dropFirst("blockUser".count))
@@ -61,6 +74,10 @@ final class ModerationUITests: DCUITestCase {
 
         // Settings › Data & privacy lists the user; unblock to clean up.
         let settings = launch(["-dc-show-settings", "data"])
+        let blockedRow = settings.buttons["blockedUsersRow"]
+        XCTAssertTrue(reveal(blockedRow, in: settings), "Data & privacy has no Blocked users row.")
+        XCTAssertTrue(blockedRow.label.contains("1"), "The row shows the count; got “\(blockedRow.label)”.")
+        blockedRow.tap()
         let unblock = settings.buttons["Unblock"].firstMatch
         XCTAssertTrue(reveal(unblock, in: settings), "The blocked user is not listed in Data & privacy.")
         attachScreenshot(named: "settings-blocked")

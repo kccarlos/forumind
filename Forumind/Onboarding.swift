@@ -141,14 +141,7 @@ struct OnboardingFlow: View {
 
             Button("Skip") {
                 DCHaptics.tap()
-                // The Terms of Use can't be skipped: Skip stops at Privacy,
-                // and from there finishes once they are accepted.
-                if step < .privacy {
-                    go(to: .privacy)
-                } else if termsAgreed {
-                    app.acceptTerms()
-                    go(to: .done)
-                }
+                if let target = app.skipOnboarding(from: step, termsAgreed: termsAgreed) { go(to: target) }
             }
             .font(.subheadline.weight(.semibold))
             .frame(minWidth: DCTheme.controlHeight, minHeight: DCTheme.controlHeight)
@@ -182,7 +175,8 @@ struct OnboardingFlow: View {
                         go(to: step.next)
                     }
                     .font(.subheadline.weight(.medium))
-                    .frame(minHeight: 36)
+                    .frame(minWidth: DCTheme.controlHeight, minHeight: DCTheme.controlHeight)
+                    .contentShape(Rectangle())
                     .accessibilityIdentifier("onboardingSkipStep")
                 }
             }

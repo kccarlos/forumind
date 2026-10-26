@@ -58,7 +58,7 @@ struct ContentView: View {
             // possibly before this view existed (a cold launch).
             guard app.assistantRequest != handledAssistantRequest else { return }
             handledAssistantRequest = app.assistantRequest
-            showAssistant()
+            app.showAIView()
         }
         .modifier(AIDrawerCoordinator(app: app))
         .onReceive(NotificationCenter.default.publisher(for: .dcWorkspaceCommand)) { notification in
@@ -79,15 +79,8 @@ struct ContentView: View {
         .environment(\.nowPlayingNamespace, nowPlayingNamespace)
     }
 
-    /// History and Settings: sheets over the drawer layout and over Home, in
-    /// the panel in the split layout.
     private func openPanelRoute(_ route: ExpandedPanelRoute) {
-        if router.usesDrawer || route == .post || app.browser.showsForumsHome {
-            app.router.item = .expanded(route)
-        } else {
-            withAnimation(DCMotion.respecting(reduceMotion)) { app.panelRoute = route == .settings ? .settings : .history }
-            showAssistant()
-        }
+        withAnimation(DCMotion.respecting(reduceMotion)) { app.openPanelRoute(route) }
     }
 
     /// A topic or post from the Today page or Home (Home closes).
@@ -121,13 +114,14 @@ struct ContentView: View {
         guard width > 0 else { return }
         let next = WorkspaceMetrics.nextIsSplit(current: router.splitLayout, width: width)
         guard next != router.splitLayout else { return }
-        let wasMeasured = router.splitLayout != nil
         var transaction = Transaction(animation: nil)
         transaction.disablesAnimations = true
         withTransaction(transaction) {
             router.splitLayout = next
-            if wasMeasured, next {
-                // The drawer was the reader's AI view: keep it as the panel.
+            if next {
+                // The drawer was the reader's AI view (or a hand-off asked
+                // for it before the first width was known): keep it as the
+                // panel, and leave no drawer request armed.
                 router.splitPanelMode = router.wantsDrawer ? .shown : .auto
                 router.closeDrawer()
             }
@@ -160,19 +154,6 @@ struct ContentView: View {
 
     // MARK: AI view (drawer or panel)
 
-    /// The assistant comes forward: the drawer opens at medium, or the split
-    /// layout's panel shows.
-    private func showAssistant() {
-        if router.usesDrawer {
-            // Not over the Forums home: the drawer is for pages.
-            guard app.isDrawerAvailable else { return }
-            if !router.wantsDrawer { router.openDrawer(at: .medium) }
-        } else if !app.browser.showsForumsHome, !router.splitPanelMode.isVisible(onHome: false) {
-            // Not over the Forums home: the panel is for pages.
-            router.splitPanelMode = .shown
-        }
-    }
-
     /// The page comes forward: a large drawer lowers to medium so the page
     /// shows (the split layout shows both).
     private func showBrowser() {
@@ -183,17 +164,7 @@ struct ContentView: View {
 
     private func openAssistant() {
         DCHaptics.tap()
-        showAssistant()
-    }
-
-    /// ⌥⌘0 and the bar's button: the panel hides or shows; the drawer opens
-    /// or closes.
-    private func togglePanel() {
-        if router.usesDrawer {
-            if router.wantsDrawer { router.closeDrawer() } else { showAssistant() }
-        } else {
-            router.splitPanelMode = router.splitPanelMode.toggled(onHome: app.browser.showsForumsHome)
-        }
+        app.showAIView()
     }
 
     // MARK: Keyboard commands
@@ -218,11 +189,9 @@ struct ContentView: View {
             withAnimation(DCMotion.respecting(reduceMotion)) { app.showForumsHome() }
             showBrowser()
         case .settings:
-            withAnimation(DCMotion.respecting(reduceMotion)) { app.panelRoute = .settings }
-            showAssistant()
+            openPanelRoute(.settings)
         case .history:
-            withAnimation(DCMotion.respecting(reduceMotion)) { app.panelRoute = .history }
-            showAssistant()
+            openPanelRoute(.history)
         case .summary, .chat, .agent:
             // ⌘2 / ⌘3 pick the Ask box's scope and focus it.
             let asks = command != .summary
@@ -234,10 +203,10 @@ struct ContentView: View {
                     app.assistantMode = .summary
                 }
             }
-            showAssistant()
+            app.showAIView()
             if asks { app.askFocusRequest += 1 }
         case .togglePanel:
-            togglePanel()
+            app.toggleAIView()
         case .nextResult:
             if app.browseCursor.hasNext { Task { await app.next() } }
         case .previousResult:

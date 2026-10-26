@@ -826,6 +826,7 @@ struct OnboardingDonePage: View {
             )
             VStack(spacing: 0) {
                 checklistRow(
+                    order: 0,
                     done: app.isProviderReady,
                     title: app.isProviderReady
                         ? String(localized: "AI provider: \(app.settings.assistantModel.provider.displayName)", comment: "Walkthrough checklist. The placeholder is the provider's name, e.g. OpenRouter.")
@@ -836,18 +837,20 @@ struct OnboardingDonePage: View {
                 )
                 Divider().padding(.leading, 48)
                 checklistRow(
+                    order: 1,
                     done: !app.pinnedForums.isEmpty,
                     title: app.pinnedForums.isEmpty ? String(localized: "No pinned forums yet") : pinnedTitle,
                     detail: app.pinnedForums.isEmpty ? String(localized: "Pick from suggestions or add any forum by address.") : app.pinnedForums.map(\.displayName).joined(separator: ", ")
                 )
                 Divider().padding(.leading, 48)
                 checklistRow(
+                    order: 2,
                     done: app.settings.dailyDigestEnabled,
                     title: app.settings.dailyDigestEnabled ? String(localized: "Daily digest on", comment: "Walkthrough checklist") : String(localized: "Daily digest off", comment: "Walkthrough checklist"),
                     detail: app.settings.podcastDailyEnabled ? String(localized: "With a daily podcast", comment: "Walkthrough checklist") : String(localized: "Change it in Settings › Daily digest & podcast.", comment: "Walkthrough checklist")
                 )
                 Divider().padding(.leading, 48)
-                OnboardingDoneSyncRow(app: app)
+                OnboardingDoneSyncRow(app: app, order: 3)
             }
             .dcCard()
             VStack(alignment: .leading, spacing: DCTheme.spacingS) {
@@ -892,12 +895,9 @@ struct OnboardingDonePage: View {
         return String(localized: "\(count) pinned forums", comment: "Walkthrough checklist: number of pinned forums")
     }
 
-    private func checklistRow(done: Bool, title: String, detail: String) -> some View {
+    private func checklistRow(order: Int, done: Bool, title: String, detail: String) -> some View {
         HStack(alignment: .top, spacing: DCTheme.spacingM) {
-            Image(systemName: done ? "checkmark.circle.fill" : "circle.dashed")
-                .font(.title2)
-                .foregroundStyle(done ? DCTheme.success : Color.secondary)
-                .frame(width: 32)
+            ChecklistMark(done: done, order: order)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.subheadline.weight(.semibold))
                 Text(detail)
@@ -916,8 +916,11 @@ struct OnboardingDonePage: View {
 private struct OnboardingDoneSyncRow: View {
     @ObservedObject private var sync: CloudSyncController
 
-    init(app: AppModel) {
+    let order: Int
+
+    init(app: AppModel, order: Int) {
         self.sync = app.cloudSync
+        self.order = order
     }
 
     var body: some View {
@@ -925,10 +928,7 @@ private struct OnboardingDoneSyncRow: View {
         let enabled = SyncDebug.isEnabled(actual: sync.isEnabled)
         let on = enabled && [.syncing, .upToDate].contains(status)
         HStack(alignment: .top, spacing: DCTheme.spacingM) {
-            Image(systemName: on ? "checkmark.circle.fill" : "circle.dashed")
-                .font(.title2)
-                .foregroundStyle(on ? DCTheme.success : Color.secondary)
-                .frame(width: 32)
+            ChecklistMark(done: on, order: order)
             VStack(alignment: .leading, spacing: 2) {
                 Text(on ? String(localized: "Syncing across your devices") : (enabled ? SyncStatusPresentation(status).title : String(localized: "Sync is off")))
                     .font(.subheadline.weight(.semibold))
@@ -941,5 +941,62 @@ private struct OnboardingDoneSyncRow: View {
         }
         .padding(.vertical, 10)
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// The timing of the Done page's checks: one after another, 60 ms apart,
+/// or all at once with Reduce Motion.
+enum ChecklistMotion {
+    static let stagger: TimeInterval = 0.06
+    /// After the page's own badge has come in.
+    static let start: TimeInterval = 0.3
+
+    static func delay(order: Int, reduceMotion: Bool) -> TimeInterval {
+        reduceMotion ? 0 : start + stagger * Double(max(order, 0))
+    }
+}
+
+/// A Done page checklist mark: a done item's check draws on (iOS 26) or
+/// scales in and fades in (earlier); items that are not done stay dashed.
+private struct ChecklistMark: View {
+    let done: Bool
+    let order: Int
+    @State private var shown = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        ZStack {
+            if done && shown {
+                check
+            } else {
+                Image(systemName: "circle.dashed")
+                    .foregroundStyle(Color.secondary)
+            }
+        }
+        .font(.title2)
+        .frame(width: 32)
+        .task(id: done) {
+            guard done else {
+                shown = false
+                return
+            }
+            if reduceMotion {
+                shown = true
+            } else {
+                withAnimation(DCMotion.spring.delay(ChecklistMotion.delay(order: order, reduceMotion: false))) { shown = true }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var check: some View {
+        let image = Image(systemName: "checkmark.circle.fill").foregroundStyle(DCTheme.success)
+        if reduceMotion {
+            image
+        } else if #available(iOS 26.0, *) {
+            image.transition(.symbolEffect(.drawOn))
+        } else {
+            image.transition(.scale(scale: 0.5).combined(with: .opacity))
+        }
     }
 }

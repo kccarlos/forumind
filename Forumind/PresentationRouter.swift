@@ -124,6 +124,16 @@ enum DrawerPhase: Equatable {
     var isPresented: Bool { self == .presenting || self == .shown }
 }
 
+/// Settings › Help › Show onboarding again. A routed sheet (Settings) goes
+/// first and the walkthrough's cover comes once it has gone: UIKit drops a
+/// cover presented while a sheet is still leaving.
+enum OnboardingReplay: Equatable {
+    case none
+    /// Asked for over a sheet; waiting for the sheet's dismissal.
+    case waitingForSheet
+    case showing
+}
+
 /// Whether the split layout's AI panel shows: collapsed on Home, shown on
 /// pages, until the reader hides or shows it (back to `.auto` when Home
 /// comes or goes).
@@ -167,7 +177,8 @@ final class PresentationRouter: ObservableObject {
     /// Routes the app asks for explicitly (the others follow app state).
     @Published var item: RootPresentation?
     /// Settings › Help › replay the walkthrough.
-    @Published var replayingOnboarding = false
+    @Published var onboardingReplay: OnboardingReplay = .none
+    var replayingOnboarding: Bool { onboardingReplay != .none }
     #if DEBUG
     @Published var keychainProbeResult: String?
     #endif
@@ -207,6 +218,9 @@ final class PresentationRouter: ObservableObject {
     /// How long `.recovering` lasts.
     var recoveryDelay: Duration = .milliseconds(600)
     static let maximumDroppedPresentations = 2
+    /// How long a dismissed sheet takes to leave for good before a cover can
+    /// be presented in its place.
+    static var settleDelay: Duration = .milliseconds(450)
     /// Ask the forum answers finished after this show "Answer ready" in the
     /// drawer's status row until the reader opens Ask the forum.
     @Published var answersSeenAt = Date()
@@ -342,7 +356,9 @@ extension AppModel {
     /// What the root host shows, highest priority first. A request that
     /// arrives while a higher one is up waits until it closes.
     var rootPresentation: RootPresentation? {
-        if !settings.hasCompletedOnboarding || router.replayingOnboarding { return .onboarding }
+        if !settings.hasCompletedOnboarding || router.onboardingReplay == .showing { return .onboarding }
+        // The sheet the replay was asked from is leaving: nothing else comes.
+        if router.onboardingReplay == .waitingForSheet { return nil }
         // Existing users (and a walkthrough closed early) accept the Terms of
         // Use before using the app.
         if needsTermsAcceptance { return .termsGate }
@@ -360,7 +376,7 @@ extension AppModel {
     func dismissRootPresentation(_ presentation: RootPresentation) {
         switch presentation {
         case .onboarding:
-            router.replayingOnboarding = false
+            router.onboardingReplay = .none
             if !settings.hasCompletedOnboarding { completeOnboarding() }
         case .settings:
             requestedSettingsPage = nil
@@ -377,6 +393,39 @@ extension AppModel {
             needsProviderSetup = nil
         default:
             if router.item == presentation { router.item = nil }
+        }
+    }
+
+    /// Settings › Help › Show onboarding again. Settings (as a sheet or a
+    /// Settings page request) closes for good, so it doesn't come back after
+    /// the walkthrough.
+    func replayOnboarding() {
+        guard router.onboardingReplay == .none else { return }
+        let overSheet = rootPresentation.map { !$0.isFullScreen } ?? false
+        router.item = nil
+        requestedSettingsPage = nil
+        guard overSheet else {
+            router.onboardingReplay = .showing
+            return
+        }
+        router.onboardingReplay = .waitingForSheet
+        // The sheet's dismissal moves it on; in case it never reports.
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard let self, self.router.onboardingReplay == .waitingForSheet else { return }
+            self.router.onboardingReplay = .showing
+        }
+    }
+
+    /// A root sheet went (its `onDismiss`). UIKit still finishes the
+    /// dismissal for a moment after it reports (iPad form sheets), and a
+    /// cover asked for then is dropped without a word, so it waits a beat.
+    func rootSheetDismissed() {
+        guard router.onboardingReplay == .waitingForSheet else { return }
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: PresentationRouter.settleDelay)
+            guard let self, self.router.onboardingReplay == .waitingForSheet else { return }
+            self.router.onboardingReplay = .showing
         }
     }
 
@@ -471,7 +520,7 @@ struct RouterHost: ViewModifier {
     func body(content: Content) -> some View {
         let alert = app.rootAlert
         content
-            .sheet(item: binding(fullScreen: false)) { presentation in
+            .sheet(item: binding(fullScreen: false), onDismiss: { app.rootSheetDismissed() }) { presentation in
                 view(for: presentation)
             }
             .fullScreenCover(item: binding(fullScreen: true)) { presentation in
@@ -499,7 +548,7 @@ struct RouterHost: ViewModifier {
         switch presentation {
         case .onboarding:
             OnboardingFlow(app: app, initialStep: initialOnboardingStep) {
-                router.replayingOnboarding = false
+                router.onboardingReplay = .none
             }
         case .termsGate:
             TermsGateView(app: app)

@@ -301,6 +301,23 @@ extension DCTheme {
     }
 }
 
+extension View {
+    /// Watch / keep / pin: the state's symbol bounces once when it changes
+    /// (none with Reduce Motion).
+    func dcStateBounce<Value: Equatable>(_ state: Value) -> some View {
+        modifier(StateBounce(state: state))
+    }
+}
+
+private struct StateBounce<Value: Equatable>: ViewModifier {
+    let state: Value
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content.symbolEffect(.bounce, options: .nonRepeating, value: reduceMotion ? nil : state)
+    }
+}
+
 extension DCMotion {
     /// `animation`, or nil when Reduce Motion is on (state changes instantly).
     static func respecting(_ reduceMotion: Bool, _ animation: Animation = DCMotion.smooth) -> Animation? {

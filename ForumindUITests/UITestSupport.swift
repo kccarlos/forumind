@@ -30,7 +30,7 @@ class DCUITestCase: XCTestCase {
         _ arguments: [String] = [],
         orientation: UIDeviceOrientation = .portrait
     ) -> XCUIApplication {
-        XCUIDevice.shared.orientation = orientation
+        XCUIDevice.shared.orientation = Self.resolved(orientation)
         let app = XCUIApplication()
         let wantsOnboarding = arguments.contains("-dc-reset")
             || arguments.contains("-dc-onboarding-step")
@@ -51,6 +51,15 @@ class DCUITestCase: XCTestCase {
     }
 
     // MARK: Device
+
+    /// `TEST_RUNNER_DC_UI_ORIENTATION=landscape` (xcodebuild environment):
+    /// on iPad, tests that don't ask for an orientation run in landscape
+    /// (the split layout) instead of portrait.
+    static func resolved(_ orientation: UIDeviceOrientation) -> UIDeviceOrientation {
+        guard orientation == .portrait, UIDevice.current.userInterfaceIdiom == .pad,
+              ProcessInfo.processInfo.environment["DC_UI_ORIENTATION"] == "landscape" else { return orientation }
+        return .landscapeLeft
+    }
 
     var isPhone: Bool {
         UIDevice.current.userInterfaceIdiom == .phone
@@ -200,8 +209,7 @@ class DCUITestCase: XCTestCase {
         XCTAssertTrue(waitForGone(state, timeout: 5), "The AI drawer did not close.")
     }
 
-    /// Settings: on iPhone from the forum menu (a sheet); in the iPad
-    /// layouts inside the assistant panel.
+    /// Settings from the forum menu (a sheet in every layout).
     func openSettings(in app: XCUIApplication) {
         if usesDrawerLayout(app) { closeDrawer(in: app) }
         openForumMenu(in: app)
@@ -210,18 +218,14 @@ class DCUITestCase: XCTestCase {
         item.tap()
     }
 
-    /// Leaves Settings opened with `openSettings(in:)` (from its root list).
+    /// Leaves Settings opened with `openSettings(in:)` (from its root list):
+    /// a sheet in every layout.
     func closeSettings(in app: XCUIApplication) {
-        if usesDrawerLayout(app) {
-            let done = app.navigationBars.buttons["Done"].firstMatch
-            XCTAssertTrue(done.waitForExistence(timeout: 10))
-            done.tap()
-            return
-        }
-        let back = app.buttons["backToTopic"]
-        XCTAssertTrue(back.waitForExistence(timeout: 10))
-        back.tap()
-        showBrowser(in: app)
+        // (iPad sheets don't always report their bar as a navigation bar.)
+        let barDone = app.navigationBars.buttons["Done"].firstMatch
+        let done = barDone.waitForExistence(timeout: 5) ? barDone : app.buttons["Done"].firstMatch
+        XCTAssertTrue(done.waitForExistence(timeout: 10))
+        done.tap()
     }
 
     /// On iPhone the home, account, sign-in and page controls live in the
@@ -306,6 +310,10 @@ class DCUITestCase: XCTestCase {
         if element.waitForExistence(timeout: 2), element.isHittable { return true }
         for _ in 0..<swipes where !(element.exists && element.isHittable) {
             app.swipeUp()
+        }
+        // Scrolled past it (a short sheet, or under its bar): back down.
+        for _ in 0..<2 where !(element.exists && element.isHittable) {
+            app.swipeDown(velocity: .slow)
         }
         return element.waitForExistence(timeout: 5) && element.isHittable
     }

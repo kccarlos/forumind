@@ -1330,8 +1330,8 @@
         }
       }
     },
-    "%lld topics · about %lld min · two hosts" : {
-      "comment" : "Home podcast card: number of topics, the podcast's length in minutes",
+    "%lld topics · about %lld min · %@" : {
+      "comment" : "Home podcast card: number of topics, the podcast's length in minutes, then which voices read it (Google or on-device)",
       "localizations" : {
         "en" : {
           "variations" : {
@@ -1339,13 +1339,13 @@
               "one" : {
                 "stringUnit" : {
                   "state" : "translated",
-                  "value" : "%1$lld topic · about %2$lld min · two hosts"
+                  "value" : "%1$lld topic · about %2$lld min · %3$@"
                 }
               },
               "other" : {
                 "stringUnit" : {
                   "state" : "translated",
-                  "value" : "%1$lld topics · about %2$lld min · two hosts"
+                  "value" : "%1$lld topics · about %2$lld min · %3$@"
                 }
               }
             }
@@ -1357,7 +1357,7 @@
               "other" : {
                 "stringUnit" : {
                   "state" : "translated",
-                  "value" : "%1$lld 个话题 · 约 %2$lld 分钟 · 两位主持人"
+                  "value" : "%1$lld 个话题 · 约 %2$lld 分钟 · %3$@"
                 }
               }
             }
@@ -1369,7 +1369,7 @@
               "other" : {
                 "stringUnit" : {
                   "state" : "translated",
-                  "value" : "%1$lld 個話題 · 約 %2$lld 分鐘 · 兩位主持人"
+                  "value" : "%1$lld 個話題 · 約 %2$lld 分鐘 · %3$@"
                 }
               }
             }
@@ -1877,22 +1877,6 @@
       }
     },
     "API key" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "API 密钥"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "API 金鑰"
-          }
-        }
-      }
-    },
-    "API keys" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -4002,22 +3986,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "瀏覽器列自動放置"
-          }
-        }
-      }
-    },
-    "Base URL" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "基础 URL"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "基礎 URL"
           }
         }
       }
@@ -6568,22 +6536,6 @@
         }
       }
     },
-    "Each item keeps its most recent edit. A chat you cleared on one device stays cleared on the others." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "每个项目都保留最近一次的修改。在一台设备上清除的聊天，在其他设备上也会保持清除。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "每個項目都保留最近一次的修改。在一台裝置上清除的聊天，在其他裝置上也會保持清除。"
-          }
-        }
-      }
-    },
     "Each search or topic read is one step. More steps can find better answers but take longer and cost more. Default: %lld." : {
       "localizations" : {
         "zh-Hans" : {
@@ -6806,22 +6758,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "輸入網址"
-          }
-        }
-      }
-    },
-    "Enter the address of any Discourse forum, or paste a link to one of its pages." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "输入任意 Discourse 论坛的地址，或粘贴其中某个页面的链接。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "輸入任何 Discourse 論壇的網址，或貼上其中某個頁面的連結。"
           }
         }
       }
@@ -7730,22 +7666,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "論壇由各自的社群經營。無論你是透過 Forumind 閱讀還是發文，令人反感的內容和濫用行為都不被容許。"
-          }
-        }
-      }
-    },
-    "Forums you’ve visited. Swipe left to pin or remove." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "你访问过的论坛。向左轻扫可置顶或移除。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "你造訪過的論壇。向左滑動可釘選或移除。"
           }
         }
       }
@@ -10096,22 +10016,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "有新回覆 · 檢查新回覆"
-          }
-        }
-      }
-    },
-    "Newest change wins" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "以最新更改为准"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "以最新更改為準"
           }
         }
       }
@@ -14007,22 +13911,6 @@
         }
       }
     },
-    "Refresh summaries of watched topics" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "刷新关注的话题的摘要"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "重新整理追蹤話題的摘要"
-          }
-        }
-      }
-    },
     "Reload" : {
       "localizations" : {
         "zh-Hans" : {
@@ -14196,22 +14084,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "從你所有裝置的 iCloud 中移除 Forumind 的資料。此裝置上的資料會保留，並關閉此裝置的同步。"
-          }
-        }
-      }
-    },
-    "Removes Forumind’s data from iCloud on all your devices. Data on this device is kept." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "从你所有设备的 iCloud 中移除 Forumind 的数据。此设备上的数据会保留。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "從你所有裝置的 iCloud 中移除 Forumind 的資料。此裝置上的資料會保留。"
           }
         }
       }
@@ -14477,22 +14349,6 @@
         }
       }
     },
-    "Reports are reviewed within 24 hours." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "举报会在 24 小时内处理。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "檢舉會在 24 小時內處理。"
-          }
-        }
-      }
-    },
     "Reports go to the Forumind developer by email and are reviewed within 24 hours. Offending content is removed from the app for everyone." : {
       "localizations" : {
         "zh-Hans" : {
@@ -14570,22 +14426,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "要重置所有設定嗎？"
-          }
-        }
-      }
-    },
-    "Reset settings to defaults" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "将设置恢复为默认值"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "將設定回復為預設值"
           }
         }
       }
@@ -15030,22 +14870,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "捲動到最新訊息"
-          }
-        }
-      }
-    },
-    "Search and suggestions" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "搜索与建议"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "搜尋與建議"
           }
         }
       }
@@ -16082,22 +15906,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在說話"
-          }
-        }
-      }
-    },
-    "Spotlight" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "聚焦搜索"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Spotlight"
           }
         }
       }
@@ -17349,22 +17157,6 @@
         }
       }
     },
-    "Tap Edit to change the order." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "轻点“编辑”可更改顺序。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "點一下「編輯」可更改順序。"
-          }
-        }
-      }
-    },
     "Tap a forum to open it, or pin it to keep it here." : {
       "localizations" : {
         "zh-Hans" : {
@@ -18020,6 +17812,23 @@
         }
       }
     },
+    "The summary didn’t finish" : {
+      "comment" : "Drawer: a summary run failed; the reason follows",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "摘要没有完成"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "摘要未能完成"
+          }
+        }
+      }
+    },
     "The summary failed." : {
       "comment" : "Digest card error without details",
       "localizations" : {
@@ -18132,22 +17941,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法朗讀這一章（%@）。"
-          }
-        }
-      }
-    },
-    "The work queue and activity log, cached forum pages, the browser bar position, and whether sync is on here." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "任务队列和活动记录、缓存的论坛页面、浏览器栏位置，以及此设备是否开启同步。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "任務佇列和活動記錄、快取的論壇頁面、瀏覽器列位置，以及此裝置是否開啟同步。"
           }
         }
       }
@@ -18829,22 +18622,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "要閱讀的話題"
-          }
-        }
-      }
-    },
-    "Topics you read and their summaries can be found in Spotlight, and Siri can suggest them again. Both stay on this device. Turning Spotlight off removes Forumind’s entries from Spotlight." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "你读过的话题及其摘要可以在聚焦搜索中找到，Siri 也可以再次建议它们。两者都只保留在本设备上。关闭聚焦搜索会从中移除 Forumind 的条目。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "你讀過的話題及其摘要可以在 Spotlight 中找到，Siri 也可以再次建議它們。兩者都只保留在本裝置上。關閉 Spotlight 會從中移除 Forumind 的項目。"
           }
         }
       }
@@ -19618,22 +19395,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已是最新"
-          }
-        }
-      }
-    },
-    "Updates the saved summary when new replies arrive." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "有新回复时更新已保存的摘要。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "有新回覆時更新已儲存的摘要。"
           }
         }
       }
@@ -20481,22 +20242,6 @@
         }
       }
     },
-    "Watch a topic from the assistant’s ⋯ menu. Watched topics are checked every 30 minutes while the app is open and, when iOS allows, in the background." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "从助手的 ⋯ 菜单中关注话题。App 打开时，每 30 分钟检查一次关注的话题；在 iOS 允许时也会在后台检查。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "從助理的 ⋯ 選單中追蹤話題。App 開啟時，每 30 分鐘檢查一次追蹤的話題；在 iOS 允許時也會在背景檢查。"
-          }
-        }
-      }
-    },
     "Watch this topic" : {
       "localizations" : {
         "zh-Hans" : {
@@ -20558,22 +20303,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "追蹤的話題"
-          }
-        }
-      }
-    },
-    "Watched topics & notifications" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "关注的话题与通知"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "追蹤的話題與通知"
           }
         }
       }
@@ -20813,22 +20542,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "功能介紹"
-          }
-        }
-      }
-    },
-    "What stays on this device" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "仅保留在此设备上的内容"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "僅保留在此裝置上的內容"
           }
         }
       }
@@ -21312,22 +21025,6 @@
         }
       }
     },
-    "Your data is stored in your own iCloud account and encrypted with keys only your devices have. Neither Apple nor the developer can read it." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "你的数据存储在你自己的 iCloud 账户中，并用只有你的设备拥有的密钥加密。Apple 和开发者都无法读取。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "你的資料儲存在你自己的 iCloud 帳號中，並用只有你的裝置擁有的金鑰加密。Apple 和開發者都無法讀取。"
-          }
-        }
-      }
-    },
     "Your data stays yours" : {
       "localizations" : {
         "zh-Hans" : {
@@ -21392,22 +21089,6 @@
         }
       }
     },
-    "Your forums, summaries and chats (with their instructions and kept items), Ask the forum runs, watched topics, and settings. API keys sync through iCloud Keychain." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "你的论坛、摘要和聊天（包括它们的指令和保留的项目）、问论坛的查询、关注的话题以及设置。API 密钥通过 iCloud 钥匙串同步。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "你的論壇、摘要和聊天（包括它們的指示和保留的項目）、問論壇的查詢、追蹤的話題以及設定。API 金鑰透過 iCloud 鑰匙圈同步。"
-          }
-        }
-      }
-    },
     "Your forums, summaries and chats sync across your iPhone and iPad through iCloud — end-to-end encrypted." : {
       "localizations" : {
         "zh-Hans" : {
@@ -21420,22 +21101,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你的論壇、摘要和聊天透過 iCloud 在 iPhone 和 iPad 之間同步，全程端對端加密。"
-          }
-        }
-      }
-    },
-    "Your forums, summaries and chats sync across your iPhone and iPad through your own iCloud account, end-to-end encrypted." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "你的论坛、摘要和聊天通过你自己的 iCloud 账户在 iPhone 和 iPad 之间同步，并经过端到端加密。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "你的論壇、摘要和聊天透過你自己的 iCloud 帳號在 iPhone 和 iPad 之間同步，並經過端對端加密。"
           }
         }
       }
@@ -22378,6 +22043,508 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "允許 AI"
+          }
+        }
+      }
+    },
+    "Refresh their summaries" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "刷新它们的摘要"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新整理它們的摘要"
+          }
+        }
+      }
+    },
+    "When new replies arrive, with your Summaries & chat model" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有新回复时，使用你的“摘要与聊天”模型"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有新回覆時，使用你的「摘要與聊天」模型"
+          }
+        }
+      }
+    },
+    "Checked when you open Forumind, every 30 minutes while it’s open, and now and then in the background." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开 Forumind 时检查；应用打开期间每 30 分钟检查一次；也会不时在后台检查。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟 Forumind 時檢查；App 開啟期間每 30 分鐘檢查一次；也會不時在背景檢查。"
+          }
+        }
+      }
+    },
+    "Watching · %lld" : {
+      "comment" : "Settings › Watched topics section header with the number of watched topics",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关注中 · %lld"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "追蹤中 · %lld"
+          }
+        }
+      }
+    },
+    "Swipe left to stop watching. Watch a topic from the drawer’s ⋯ menu or the forum menu." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "向左轻扫可停止关注。可在抽屉的 ⋯ 菜单或论坛菜单中关注话题。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "向左滑動可停止追蹤。可在抽屜的 ⋯ 選單或論壇選單中追蹤話題。"
+          }
+        }
+      }
+    },
+    "Pin forums to keep them on Home and in the daily digest." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "置顶论坛，让它们显示在“主页”和每日摘要中。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "釘選論壇，讓它們顯示在「首頁」和每日摘要中。"
+          }
+        }
+      }
+    },
+    "Pinned forums are on Home and in the daily digest, in this order." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "置顶的论坛会按此顺序显示在“主页”和每日摘要中。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "釘選的論壇會依此順序顯示在「首頁」和每日摘要中。"
+          }
+        }
+      }
+    },
+    "Other forums you visited" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你访问过的其他论坛"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你造訪過的其他論壇"
+          }
+        }
+      }
+    },
+    "Swipe left to remove a forum. You can keep or delete its saved summaries and chats." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "向左轻扫可移除论坛。可选择保留或删除它已保存的摘要和聊天。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "向左滑動可移除論壇。可選擇保留或刪除它已儲存的摘要和聊天。"
+          }
+        }
+      }
+    },
+    "Any Discourse forum, including subfolder installs like example.com/forum. You can also paste a link to one of its pages." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "任意 Discourse 论坛，包括 example.com/forum 这样的子目录安装。也可以粘贴其中某个页面的链接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "任何 Discourse 論壇，包括 example.com/forum 這類子目錄安裝。也可以貼上其中某個頁面的連結。"
+          }
+        }
+      }
+    },
+    "End-to-end encrypted in your own iCloud account. No server of ours in between." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在你自己的 iCloud 账户中端到端加密。中间没有我们的服务器。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在你自己的 iCloud 帳號中端對端加密。中間沒有我們的伺服器。"
+          }
+        }
+      }
+    },
+    "Keys" : {
+      "comment" : "Settings › iCloud Sync section header",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "密钥"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "金鑰"
+          }
+        }
+      }
+    },
+    "Through iCloud Keychain, so you paste a key once for all your devices. Deleting a key in the app deletes it on your other devices too." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通过 iCloud 钥匙串同步，只需粘贴一次密钥，所有设备都能用。在 App 中删除密钥也会在你的其他设备上删除。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "透過 iCloud 鑰匙圈同步，只需貼上一次金鑰，所有裝置都能使用。在 App 中刪除金鑰也會在你的其他裝置上刪除。"
+          }
+        }
+      }
+    },
+    "Stays on this device" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "留在本设备"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "留在此裝置"
+          }
+        }
+      }
+    },
+    "Forums and pins · summaries and kept chats · Ask the forum answers · watched topics · most settings" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "论坛和置顶 · 摘要和保留的聊天 · “问论坛”的回答 · 关注的话题 · 大部分设置"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "論壇和釘選 · 摘要和保留的聊天 · 「問論壇」的回答 · 追蹤的話題 · 大部分設定"
+          }
+        }
+      }
+    },
+    "Daily digests and podcasts · voice minutes and consent · daily digest on/off and notifications · browser bar position" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每日摘要和播客 · 语音分钟数和同意 · 每日摘要的开关和通知 · 浏览器工具栏位置"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每日摘要和 Podcast · 語音分鐘數和同意 · 每日摘要的開關和通知 · 瀏覽器工具列位置"
+          }
+        }
+      }
+    },
+    "Delete iCloud Data…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除 iCloud 数据…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "刪除 iCloud 資料…"
+          }
+        }
+      }
+    },
+    "Removes Forumind’s data from iCloud. What’s on this device stays." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从 iCloud 中移除 Forumind 的数据。本设备上的数据会保留。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "從 iCloud 移除 Forumind 的資料。此裝置上的資料會保留。"
+          }
+        }
+      }
+    },
+    "Advanced" : {
+      "comment" : "Settings › provider page section header for the server address",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "高级"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "進階"
+          }
+        }
+      }
+    },
+    "Test & Save" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "测试并保存"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "測試並儲存"
+          }
+        }
+      }
+    },
+    "Show in Spotlight" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在“聚焦”中显示"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在「Spotlight」中顯示"
+          }
+        }
+      }
+    },
+    "Topics you read and their saved summaries" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你读过的话题及其已保存的摘要"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你讀過的話題及其已儲存的摘要"
+          }
+        }
+      }
+    },
+    "Lets Siri suggest topics you read" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "让 Siri 建议你读过的话题"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "讓 Siri 建議你讀過的話題"
+          }
+        }
+      }
+    },
+    "Search & suggestions" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索与建议"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜尋與建議"
+          }
+        }
+      }
+    },
+    "Both stay on this device. Turning Spotlight off removes Forumind’s entries from Spotlight." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "两者都只保留在本设备上。关闭“聚焦”会移除 Forumind 在“聚焦”中的条目。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "兩者都只保留在此裝置上。關閉 Spotlight 會移除 Forumind 在 Spotlight 中的項目。"
+          }
+        }
+      }
+    },
+    "Clear All Saved Data…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "清除所有已保存的数据…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "清除所有已儲存的資料…"
+          }
+        }
+      }
+    },
+    "Reset Settings to Defaults…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将设置恢复为默认值…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "將設定還原為預設值…"
+          }
+        }
+      }
+    },
+    "Safety" : {
+      "comment" : "Settings › Data & privacy section header: blocked users, filtered words, terms",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安全"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安全"
+          }
+        }
+      }
+    },
+    "Blocked users’ posts are hidden in the browser and left out of everything the AI reads. Reports are reviewed within 24 hours." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "被屏蔽用户的帖子会在浏览器中隐藏，AI 读取的所有内容中也不包含他们。举报会在 24 小时内审核。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "被封鎖使用者的貼文會在瀏覽器中隱藏，AI 讀取的所有內容中也不包含他們。檢舉會在 24 小時內審核。"
+          }
+        }
+      }
+    },
+    "Ask the forum is searching" : {
+      "comment" : "Accessibility value of the AI panel toggle while its ring shows an Ask the forum search running",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“问论坛”正在搜索"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「問論壇」正在搜尋"
+          }
+        }
+      }
+    },
+    "With the assistant beside the page, the bar is always at the top: Top and Bottom apply to the single-column layout." : {
+      "comment" : "Settings › Browser footer on iPad: the bar position setting has no effect in the side-by-side layout",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "助手在页面旁边时，工具栏始终在顶部：“顶部”和“底部”只适用于单栏布局。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "助理在頁面旁邊時，工具列一律在頂部：「頂部」和「底部」只適用於單欄佈局。"
           }
         }
       }

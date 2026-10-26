@@ -26,9 +26,18 @@ final class BrowseUITests: DCUITestCase {
         attachText(state.label, named: "state after landing")
         XCTAssertTrue(landed, "The page didn't land on post \(post) with it highlighted: \(state.label)")
 
-        // Scrolling minimizes the bar, which shrinks the cards to a chip.
         let cards = any(app, "resultCards")
         let chip = app.buttons["resultCardsChip"]
+        // Split layout with the panel up: the cards are the panel's chip, not
+        // also a strip over the page (audit A9); hiding the panel brings the strip.
+        let panel = any(app, "aiPanel")
+        if !usesDrawerLayout(app), panel.exists {
+            XCTAssertTrue(waitOrDump(any(app, "drawerCardsChip"), timeout: 60, in: app), "No cards chip in the panel.")
+            XCTAssertFalse(cards.exists || chip.exists, "Strip and chip at once.")
+            app.buttons["aiPanelToggle"].tap()
+            XCTAssertTrue(waitForGone(panel, timeout: 5))
+        }
+        // Scrolling minimizes the bar, which shrinks the cards to a chip.
         let shown = wait(timeout: 60) { cards.exists || chip.exists }
         if !shown { attachTree(app) }
         XCTAssertTrue(shown, "No result cards after the search.")

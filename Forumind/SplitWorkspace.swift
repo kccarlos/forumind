@@ -91,10 +91,29 @@ struct SplitMoreMenu: View {
     }
 }
 
-/// Hide or show the AI panel (⌥⌘0).
+/// Hide or show the AI panel (⌥⌘0), with the AI button's research ring and
+/// new-replies dot (the split layout has no hint row).
 struct SplitPanelToggle: View {
+    @ObservedObject var app: AppModel
     let isShown: Bool
     let action: () -> Void
+
+    private var showsNewRepliesDot: Bool { app.showsNewRepliesDot }
+
+    /// "Hidden, New replies, Ask the forum is searching": what the ring and
+    /// the dot show.
+    private var accessibilityValue: String {
+        var parts = [isShown ? String(localized: "Shown") : String(localized: "Hidden")]
+        if showsNewRepliesDot {
+            parts.append(String(localized: "New replies", comment: "Accessibility value of the iPhone AI button while its dot says the topic has new replies"))
+        }
+        if app.activeResearch != nil {
+            parts.append(String(localized: "Ask the forum is searching", comment: "Accessibility value of the AI panel toggle while its ring shows an Ask the forum search running"))
+        } else if app.readyAnswer != nil {
+            parts.append(String(localized: "Answer ready", comment: "AI drawer status row: an Ask the forum answer finished"))
+        }
+        return parts.joined(separator: ", ")
+    }
 
     var body: some View {
         Button {
@@ -106,8 +125,12 @@ struct SplitPanelToggle: View {
                 .foregroundStyle(isShown ? AnyShapeStyle(DCTheme.brandGradient) : AnyShapeStyle(.primary))
         }
         .buttonStyle(DCIconButtonStyle())
+        .overlay { ResearchRing(app: app) }
+        .overlay(alignment: .topTrailing) {
+            if showsNewRepliesDot { NewRepliesDot() }
+        }
         .accessibilityLabel(isShown ? Text("Hide AI panel") : Text("Show AI panel"))
-        .accessibilityValue(isShown ? "Shown" : "Hidden")
+        .accessibilityValue(Text(verbatim: accessibilityValue))
         .accessibilityIdentifier("aiPanelToggle")
     }
 }
@@ -156,7 +179,7 @@ struct WorkspaceView: View {
             actions: actions,
             addressFocusRequest: addressFocusRequest,
             width: width,
-            split: split ? SplitBarContext(panelShown: showsPanel, togglePanel: togglePanel) : nil
+            split: split ? SplitBarContext(panelShown: showsPanel, togglePanel: app.toggleAIView) : nil
         ) {
             HStack(spacing: 0) {
                 BrowserContent(
@@ -172,15 +195,6 @@ struct WorkspaceView: View {
                 if showsPanel { panel }
             }
         }
-        // Collapsed on Home, shown on pages: a hide or show by the reader
-        // holds until Home comes or goes.
-        .onChange(of: browser.showsForumsHome) {
-            router.splitPanelMode = .auto
-        }
-    }
-
-    private func togglePanel() {
-        router.splitPanelMode = router.splitPanelMode.toggled(onHome: browser.showsForumsHome)
     }
 
     @ViewBuilder

@@ -47,6 +47,17 @@ final class IPadLayoutTests: XCTestCase {
         XCTAssertEqual(WorkspaceMetrics.panelWidth(preferred: 540, containerWidth: 700), DCTheme.panelMinimumWidth)
     }
 
+    /// Space is a key command only while an episode is loaded and no text
+    /// is being edited; otherwise it types or scrolls (audit A5).
+    func testSpacePlaysOrPausesOnlyWithAnEpisodeAndNoTextBeingEdited() {
+        XCTAssertTrue(PlayPauseShortcut.isEnabled(episodeLoaded: true, editingText: false))
+        XCTAssertFalse(PlayPauseShortcut.isEnabled(episodeLoaded: true, editingText: true))
+        XCTAssertFalse(PlayPauseShortcut.isEnabled(episodeLoaded: false, editingText: false))
+        XCTAssertFalse(PlayPauseShortcut.isEnabled(episodeLoaded: false, editingText: true))
+        // No episode at launch: not registered.
+        XCTAssertFalse(AppModel().playPauseShortcut.isEnabled)
+    }
+
     func testSplitPanelIsCollapsedOnHomeAndShownOnPagesUntilToggled() {
         XCTAssertFalse(SplitPanelMode.auto.isVisible(onHome: true))
         XCTAssertTrue(SplitPanelMode.auto.isVisible(onHome: false))

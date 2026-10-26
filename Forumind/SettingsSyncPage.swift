@@ -156,18 +156,13 @@ struct SettingsSyncPage: View {
     var body: some View {
         Form {
             Section {
-                SyncStatusSummary(presentation: presentation) { sync.syncNow() }
                 Toggle("Sync with iCloud", isOn: Binding(
                     get: { isEnabled },
                     set: { sync.setEnabled($0) }
                 ))
                 .accessibilityIdentifier("syncEnabled")
-            } footer: {
-                Text("Your forums, summaries and chats sync across your iPhone and iPad through your own iCloud account, end-to-end encrypted.")
-            }
-
-            if canSync {
-                Section {
+                SyncStatusRow(presentation: presentation) { sync.syncNow() }
+                if canSync {
                     LabeledContent("Last synced") {
                         if let lastSyncedAt {
                             TimelineView(.periodic(from: .now, by: 30)) { _ in
@@ -186,21 +181,28 @@ struct SettingsSyncPage: View {
                     .disabled(status == .syncing)
                     .accessibilityIdentifier("syncNow")
                 }
+            } footer: {
+                Text("End-to-end encrypted in your own iCloud account. No server of ours in between.")
             }
 
             Section {
                 Toggle("Sync API keys", isOn: syncAPIKeysBinding)
                     .accessibilityIdentifier("syncAPIKeys")
             } header: {
-                Text("API keys")
+                Text("Keys")
             } footer: {
                 Text(app.settings.syncAPIKeys
-                    ? "Keys are stored in iCloud Keychain, so every device signed in to your Apple Account has them. Deleting a key in the app deletes it on your other devices too."
+                    ? "Through iCloud Keychain, so you paste a key once for all your devices. Deleting a key in the app deletes it on your other devices too."
                     : "Keys stay in this device’s Keychain. Keys already in iCloud Keychain are left there for your other devices; turning this off doesn’t delete them.")
             }
 
-            Section {
-                SyncExplainer()
+            Section("What syncs") {
+                Text("Forums and pins · summaries and kept chats · Ask the forum answers · watched topics · most settings")
+                    .font(.subheadline)
+            }
+            Section("Stays on this device") {
+                Text("Daily digests and podcasts · voice minutes and consent · daily digest on/off and notifications · browser bar position")
+                    .font(.subheadline)
             }
 
             Section {
@@ -208,7 +210,7 @@ struct SettingsSyncPage: View {
                     confirmingDelete = true
                 } label: {
                     HStack {
-                        Label("Delete iCloud data", systemImage: "trash")
+                        Text("Delete iCloud Data…")
                         if deleting {
                             Spacer()
                             ProgressView()
@@ -218,7 +220,7 @@ struct SettingsSyncPage: View {
                 .disabled(deleting)
                 .accessibilityIdentifier("syncDeleteCloudData")
             } footer: {
-                Text("Removes Forumind’s data from iCloud on all your devices. Data on this device is kept.")
+                Text("Removes Forumind’s data from iCloud. What’s on this device stays.")
             }
         }
         .formStyle(.grouped)
@@ -266,93 +268,38 @@ struct SettingsSyncPage: View {
     }
 }
 
-/// Icon, title and fix for a sync status, with "Sync now" after an error.
-struct SyncStatusSummary: View {
+/// The "Status" row: the status as its value (coloured), its explanation
+/// below, and "Sync now" after an error.
+struct SyncStatusRow: View {
     let presentation: SyncStatusPresentation
-    var iconSize: CGFloat = 40
     let perform: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: DCTheme.spacingM) {
-            HStack(alignment: .top, spacing: DCTheme.spacingM) {
-                Group {
-                    if presentation.isBusy {
-                        ProgressView()
-                            .frame(width: iconSize, height: iconSize)
-                            .background(presentation.tint.opacity(0.14), in: RoundedRectangle(cornerRadius: iconSize * 0.28, style: .continuous))
-                    } else {
-                        OnboardingIconTile(symbol: presentation.symbol, tint: presentation.tint, size: iconSize)
-                    }
-                }
-                VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: DCTheme.spacingS) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: DCTheme.spacingS) {
+                    Text("Status")
+                    Spacer(minLength: DCTheme.spacingS)
+                    if presentation.isBusy { ProgressView().controlSize(.small) }
                     Text(presentation.title)
-                        .font(.headline)
-                        .foregroundStyle(presentation.tint == .secondary ? Color.primary : presentation.tint)
-                    if let detail = presentation.detail {
-                        Text(detail)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(presentation.tint)
+                        .multilineTextAlignment(.trailing)
                 }
-                Spacer(minLength: 0)
+                if let detail = presentation.detail {
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("syncStatus")
             if presentation.action != nil, let title = presentation.actionTitle {
                 Button(title, action: perform)
-                    .buttonStyle(DCActionButtonStyle(prominent: false))
                     .accessibilityIdentifier("syncStatusAction")
             }
         }
-        .padding(.vertical, DCTheme.spacingXS)
-    }
-}
-
-/// "What syncs": what syncs, what stays, and privacy.
-struct SyncExplainer: View {
-    /// DEBUG `-dc-sync-explain` starts expanded (screenshots).
-    @State private var expanded: Bool = {
-        #if DEBUG
-        OnboardingDebug.arguments.contains("-dc-sync-explain")
-        #else
-        false
-        #endif
-    }()
-
-    var body: some View {
-        DisclosureGroup(isExpanded: $expanded) {
-            VStack(alignment: .leading, spacing: DCTheme.spacingL) {
-                OnboardingFeatureRow(
-                    symbol: "arrow.triangle.2.circlepath",
-                    tint: DCTheme.brandBlue,
-                    title: String(localized: "What syncs"),
-                    detail: String(localized: "Your forums, summaries and chats (with their instructions and kept items), Ask the forum runs, watched topics, and settings. API keys sync through iCloud Keychain.")
-                )
-                OnboardingFeatureRow(
-                    symbol: "iphone",
-                    tint: DCTheme.chatTint,
-                    title: String(localized: "What stays on this device"),
-                    detail: String(localized: "The work queue and activity log, cached forum pages, the browser bar position, and whether sync is on here.")
-                )
-                OnboardingFeatureRow(
-                    symbol: "lock.fill",
-                    tint: DCTheme.brandPurple,
-                    title: String(localized: "End-to-end encrypted"),
-                    detail: String(localized: "Your data is stored in your own iCloud account and encrypted with keys only your devices have. Neither Apple nor the developer can read it.")
-                )
-                OnboardingFeatureRow(
-                    symbol: "arrow.left.arrow.right",
-                    tint: DCTheme.success,
-                    title: String(localized: "Newest change wins"),
-                    detail: String(localized: "Each item keeps its most recent edit. A chat you cleared on one device stays cleared on the others.")
-                )
-            }
-            .padding(.vertical, DCTheme.spacingS)
-        } label: {
-            Label("What syncs", systemImage: "info.circle")
-        }
-        .accessibilityIdentifier("syncHowItWorks")
     }
 }
 

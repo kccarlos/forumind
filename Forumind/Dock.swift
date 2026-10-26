@@ -110,14 +110,6 @@ extension AppModel {
             $0.type == .agent && $0.status == .completed && ($0.completedAt ?? .distantPast) > router.answersSeenAt
         }
     }
-
-    /// Opens the drawer on the finished answer.
-    func showAnswerReady() {
-        assistantMode = .agent
-        showSelectedAgentRun()
-        router.answersSeenAt = Date()
-        router.openDrawer(at: .medium)
-    }
 }
 
 // MARK: - Hint row and the layer (one source for the Dock and the AI button)
@@ -147,12 +139,18 @@ extension AppModel {
         return DrawerHint.row(drawerHintInput, tipPending: router.summarizeTipPending)
     }
 
+    /// The AI button's (split: the panel toggle's) dot. Drawer layout: new
+    /// replies while another row holds the hint row's place. Split layout
+    /// (no hint row): new replies while the panel is hidden.
+    var showsNewRepliesDot: Bool {
+        if router.usesDrawer { return bottomLayer.showsNewRepliesDot(hint: drawerHint) }
+        return DrawerHint.showsSplitNewRepliesDot(drawerHintInput, panelShown: isAIViewShown)
+    }
+
     /// What sits at the bottom of the page now (§8.1).
     var bottomLayer: BottomLayer {
-        let showsHome = browser.showsForumsHome
         return BottomLayer.resolve(
-            drawerOpen: router.drawerPhase.isPresented
-                || (router.splitLayout == true && router.splitPanelMode.isVisible(onHome: showsHome)),
+            drawerOpen: isAIViewShown,
             voiceShowing: voice.showsBar,
             answerReady: activeResearch == nil && readyAnswer != nil,
             podcastPlaying: podcast.isPlayingEpisode && !podcast.player.isSuspendedForVoice,
@@ -164,7 +162,7 @@ extension AppModel {
     /// same summarize / check new replies / setup the drawer offers; a second
     /// tap while a summary runs does nothing more).
     func performDrawerHint(_ action: DrawerHint.Action) {
-        router.openDrawer(at: .medium)
+        guard showAIView() else { return }
         switch action {
         case .summarize, .checkNew:
             guard currentTopic != nil, !drawerHintInput.summaryRunning else { return }
@@ -235,8 +233,9 @@ struct DockLayer: View {
 
     var body: some View {
         VStack(alignment: floatsTrailing ? .trailing : .center, spacing: DCTheme.spacingS) {
-            // Under the drawer the cards are a chip in its status row.
-            if !showsHome, !router.drawerPhase.isPresented {
+            // While the drawer or the panel is up the cards are a chip in
+            // its status row (`DrawerStatusRow`), not both.
+            if !showsHome, !app.isAIViewShown {
                 ResultCardsOverlay(app: app, browser: browser, voice: voice)
             }
             DockContainer {
@@ -277,7 +276,7 @@ private struct DockAnswerReadyRow: View {
     var body: some View {
         Button {
             DCHaptics.tap()
-            app.showAnswerReady()
+            if let record = app.readyAnswer { app.showAnswer(for: record) }
         } label: {
             HStack(spacing: DCTheme.spacingS) {
                 Image(systemName: "checkmark.circle.fill")
@@ -310,7 +309,7 @@ private struct DockHintRow: View {
         HStack(spacing: 0) {
             Button {
                 DCHaptics.tap()
-                app.router.openDrawer(at: .medium)
+                app.showAIView()
             } label: {
                 HStack(spacing: DCTheme.spacingS) {
                     if hint.isTip {

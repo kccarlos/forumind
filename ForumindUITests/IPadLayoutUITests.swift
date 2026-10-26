@@ -141,6 +141,18 @@ final class IPadLayoutUITests: DCUITestCase {
         XCTAssertTrue(wait(timeout: 3) { abs(relaunched.frame.midX - before) < 4 }, "Double-tap should reset the width.")
     }
 
+    /// The split layout's panel toggle carries the AI button's research
+    /// ring (audit A8).
+    func testThePanelToggleShowsTheResearchRing() throws {
+        try skipUnlessPad("split layout")
+        let app = launch(sample + ["-dc-agent-running"], orientation: .landscapeLeft)
+        let toggle = app.buttons["aiPanelToggle"]
+        XCTAssertTrue(waitOrDump(toggle, timeout: 20, in: app))
+        XCTAssertTrue(wait(timeout: 10) { (toggle.value as? String)?.contains("Ask the forum is searching") == true }
+                      || !(Locale.preferredLanguages.first?.hasPrefix("en") ?? true),
+                      "No research ring on the panel toggle: \(toggle.value ?? "")")
+    }
+
     // MARK: Keyboard
 
     func testKeyboardShortcutsDriveTheWorkspace() throws {
@@ -182,10 +194,28 @@ final class IPadLayoutUITests: DCUITestCase {
         XCTAssertTrue(any(app, "settingsRoot").waitForExistence(timeout: 5), "⌘, should open Settings.")
         snapshot("keyboard-settings")
         app.typeKey(".", modifierFlags: .command)
-        XCTAssertTrue(title.waitForExistence(timeout: 5), "Back should return to the assistant.")
+        XCTAssertTrue(waitForGone(any(app, "settingsRoot"), timeout: 5), "⌘. should close Settings.")
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+
+        // Hiding the panel on History: it comes back on the topic.
+        app.typeKey("y", modifierFlags: [.command, .shift])
+        XCTAssertTrue(app.buttons["backToTopic"].waitForExistence(timeout: 5))
+        app.typeKey("0", modifierFlags: [.command, .option])
+        XCTAssertTrue(waitForGone(panel, timeout: 3))
+        app.typeKey("0", modifierFlags: [.command, .option])
+        XCTAssertTrue(title.waitForExistence(timeout: 5), "The panel should come back on the topic, not Settings.")
 
         app.typeKey("h", modifierFlags: [.command, .shift])
         XCTAssertTrue(any(app, "home").waitForExistence(timeout: 5), "⌘⇧H should show the Forums home.")
+        // On Home ⌘, and ⇧⌘Y open their sheets (no panel there).
+        app.typeKey(",", modifierFlags: .command)
+        XCTAssertTrue(any(app, "settingsRoot").waitForExistence(timeout: 5), "⌘, should open Settings on Home.")
+        app.typeKey(".", modifierFlags: .command)
+        XCTAssertTrue(waitForGone(any(app, "settingsRoot"), timeout: 5))
+        app.typeKey("y", modifierFlags: [.command, .shift])
+        XCTAssertTrue(app.buttons["historySegment-all"].waitForExistence(timeout: 5), "⇧⌘Y should open History on Home.")
+        app.typeKey(".", modifierFlags: .command)
+        XCTAssertTrue(waitForGone(app.buttons["historySegment-all"], timeout: 5))
         app.typeKey("[", modifierFlags: .command)
         XCTAssertTrue(waitForGone(any(app, "home"), timeout: 5), "⌘[ should go back to the page.")
     }

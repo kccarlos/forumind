@@ -64,6 +64,22 @@ final class DrawerHintTests: XCTestCase {
 
     // MARK: Citations
 
+    /// Split layout (no hint row): the panel toggle's dot says "new
+    /// replies" while the panel is hidden (audit A8).
+    func testTheSplitToggleShowsTheNewRepliesDotOnlyWithThePanelHidden() {
+        var stale = DrawerHint.Input(pageState: .topic)
+        stale.hasSummary = true
+        stale.totalPosts = 20
+        stale.summaryPostCount = 14
+        XCTAssertTrue(DrawerHint.showsSplitNewRepliesDot(stale, panelShown: false))
+        XCTAssertFalse(DrawerHint.showsSplitNewRepliesDot(stale, panelShown: true))
+        XCTAssertFalse(DrawerHint.showsSplitNewRepliesDot(DrawerHint.Input(pageState: .topic), panelShown: false),
+                       "no summary yet: nothing new")
+        var notSetUp = stale
+        notSetUp.providerReady = false
+        XCTAssertFalse(DrawerHint.showsSplitNewRepliesDot(notSetUp, panelShown: false))
+    }
+
     func testCitationsAreLinkedOutsideCodeAndHeadings() {
         let text = "## Tips #2\nFixed it #37; see `#5` and #9999 and a#4 and [#6](x).\n```\n#7\n```"
         let linked = PostCitations.linked(text, maximum: 100)

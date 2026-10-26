@@ -13,6 +13,9 @@ struct ResultCardsOverlay: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
+    /// Cards that have shown once; only new ones rise in.
+    @State private var revealed: Set<BrowseItem.ID> = []
+
     private var cursor: BrowseCursor { app.browseCursor }
 
     /// Collapsed by the user, or while the bar is minimized.
@@ -69,6 +72,11 @@ struct ResultCardsOverlay: View {
                             Task { await app.openCard(index, includeContent: false) }
                         }
                         .id(index)
+                        .modifier(ResultCardReveal(
+                            order: index,
+                            isNew: !revealed.contains(item.id),
+                            reduceMotion: reduceMotion
+                        ) { revealed.insert(item.id) })
                     }
                 }
                 .scrollTargetLayout()
@@ -194,7 +202,9 @@ struct ResultCardsOverlay: View {
             .background(.regularMaterial, in: Capsule())
             .overlay { Capsule().stroke(DCTheme.border) }
             .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
-            .contentShape(Capsule())
+            // 44 pt to tap; the capsule stays 36 pt.
+            .frame(minHeight: DCTheme.controlHeight)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .hoverEffect(.lift)
@@ -248,6 +258,51 @@ private struct NoScrollEdgeEffect: ViewModifier {
 }
 
 /// One numbered card: title, post number and author, one line of text.
+/// New cards rise 12 pt into place, 40 ms after each other (a spring);
+/// with Reduce Motion they only fade in.
+enum ResultCardMotion {
+    static let rise: CGFloat = 12
+    static let stagger: TimeInterval = 0.04
+    /// Cards after the eighth come in together with it.
+    static let staggeredCards = 8
+
+    static func delay(order: Int, reduceMotion: Bool) -> TimeInterval {
+        reduceMotion ? 0 : stagger * Double(min(max(order, 0), staggeredCards))
+    }
+
+    static func offset(revealed: Bool, reduceMotion: Bool) -> CGFloat {
+        revealed || reduceMotion ? 0 : rise
+    }
+}
+
+private struct ResultCardReveal: ViewModifier {
+    let order: Int
+    let isNew: Bool
+    let reduceMotion: Bool
+    let didShow: () -> Void
+    @State private var shown: Bool
+
+    init(order: Int, isNew: Bool, reduceMotion: Bool, didShow: @escaping () -> Void) {
+        self.order = order
+        self.isNew = isNew
+        self.reduceMotion = reduceMotion
+        self.didShow = didShow
+        _shown = State(initialValue: !isNew)
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(shown ? 1 : 0)
+            .offset(y: ResultCardMotion.offset(revealed: shown, reduceMotion: reduceMotion))
+            .onAppear {
+                guard !shown else { return }
+                let delay = ResultCardMotion.delay(order: order, reduceMotion: reduceMotion)
+                withAnimation((reduceMotion ? DCMotion.quick : DCMotion.spring).delay(delay)) { shown = true }
+                didShow()
+            }
+    }
+}
+
 private struct ResultCard: View {
     let number: Int
     let count: Int

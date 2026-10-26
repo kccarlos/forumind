@@ -2,8 +2,9 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
+/// The assistant's screens shown as a sheet (Post & responses; History and
+/// Settings over Home and in the drawer layout).
 enum ExpandedPanelRoute: String, Identifiable {
-    case topic
     case post
     case history
     case settings
@@ -12,7 +13,6 @@ enum ExpandedPanelRoute: String, Identifiable {
 
     var title: String {
         switch self {
-        case .topic: String(localized: "Assistant")
         case .post: String(localized: "Post & responses")
         case .history: String(localized: "History", comment: "Screen title: saved summaries, chats, Ask the forum runs and watched topics")
         case .settings: String(localized: "Settings")
@@ -27,8 +27,8 @@ enum ExpandedPanelRoute: String, Identifiable {
 struct AssistantPanel: View {
     @ObservedObject var app: AppModel
     @ObservedObject private var streams: StreamStore
-    /// nil when the panel already owns the whole screen.
-    let onExpand: ((ExpandedPanelRoute) -> Void)?
+    /// Post & responses as a sheet.
+    let onExpand: (ExpandedPanelRoute) -> Void
     /// Opens a forum URL in the Browse workspace (the agent's step log uses it).
     let onOpenURL: ((URL) -> Void)?
     @State private var exportOptions = ExportOptions()
@@ -41,7 +41,7 @@ struct AssistantPanel: View {
 
     init(
         app: AppModel,
-        onExpand: ((ExpandedPanelRoute) -> Void)? = nil,
+        onExpand: @escaping (ExpandedPanelRoute) -> Void,
         onOpenURL: ((URL) -> Void)? = nil
     ) {
         self.app = app
@@ -56,6 +56,10 @@ struct AssistantPanel: View {
     }
 
     private var activeSummary: WorkRecord? { activeRecords.first { $0.type == .summary } }
+    private var summaryRun: SummaryRunState {
+        guard let topicKey = app.currentTopic?.topicKey else { return .idle }
+        return SummaryRunState.resolve(app.activities, topicKey: topicKey)
+    }
     private var activePull: WorkRecord? { activeRecords.first { $0.type == .pull } }
     private var activeChat: WorkRecord? { activeRecords.first { $0.type == .chat } }
 
@@ -100,8 +104,13 @@ struct AssistantPanel: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Over History and Settings too: voice can always be muted or
+            // ended (the rest of the row is about the topic).
+            DrawerStatusRow(
+                app: app, podcast: app.podcast, router: app.router, voice: app.voice,
+                voiceOnly: app.panelRoute != .topic
+            )
             if app.panelRoute == .topic {
-                DrawerStatusRow(app: app, podcast: app.podcast, router: app.router, voice: app.voice)
                 drawerHeader
                 topicContent
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -163,12 +172,6 @@ struct AssistantPanel: View {
                 subHeader("History")
                 Divider()
                 HistoryView(app: app)
-            case .settings:
-                SettingsPanel(app: app) {
-                    withAnimation(DCMotion.respecting(reduceMotion)) {
-                        app.panelRoute = .topic
-                    }
-                }
             }
         }
     }
@@ -238,7 +241,6 @@ struct AssistantPanel: View {
         switch app.panelRoute {
         case .topic: bodyKind == .agent ? AssistantMode.agent.title : AssistantMode.summary.title
         case .history: String(localized: "History", comment: "Screen title: saved summaries, chats, Ask the forum runs and watched topics")
-        case .settings: String(localized: "Settings")
         }
     }
 
@@ -334,12 +336,12 @@ struct AssistantPanel: View {
 
             Section {
                 Button {
-                    onExpand?(.post)
+                    onExpand(.post)
                 } label: {
                     Label("Post & Responses", systemImage: "text.bubble")
                 }
                 .accessibilityIdentifier("viewPost")
-                .disabled(onExpand == nil || (app.currentSession?.source.isEmpty ?? true))
+                .disabled(app.currentSession?.source.isEmpty ?? true)
 
                 Button {
                     app.pullTopic()
@@ -394,6 +396,8 @@ struct AssistantPanel: View {
         } label: {
             Image(systemName: "ellipsis.circle")
                 .font(.body.weight(.medium))
+                // Watch Topic lives in this menu: the button answers the tap.
+                .dcStateBounce(app.currentTopic.map { app.isWatched(topicKey: $0.topicKey) })
         }
         .buttonStyle(DCIconButtonStyle())
         .accessibilityLabel("More assistant actions")
@@ -476,8 +480,8 @@ struct AssistantPanel: View {
             }
             .accessibilityLabel("Back to assistant")
             .accessibilityIdentifier("backToTopic")
-            // Esc closes Manage in the window (the full-screen copy has Done).
-            .dcCancelShortcut(onExpand != nil)
+            // Esc closes History in the panel.
+            .dcCancelShortcut()
             Spacer()
             Text(title)
                 .font(.headline)
@@ -581,6 +585,12 @@ struct AssistantPanel: View {
                 WorkProgressCard(record: record) { app.cancel(record: record) }
                     .transition(.opacity)
             }
+            if case .failed(let message) = summaryRun {
+                SummaryFailedCard(message: message, canRetry: activePull == nil) {
+                    app.startSummary(regenerate: true)
+                }
+                .transition(.opacity)
+            }
             if visibleSummary.isEmpty {
                 if activeSummary != nil {
                     SummaryPlaceholder()
@@ -607,6 +617,7 @@ struct AssistantPanel: View {
         }
         .animation(DCMotion.respecting(reduceMotion), value: activeSummary?.id)
         .animation(DCMotion.respecting(reduceMotion), value: activePull?.id)
+        .animation(DCMotion.respecting(reduceMotion), value: summaryRun)
         .onChange(of: app.currentSession?.hasSummary == true, initial: true) {
             // Once, with the first summary that has post numbers.
             let key = PresentationRouter.citationTipKey
@@ -1203,18 +1214,25 @@ struct ExpandedPanel: View {
     @ObservedObject var app: AppModel
     let route: ExpandedPanelRoute
 
+    /// DEBUG: `-dc-panel-settings <page>` opens Settings on that sub-page.
+    private static var debugInitialPage: SettingsPage? {
+        #if DEBUG
+        OnboardingDebug.value(after: "-dc-panel-settings").flatMap(SettingsPage.parse)
+        #else
+        nil
+        #endif
+    }
+
     var body: some View {
         NavigationStack {
             Group {
                 switch route {
-                case .topic:
-                    AssistantPanel(app: app, onExpand: nil, onOpenURL: { _ in dismiss() })
                 case .post:
                     PostPreviewView(app: app)
                 case .history:
                     HistoryView(app: app)
                 case .settings:
-                    SettingsRootView(app: app)
+                    SettingsRootView(app: app, initialPage: Self.debugInitialPage)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -1246,6 +1264,52 @@ private struct PlainTextDocument: FileDocument {
 
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
         FileWrapper(regularFileWithContents: Data(text.utf8))
+    }
+}
+
+/// A failed summary run: what went wrong, and Retry (the same path as the
+/// summary's own Retry). The card goes away as soon as a new run is queued,
+/// so a second tap has nothing to land on.
+private struct SummaryFailedCard: View {
+    let message: String
+    let canRetry: Bool
+    let retry: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label {
+                Text("The summary didn’t finish", comment: "Drawer: a summary run failed; the reason follows")
+                    .font(.subheadline.weight(.semibold))
+            } icon: {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(DCTheme.warning)
+            }
+            if !message.isEmpty {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(4)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("summaryFailureMessage")
+            }
+            Button {
+                DCHaptics.tap()
+                retry()
+            } label: {
+                Text("Retry", comment: "Button: writes the AI summary again")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(minHeight: DCTheme.controlHeight)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.borderless)
+            .disabled(!canRetry)
+            .accessibilityHint(Text("Writes the summary again", comment: "Accessibility hint of the summary's Retry button"))
+            .accessibilityIdentifier("retryFailedSummary")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .dcCard(tint: DCTheme.warning)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("summaryFailedCard")
     }
 }
 
@@ -1433,6 +1497,8 @@ private struct DrawerStatusRow: View {
     @ObservedObject var podcast: PodcastController
     @ObservedObject var router: PresentationRouter
     @ObservedObject var voice: VoiceController
+    /// Over History or Settings: only voice.
+    var voiceOnly = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var inAgentMode: Bool { app.assistantMode == .agent }
@@ -1444,24 +1510,27 @@ private struct DrawerStatusRow: View {
         VStack(spacing: 0) {
             if let session = voice.session, voice.isActive {
                 DrawerVoiceStatus(session: session) { voice.end() }
+            } else if voiceOnly {
+                EmptyView()
             } else if !inAgentMode, let research {
                 row(systemImage: "magnifyingglass", text: research.statusText, progress: research.progress) {
-                    showAgent()
+                    showAnswer(for: research)
                 }
-            } else if !inAgentMode, readyAnswer != nil {
+            } else if !inAgentMode, let readyAnswer {
                 row(
                     systemImage: "checkmark.circle.fill",
                     text: String(localized: "Answer ready", comment: "AI drawer status row: an Ask the forum answer finished"),
                     progress: nil
                 ) {
-                    showAgent()
+                    showAnswer(for: readyAnswer)
                 }
             } else if podcast.isPlayingEpisode, let episode = podcast.episode {
                 DrawerPodcastStatus(player: podcast.player, episode: episode) {
                     app.router.item = .nowPlaying
                 }
             }
-            if app.browseCursor.showsInDrawer {
+            // The strip over the page is hidden while the AI view is up.
+            if !voiceOnly, app.isAIViewShown, app.browseCursor.showsInDrawer {
                 DrawerCardsChip(app: app, router: router)
             }
         }
@@ -1470,12 +1539,8 @@ private struct DrawerStatusRow: View {
         }
     }
 
-    private func showAgent() {
-        withAnimation(DCMotion.respecting(reduceMotion)) {
-            app.assistantMode = .agent
-            app.showSelectedAgentRun()
-        }
-        router.answersSeenAt = Date()
+    private func showAnswer(for record: WorkRecord) {
+        withAnimation(DCMotion.respecting(reduceMotion)) { app.showAnswer(for: record) }
     }
 
     private func row(systemImage: String, text: String, progress: Double?, action: @escaping () -> Void) -> some View {
@@ -1562,7 +1627,8 @@ private struct DrawerPodcastStatus: View {
     }
 }
 
-/// Voice while the drawer is up (the Dock is under it): state, time, End.
+/// Voice while the drawer is up (the Dock is under it): state, time, Mute,
+/// End.
 private struct DrawerVoiceStatus: View {
     @ObservedObject var session: VoiceSession
     let end: () -> Void
@@ -1575,6 +1641,17 @@ private struct DrawerVoiceStatus: View {
                 progress: nil,
                 showsChevron: false
             )
+            Button {
+                DCHaptics.tap()
+                session.setMuted(!session.isMuted)
+            } label: {
+                Image(systemName: session.isMuted ? "mic.slash.fill" : "mic.fill")
+                    .foregroundStyle(session.isMuted ? DCTheme.danger : .primary)
+            }
+            .buttonStyle(DCIconButtonStyle())
+            .accessibilityLabel(session.isMuted ? Text("Unmute") : Text("Mute"))
+            .accessibilityIdentifier("drawerVoiceMute")
+            .padding(.top, 10)
             Button(action: end) {
                 Image(systemName: "phone.down.fill")
                     .foregroundStyle(.white)
@@ -1587,6 +1664,7 @@ private struct DrawerVoiceStatus: View {
             .padding(.trailing, 12)
             .padding(.top, 10)
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("drawerStatusRow")
     }
 }

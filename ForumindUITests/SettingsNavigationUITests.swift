@@ -18,17 +18,17 @@ final class SettingsNavigationUITests: DCUITestCase {
     ]
 
     func testEachRootRowOpensItsPageAndBackReturns() throws {
-        // `-dc-panel-settings` opens Settings inside the assistant panel.
+        // `-dc-panel-settings` opens Settings (a sheet in every layout) once
+        // the page is up.
         let app = launch(["-dc-sample", "-dc-panel-settings"])
 
         let root = any(app, "settingsRoot")
-        XCTAssertTrue(root.waitForExistence(timeout: 20), "Settings did not open in the assistant panel.")
-        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["backToTopic"].exists, "The panel's Settings has no way back to the assistant.")
+        XCTAssertTrue(root.waitForExistence(timeout: 20), "Settings did not open.")
+        XCTAssertTrue(waitOrDump(app.navigationBars["Settings"], timeout: 5, in: app))
 
         for page in pages {
             let row = app.buttons["settingsRow-\(page.row)"]
-            XCTAssertTrue(reveal(row, in: app), "Root row \(page.row) is missing.")
+            XCTAssertTrue(revealRow(row, in: app), "Root row \(page.row) is missing.")
             row.tap()
             XCTAssertTrue(
                 app.navigationBars[page.title].waitForExistence(timeout: 10),
@@ -55,18 +55,15 @@ final class SettingsNavigationUITests: DCUITestCase {
         tapNavigationBack(in: app)
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 10))
 
-        // Back to the assistant.
-        let back = app.buttons["backToTopic"]
-        if !back.isHittable { app.swipeDown() }
-        XCTAssertTrue(waitForHittable(back))
-        back.tap()
-        // iPhone: the drawer's Ask box; iPad: the panel's mode picker.
+        // Done: back to the page and the AI view.
+        closeSettings(in: app)
+        XCTAssertTrue(waitForGone(root, timeout: 10))
+        // iPhone: the drawer's Ask box; iPad: the panel's.
         XCTAssertTrue(
             any(app, "askScopeButton")
                 .waitForExistence(timeout: 10),
-            "Back to assistant did not return to the assistant."
+            "Closing Settings did not return to the assistant."
         )
-        XCTAssertFalse(root.exists)
     }
 
     func testStandaloneSettingsOpensEveryPage() throws {
@@ -77,7 +74,7 @@ final class SettingsNavigationUITests: DCUITestCase {
         XCTAssertFalse(app.buttons["backToTopic"].exists)
         for page in pages {
             let row = app.buttons["settingsRow-\(page.row)"]
-            XCTAssertTrue(reveal(row, in: app), "Root row \(page.row) is missing.")
+            XCTAssertTrue(revealRow(row, in: app), "Root row \(page.row) is missing.")
             row.tap()
             XCTAssertTrue(app.navigationBars[page.title].waitForExistence(timeout: 10))
             tapNavigationBack(in: app)
@@ -109,6 +106,26 @@ final class SettingsNavigationUITests: DCUITestCase {
         let cancel = app.buttons["Cancel"]
         if cancel.exists { cancel.tap() } else { app.tap() }
         XCTAssertTrue(waitForGone(app.staticTexts["Delete iCloud data?"], timeout: 5))
+    }
+
+    /// Data & privacy › Safety: Blocked users and Filtered words are pages of their own.
+    func testDataPageSafetyRowsOpenTheirPages() throws {
+        let app = launch(["-dc-sample", "-dc-show-settings", "data"])
+
+        XCTAssertTrue(app.navigationBars["Data & privacy"].waitForExistence(timeout: 20))
+        let blocked = app.buttons["blockedUsersRow"]
+        XCTAssertTrue(reveal(blocked, in: app, swipes: 6), "Safety has no Blocked users row.")
+        blocked.tap()
+        XCTAssertTrue(app.navigationBars["Blocked users"].waitForExistence(timeout: 10))
+        tapNavigationBack(in: app)
+
+        let words = app.buttons["filteredWordsRow"]
+        XCTAssertTrue(reveal(words, in: app, swipes: 6), "Safety has no Filtered words row.")
+        words.tap()
+        XCTAssertTrue(app.navigationBars["Filtered words"].waitForExistence(timeout: 10))
+        XCTAssertTrue(any(app, "filteredWordField").waitForExistence(timeout: 5))
+        tapNavigationBack(in: app)
+        XCTAssertTrue(app.navigationBars["Data & privacy"].waitForExistence(timeout: 10))
     }
 
     func testSyncPageShowsAccountFix() throws {
@@ -284,6 +301,67 @@ final class SettingsNavigationUITests: DCUITestCase {
         }
     }
 
+    /// Home › Settings (a sheet) › Help & about › Show onboarding again: the
+    /// sheet goes and the walkthrough covers the screen (audit A6).
+    func testShowOnboardingAgainFromTheSettingsSheet() throws {
+        let app = launch(["-dc-sample", "-dc-forums-home"], orientation: isPhone ? .portrait : .landscapeLeft)
+        openHome(in: app)
+        let settings = app.buttons["homeSettings"]
+        XCTAssertTrue(waitForHittable(settings, timeout: 10))
+        settings.tap()
+        XCTAssertTrue(any(app, "settingsRoot").waitForExistence(timeout: 10), "Settings did not open from Home.")
+        let help = app.buttons["settingsRow-help"]
+        XCTAssertTrue(reveal(help, in: app))
+        help.tap()
+        let replay = any(app, "replayOnboarding")
+        XCTAssertTrue(reveal(replay, in: app, swipes: 4))
+        // Revealed under the sheet's navigation bar: drag it into the open.
+        let title = app.staticTexts["Help & about"].firstMatch
+        for _ in 0..<3 where title.exists && replay.frame.minY < title.frame.maxY + 24 {
+            let list = app.collectionViews.containing(.any, identifier: "replayOnboarding").firstMatch
+            let start = list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4))
+            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: 90)))
+        }
+        XCTAssertTrue(waitForHittable(replay))
+        replay.tap()
+        XCTAssertTrue(waitOrDump(any(app, "onboarding"), timeout: 10, in: app), "The walkthrough did not show.")
+        XCTAssertFalse(any(app, "replayOnboarding").isHittable, "Settings stayed over the walkthrough.")
+    }
+
+    /// §15 item 5: controls that were under 44 pt (audit): the walkthrough's
+    /// "Skip for now" and Settings › Forums' Pin.
+    func testSmallControlsAreAtLeast44PointsToTap() throws {
+        var app = launch(["-dc-onboarding-step", "provider"])
+        let skip = app.buttons["onboardingSkipStep"]
+        XCTAssertTrue(skip.waitForExistence(timeout: 15))
+        XCTAssertGreaterThanOrEqual(skip.frame.height, 44, "Skip for now")
+        app.terminate()
+
+        // The sample's third forum is not pinned.
+        app = launch(["-dc-sample", "-dc-forums-home", "-dc-show-settings", "forums", "-dc-test-present"])
+        let pin = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Pin '")).firstMatch
+        XCTAssertTrue(reveal(pin, in: app, swipes: 4), "No Pin button in Settings › Forums.")
+        XCTAssertGreaterThanOrEqual(pin.frame.height, 44, "Pin")
+        XCTAssertGreaterThanOrEqual(pin.frame.width, 44, "Pin")
+    }
+
+    /// A root row, scrolled into view by dragging the Settings list itself
+    /// (on iPad the sheet is smaller than the window, so a swipe across the
+    /// app can miss it or overshoot).
+    private func revealRow(_ row: XCUIElement, in app: XCUIApplication) -> Bool {
+        let list = any(app, "settingsRoot")
+        for attempt in 0..<12 {
+            // Whole, not cut by the sheet's edge or under its bar.
+            if row.waitForExistence(timeout: 1), row.isHittable,
+               list.frame.insetBy(dx: 0, dy: 50).contains(CGPoint(x: row.frame.midX, y: row.frame.midY)) { return true }
+            guard list.exists else { break }
+            let down = attempt >= 6
+            let start = list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: down ? 0.35 : 0.7))
+            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: down ? 160 : -160)))
+        }
+        return reveal(row, in: app)
+    }
+
     /// A control each page is known for (moved out of the old single form).
     private func assertPageContent(_ row: String, in app: XCUIApplication) {
         let expected: XCUIElement?
@@ -302,5 +380,9 @@ final class SettingsNavigationUITests: DCUITestCase {
         }
         guard let expected else { return }
         XCTAssertTrue(reveal(expected, in: app, swipes: 4), "The \(row) page is missing its main control.")
+        // iPad: the bar position doesn't apply side by side; the footer says so.
+        if row == "browser", !isPhone {
+            XCTAssertTrue(reveal(any(app, "browserBarSplitNote"), in: app, swipes: 2), "No side-by-side note on iPad.")
+        }
     }
 }
