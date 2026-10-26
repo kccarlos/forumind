@@ -163,9 +163,6 @@ op read -n "op://Private/OP service account github-actions/credential" | gh secr
 #   apple-distribution              p12_base64, password
 #     Apple Distribution certificate + private key, exported from Keychain
 #     Access as .p12 (recommended; see below).
-#   forumind-provisioning-profiles  profiles_base64
-#     base64 of a zip of the app and share-extension App Store profiles:
-#     zip -j profiles.zip *.mobileprovision
 
 # Secrets (optional): live NVIDIA NIM and Vertex AI tests in CI.
 gh secret set NVIDIA_API_KEY -R $R
@@ -182,8 +179,7 @@ gh variable set DC_ENABLE_CLOUDKIT -R $R --body 'NO'  # optional: only to ship w
 | --- | --- | --- |
 | `OP_SERVICE_ACCOUNT_TOKEN` | secret | TestFlight, metadata (reads the 1Password items above) |
 | `app-store-connect-api-key` | 1Password item | TestFlight, metadata |
-| `apple-distribution` | 1Password item | TestFlight (in practice) |
-| `forumind-provisioning-profiles` | 1Password item | TestFlight with an App Manager key |
+| `apple-distribution` | 1Password item | TestFlight |
 | `NVIDIA_API_KEY` | secret | Optional live test |
 | `VERTEX_API_KEY` | secret | Optional live test |
 | `DEVELOPMENT_TEAM` | variable | TestFlight |
@@ -197,29 +193,29 @@ gh variable set DC_ENABLE_CLOUDKIT -R $R --body 'NO'  # optional: only to ship w
 
 Signing notes:
 
-- Signing is automatic. With an **Admin** API key, `xcodebuild` can create or
-  download the App Store provisioning profiles for the app and the share
-  extension itself. With an **App Manager** key it can't (the export fails
-  with "Cloud signing permission error" and "No profiles … were found"), so
-  also fill the 1Password item `forumind-provisioning-profiles`: a zip of the two
-  "iOS Team Store Provisioning Profile" files Xcode keeps in
-  `~/Library/Developer/Xcode/UserData/Provisioning Profiles`, made for the
-  same Apple Distribution certificate as the p12. Refresh it when they expire
-  (yearly) or when the app gains a capability.
+- Signing is **manual**: the archive and the export use the Apple
+  Distribution identity from `apple-distribution` and two App Store profiles,
+  `Forumind App Store` and `Forumind Share App Store` (names in the workflow's
+  `PROFILE_APP` / `PROFILE_SHARE`). `scripts/ci/fetch-profiles.rb` downloads
+  them by name through the App Store Connect API (read-only), so CI never
+  creates certificates or profiles. (Automatic signing archives for
+  development and, on a fresh runner, created a new development certificate
+  on every run until the account hit Apple's limit.)
+- Create or refresh the profiles once, outside CI, when they expire (with the
+  distribution certificate) or when the app or the extension gains a
+  capability: `asc --write profiles create --bundle <bundle id resource>
+  --certificate <distribution certificate id> --name "Forumind App Store"
+  --profile-type IOS_APP_STORE` (and the same for the share extension), then
+  delete or let the old one go invalid so only one active profile has each name.
 - `gh secret set NAME` only prompts in an interactive terminal; elsewhere it
   stores whatever arrives on stdin (an empty password makes the p12 import
   fail with "passphrase … not correct").
-- Automatic signing on a fresh CI machine usually **can't create an Apple
-  Distribution certificate**, so in practice you need
-  the `apple-distribution` item.
 - Create the app record in App Store Connect before the first upload (see
   [APP_STORE.md](APP_STORE.md)).
 - iCloud sync adds the **iCloud (CloudKit)** and **Push Notifications**
   capabilities and the container `iCloud.<BUNDLE_ID_PREFIX>` to the app's App
-  ID. Automatic signing adds them on the first signed build; profiles made
-  before that are invalid for the app afterwards, so if you use
-  `forumind-provisioning-profiles`, regenerate the App Store profile and
-  update the item.
+  ID. Enable them on the App ID first; profiles made before that are invalid
+  for the app afterwards, so regenerate the App Store profile.
 - Deploy the CloudKit schema to production before the first TestFlight build
   ([SYNC.md](SYNC.md#cloudkit-schema)); TestFlight and App Store builds use the
   production environment.
