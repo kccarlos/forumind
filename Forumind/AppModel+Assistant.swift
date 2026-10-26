@@ -554,7 +554,9 @@ extension AppModel {
             }
         }
         // Show the Assistant pane on iPhone once the UI is up (sent twice in
-        // case the first arrives before ContentView observes it).
+        // case the first arrives before ContentView observes it). Not on a
+        // first run: the page shows with the drawer closed and its tip.
+        guard !AssistantDebug.has("-dc-drawer-first-run") else { return }
         Task { @MainActor [weak self] in
             for delay in [500, 1200] {
                 try? await Task.sleep(for: .milliseconds(delay))

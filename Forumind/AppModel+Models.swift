@@ -419,3 +419,15 @@ enum ModelSetupAction: Equatable {
         }
     }
 }
+
+extension AppModel {
+    /// Runs a "model not ready" fix: the setup sheet, Settings › AI models
+    /// (through the router, as the model pill's menu) or the consent page.
+    func perform(_ action: ModelSetupAction, for role: ModelRole) {
+        switch action {
+        case .addKey, .chooseModel: router.item = .providerSetup(role)
+        case .aiModels: requestedSettingsPage = .provider
+        case .allow(let provider): aiConsent.ask(provider)
+        }
+    }
+}

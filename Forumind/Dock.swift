@@ -2,8 +2,9 @@ import SwiftUI
 
 // The Dock (spec §8): the one floating layer at the bottom of the page. The
 // layer for each state is chosen by `BottomLayer.resolve`; the voice Dock, the
-// podcast row and the "Answer ready" row share one glass shape, so they morph
-// into each other (`glassEffectID` on iOS 26+, `matchedGeometryEffect` before).
+// "Answer ready" row, the podcast row and the drawer's hint row share one
+// glass shape, so they morph into each other (`glassEffectID` on iOS 26+,
+// `matchedGeometryEffect` before).
 
 // MARK: - Which layer shows
 
@@ -15,6 +16,9 @@ enum BottomLayer: Equatable {
     case barWithAnswerReady
     /// The bar with the podcast mini row.
     case barWithPodcast
+    /// The bar with the AI drawer's hint row (DrawerHint): first-run tip,
+    /// new replies, or AI to set up.
+    case barWithHint(DrawerHint.Row)
     /// The voice Dock replaces the bar.
     case dock
     /// The drawer or the split panel is up: its status row carries voice,
@@ -25,13 +29,25 @@ enum BottomLayer: Equatable {
         drawerOpen: Bool,
         voiceShowing: Bool,
         answerReady: Bool,
-        podcastPlaying: Bool
+        podcastPlaying: Bool,
+        hint: DrawerHint.Row? = nil
     ) -> BottomLayer {
         if drawerOpen { return .drawer }
         if voiceShowing { return .dock }
         if answerReady { return .barWithAnswerReady }
         if podcastPlaying { return .barWithPodcast }
+        if let hint { return .barWithHint(hint) }
         return .bar
+    }
+
+    /// The AI button's dot: the topic has new replies, but another row won
+    /// the place of the hint row that would say so.
+    func showsNewRepliesDot(hint: DrawerHint.Row?) -> Bool {
+        guard case .checkNew? = hint?.action else { return false }
+        switch self {
+        case .barWithAnswerReady, .barWithPodcast: return true
+        case .bar, .barWithHint, .dock, .drawer: return false
+        }
     }
 }
 
@@ -104,6 +120,63 @@ extension AppModel {
     }
 }
 
+// MARK: - Hint row and the layer (one source for the Dock and the AI button)
+
+extension AppModel {
+    var drawerHintInput: DrawerHint.Input {
+        let role = currentRole
+        let session = currentSession
+        let topicKey = currentTopic?.topicKey
+        return DrawerHint.Input(
+            pageState: assistantPageState,
+            mode: assistantMode,
+            providerReady: isProviderReady(for: role),
+            consentDeclined: readiness(of: selection(for: role)) == .aiConsentDeclined,
+            hasSummary: session?.hasSummary ?? false,
+            summaryRunning: activities.contains {
+                $0.topicKey == topicKey && ($0.type == .summary || $0.type == .pull) && !$0.status.isTerminal
+            },
+            totalPosts: session?.totalPosts,
+            summaryPostCount: session?.summaryPostCount
+        )
+    }
+
+    /// The hint row over the bar: only in the drawer layout, on pages.
+    var drawerHint: DrawerHint.Row? {
+        guard isDrawerAvailable else { return nil }
+        return DrawerHint.row(drawerHintInput, tipPending: router.summarizeTipPending)
+    }
+
+    /// What sits at the bottom of the page now (§8.1).
+    var bottomLayer: BottomLayer {
+        let showsHome = browser.showsForumsHome
+        return BottomLayer.resolve(
+            drawerOpen: router.drawerPhase.isPresented
+                || (router.splitLayout == true && router.splitPanelMode.isVisible(onHome: showsHome)),
+            voiceShowing: voice.showsBar,
+            answerReady: activeResearch == nil && readyAnswer != nil,
+            podcastPlaying: podcast.isPlayingEpisode && !podcast.player.isSuspendedForVoice,
+            hint: drawerHint
+        )
+    }
+
+    /// The hint row's button: the drawer at medium, and its action (the
+    /// same summarize / check new replies / setup the drawer offers; a second
+    /// tap while a summary runs does nothing more).
+    func performDrawerHint(_ action: DrawerHint.Action) {
+        router.openDrawer(at: .medium)
+        switch action {
+        case .summarize, .checkNew:
+            guard currentTopic != nil, !drawerHintInput.summaryRunning else { return }
+            startSummary()
+        case .setUpAI, .allowAI:
+            let role = currentRole
+            let selection = selection(for: role)
+            perform(ModelSetupAction(readiness(of: selection), provider: selection.provider), for: role)
+        }
+    }
+}
+
 // MARK: - Material
 
 /// The Dock's glass (iOS 26+) or material, one shape for every state.
@@ -154,15 +227,7 @@ struct DockLayer: View {
     @Namespace private var namespace
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var layer: BottomLayer {
-        BottomLayer.resolve(
-            drawerOpen: router.drawerPhase.isPresented
-                || (router.splitLayout == true && router.splitPanelMode.isVisible(onHome: showsHome)),
-            voiceShowing: voice.showsBar,
-            answerReady: app.activeResearch == nil && app.readyAnswer != nil,
-            podcastPlaying: podcast.isPlayingEpisode && !podcast.player.isSuspendedForVoice
-        )
-    }
+    private var layer: BottomLayer { app.bottomLayer }
 
     private var transition: AnyTransition {
         reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.96, anchor: .bottom))
@@ -170,7 +235,10 @@ struct DockLayer: View {
 
     var body: some View {
         VStack(alignment: floatsTrailing ? .trailing : .center, spacing: DCTheme.spacingS) {
-            if !showsHome { ResultCardsOverlay(app: app, browser: browser, voice: voice) }
+            // Under the drawer the cards are a chip in its status row.
+            if !showsHome, !router.drawerPhase.isPresented {
+                ResultCardsOverlay(app: app, browser: browser, voice: voice)
+            }
             DockContainer {
                 switch layer {
                 case .dock:
@@ -187,6 +255,10 @@ struct DockLayer: View {
                             .modifier(DockSurface(namespace: namespace))
                             .transition(transition)
                     }
+                case .barWithHint(let hint):
+                    DockHintRow(app: app, hint: hint)
+                        .modifier(DockSurface(namespace: namespace))
+                        .transition(transition)
                 case .bar, .drawer:
                     EmptyView()
                 }
@@ -225,6 +297,71 @@ private struct DockAnswerReadyRow: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("dockAnswerReady")
+    }
+}
+
+/// The AI drawer's hint while it is closed: the text opens the drawer at
+/// medium, the button opens it and does the action.
+private struct DockHintRow: View {
+    @ObservedObject var app: AppModel
+    let hint: DrawerHint.Row
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Button {
+                DCHaptics.tap()
+                app.router.openDrawer(at: .medium)
+            } label: {
+                HStack(spacing: DCTheme.spacingS) {
+                    if hint.isTip {
+                        Image(systemName: "lightbulb.fill")
+                            .foregroundStyle(DCTheme.warning)
+                            .accessibilityHidden(true)
+                    }
+                    Text(verbatim: hint.text)
+                        .font(.subheadline.weight(.medium))
+                        .lineLimit(1)
+                        .foregroundStyle(.primary)
+                    Spacer(minLength: 0)
+                }
+                .padding(.leading, DCTheme.spacingM)
+                .frame(maxWidth: .infinity, minHeight: 48)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text(verbatim: hint.text))
+            .accessibilityHint(Text("Opens the drawer", comment: "Accessibility hint of the AI drawer's hint row over the bar"))
+            .accessibilityIdentifier("dockHintText")
+            Button {
+                DCHaptics.tap()
+                app.performDrawerHint(hint.action)
+            } label: {
+                Image(systemName: hint.action.symbol)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 36, height: 36)
+                    .background(hint.action.needsAttention ? DCTheme.warning : DCTheme.summaryTint, in: Circle())
+                    .overlay(alignment: .topTrailing) {
+                        if let badge = hint.action.badge {
+                            Text(verbatim: badge)
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 5)
+                                .frame(minWidth: 18, minHeight: 18)
+                                .background(Color.red, in: Capsule())
+                                .offset(x: 6, y: -4)
+                        }
+                    }
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text(verbatim: hint.action.title))
+            .accessibilityIdentifier("dockHintAction")
+            .padding(.trailing, DCTheme.spacingXS)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("dockHintRow")
     }
 }
 

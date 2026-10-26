@@ -227,7 +227,7 @@ struct ProviderSetupCard: View {
                 }
             }
             if action != .aiModels {
-                Button("AI models…", action: openAIModels)
+                Button("AI models…") { app.requestedSettingsPage = .provider }
                     .font(.subheadline)
                     .frame(minHeight: DCTheme.controlHeight)
                     .accessibilityIdentifier("providerSetupSettings")
@@ -244,16 +244,7 @@ struct ProviderSetupCard: View {
     }
 
     private func perform() {
-        switch action {
-        case .addKey, .chooseModel: app.router.item = .providerSetup(role)
-        case .aiModels: openAIModels()
-        case .allow(let provider): app.aiConsent.ask(provider)
-        }
-    }
-
-    /// Settings › AI models, through the router (as the model pill's menu).
-    private func openAIModels() {
-        app.requestedSettingsPage = .provider
+        app.perform(action, for: role)
     }
 }
 

@@ -806,13 +806,13 @@ struct OnboardingDonePage: View {
 
     var body: some View {
         OnboardingPage(alignment: .center) {
-            Spacer(minLength: DCTheme.spacingL)
+            Spacer(minLength: 0)
             Circle()
                 .fill(DCTheme.brandGradient)
-                .frame(width: 112, height: 112)
+                .frame(width: 76, height: 76)
                 .overlay {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 48, weight: .bold))
+                        .font(.system(size: 34, weight: .bold))
                         .foregroundStyle(.white)
                 }
                 .shadow(color: Color(hex: 0x4A6BFF, opacity: 0.3), radius: 20, y: 10)

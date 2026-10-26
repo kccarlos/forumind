@@ -1,49 +1,65 @@
 import XCTest
 @testable import Forumind
 
-/// The AI drawer's peek line for every page state, and the `#N` citations.
-final class DrawerPeekTests: XCTestCase {
-    private func line(_ state: PageContext.State, _ change: (inout DrawerPeek.Input) -> Void = { _ in }) -> String {
-        var input = DrawerPeek.Input(pageState: state)
+/// The AI drawer's hint row over the bar (only when worth a look) and its
+/// button for every page state, and the `#N` citations.
+final class DrawerHintTests: XCTestCase {
+    private func action(_ state: PageContext.State, _ change: (inout DrawerHint.Input) -> Void = { _ in }) -> DrawerHint.Action? {
+        var input = DrawerHint.Input(pageState: state)
         change(&input)
-        return DrawerPeek.line(input)
+        return DrawerHint.action(input)
     }
 
-    func testEachPageStateHasItsLine() {
-        XCTAssertEqual(line(.notForum), "Not a forum")
-        XCTAssertEqual(line(.maybe), "Might be a forum · Try again")
-        XCTAssertEqual(line(.forumHome), "Forum home")
-        XCTAssertEqual(line(.loading), "Loading page…")
-        XCTAssertEqual(line(.topic), "Summarize this topic")
+    private func row(_ state: PageContext.State, tip: Bool = false, _ change: (inout DrawerHint.Input) -> Void = { _ in }) -> DrawerHint.Row? {
+        var input = DrawerHint.Input(pageState: state)
+        change(&input)
+        return DrawerHint.row(input, tipPending: tip)
     }
 
-    func testATopicWithoutAProviderAsksToSetUpAI() {
-        XCTAssertEqual(line(.topic) { $0.providerReady = false; $0.summary = "Done. More." }, "Set up AI")
-        // Other pages say what they are, provider or not.
-        XCTAssertEqual(line(.forumHome) { $0.providerReady = false }, "Forum home")
+    func testTheButtonFollowsTheState() {
+        XCTAssertEqual(action(.topic), .summarize)
+        XCTAssertEqual(action(.topic) { $0.hasSummary = true; $0.totalPosts = 20; $0.summaryPostCount = 14 }, .checkNew(6))
+        XCTAssertNil(action(.topic) { $0.hasSummary = true; $0.totalPosts = 14; $0.summaryPostCount = 14 })
+        XCTAssertNil(action(.topic) { $0.hasSummary = true })
+        XCTAssertNil(action(.topic) { $0.summaryRunning = true })
+        XCTAssertNil(action(.topic) { $0.mode = .agent })
+        XCTAssertEqual(action(.topic) { $0.providerReady = false }, .setUpAI)
+        XCTAssertEqual(action(.topic) { $0.providerReady = false; $0.consentDeclined = true }, .allowAI)
+        for state in [PageContext.State.notForum, .maybe, .forumHome, .loading] {
+            XCTAssertNil(action(state), "\(state)")
+            XCTAssertNil(action(state) { $0.providerReady = false }, "\(state)")
+        }
+        XCTAssertEqual(DrawerHint.Action.checkNew(6).title, "Check 6 new replies")
+        XCTAssertEqual(DrawerHint.Action.checkNew(6).badge, "6")
+        XCTAssertEqual(DrawerHint.Action.checkNew(250).badge, "99+")
+        XCTAssertNil(DrawerHint.Action.summarize.badge)
+        XCTAssertEqual(DrawerHint.Action.summarize.symbol, "sparkles")
+        XCTAssertEqual(DrawerHint.Action.checkNew(6).symbol, "arrow.clockwise")
+        XCTAssertEqual(DrawerHint.Action.setUpAI.symbol, "key.fill")
+        XCTAssertTrue(DrawerHint.Action.allowAI.needsAttention)
     }
 
-    func testATopicWithASummaryShowsItsFirstSentence() {
-        let summary = """
-        ## Original post
-        Since **2.4**, prints over six hours shift on the Y axis #1. Short ones are fine #12.
-
-        ## What people are saying
-        - Lower the current.
-        """
-        XCTAssertEqual(line(.topic) { $0.summary = summary }, "Since 2.4, prints over six hours shift on the Y axis.")
-    }
-
-    func testFirstSentenceSkipsHeadingsAndCode() {
-        XCTAssertEqual(DrawerPeek.firstSentence(of: "## Only\n```\ncode. here\n```\n- First item! Second."), "First item!")
-        XCTAssertEqual(DrawerPeek.firstSentence(of: "自 2.4 起长时间打印会错层 #3。缩短时间无效。"), "自 2.4 起长时间打印会错层。")
-        XCTAssertNil(DrawerPeek.firstSentence(of: "## Heading only"))
-    }
-
-    func testRunningSummaryAndAgentMode() {
-        XCTAssertEqual(line(.topic) { $0.summaryRunning = true }, "Writing summary…")
-        XCTAssertEqual(line(.topic) { $0.summaryRunning = true; $0.summary = "## A\nStreaming text so far" }, "Streaming text so far")
-        XCTAssertEqual(line(.topic) { $0.mode = .agent }, "Ask the forum")
+    /// The row shows only when needed: the first-run tip, new replies, or AI
+    /// to set up or allow. Otherwise none.
+    func testTheRowShowsOnlyWhenNeeded() {
+        // A topic without a summary: only as the one-time tip.
+        XCTAssertEqual(row(.topic, tip: true), DrawerHint.Row(action: .summarize, isTip: true))
+        XCTAssertNil(row(.topic, tip: false))
+        XCTAssertEqual(row(.topic, tip: true)?.text, "Summarize this topic")
+        // New replies since the summary, tip or not.
+        let stale = row(.topic) { $0.hasSummary = true; $0.totalPosts = 26; $0.summaryPostCount = 14 }
+        XCTAssertEqual(stale, DrawerHint.Row(action: .checkNew(12), isTip: false))
+        XCTAssertEqual(stale?.text, "12 new replies")
+        XCTAssertEqual(row(.topic) { $0.hasSummary = true; $0.totalPosts = 15; $0.summaryPostCount = 14 }?.text, "1 new reply")
+        // AI not set up or not allowed.
+        XCTAssertEqual(row(.topic) { $0.providerReady = false }?.text, "Set up AI")
+        XCTAssertEqual(row(.topic) { $0.providerReady = false; $0.consentDeclined = true }?.action, .allowAI)
+        // Nothing to say: no row.
+        XCTAssertNil(row(.topic, tip: true) { $0.hasSummary = true; $0.totalPosts = 14; $0.summaryPostCount = 14 })
+        XCTAssertNil(row(.topic, tip: true) { $0.summaryRunning = true })
+        XCTAssertNil(row(.topic, tip: true) { $0.mode = .agent })
+        XCTAssertNil(row(.forumHome, tip: true))
+        XCTAssertNil(row(.notForum, tip: true) { $0.providerReady = false })
     }
 
     // MARK: Citations

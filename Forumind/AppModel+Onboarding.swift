@@ -226,7 +226,6 @@ enum SettingsPage: String, CaseIterable, Identifiable, Hashable {
     case data
     case help
     case sharing
-    case about
     case acknowledgements
 
     var id: String { rawValue }
@@ -239,14 +238,13 @@ enum SettingsPage: String, CaseIterable, Identifiable, Hashable {
         case .summaries: String(localized: "Summaries & chat")
         case .agent: String(localized: "Ask the forum")
         case .watched: String(localized: "Watched topics")
-        case .digest: String(localized: "Daily digest", comment: "Settings page: the Today page's daily digest of watched and trending topics")
+        case .digest: String(localized: "Daily digest & podcast", comment: "Settings page: the Today page's daily digest of watched and trending topics")
         case .voice: String(localized: "Voice", comment: "Settings page: the live voice conversation with Google Gemini")
         case .browser: String(localized: "Browser")
         case .data: String(localized: "Data & privacy")
-        case .help: String(localized: "Help")
+        case .help: String(localized: "Help & about")
         case .sharing: String(localized: "Share from Safari or Chrome")
-        case .about: String(localized: "About")
-        case .acknowledgements: String(localized: "Acknowledgements")
+        case .acknowledgements: String(localized: "Licences")
         }
     }
 
@@ -264,7 +262,6 @@ enum SettingsPage: String, CaseIterable, Identifiable, Hashable {
         case .data: "hand.raised.fill"
         case .help: "questionmark"
         case .sharing: "square.and.arrow.up"
-        case .about: "info"
         case .acknowledgements: "text.book.closed.fill"
         }
     }
@@ -283,7 +280,6 @@ enum SettingsPage: String, CaseIterable, Identifiable, Hashable {
         case .data: Color(light: 0x4B5563, dark: 0x8E96A3)
         case .help: DCTheme.chatTint
         case .sharing: Color(light: 0x1C7CD6, dark: 0x4AA3FF)
-        case .about: Color(light: 0x6B7280, dark: 0x8E96A3)
         case .acknowledgements: Color(light: 0x6B7280, dark: 0x8E96A3)
         }
     }

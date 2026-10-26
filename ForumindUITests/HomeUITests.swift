@@ -14,7 +14,6 @@ final class HomeUITests: DCUITestCase {
         let pinButton = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'pinSuggested-'")).firstMatch
         XCTAssertTrue(reveal(pinButton, in: app), "No suggested forum to pin.")
         let host = String(pinButton.identifier.dropFirst("pinSuggested-".count))
-        let forumName = String(pinButton.label.dropFirst("Pin ".count))
         pinButton.tap()
 
         // Pinned: it leaves the suggestions and appears as a pinned tile.
@@ -23,14 +22,9 @@ final class HomeUITests: DCUITestCase {
         for _ in 0..<6 where !tile.exists { app.swipeDown() }
         XCTAssertTrue(tile.waitForExistence(timeout: 10), "\(host) did not appear under Forums.")
 
-        // The browser bar's switcher lists it (iPhone: the forum menu's
-        // Switch forum section; menu items are matched by label).
-        let named = app.buttons.matching(NSPredicate(format: "label == %@", forumName))
-        let namedBefore = named.count
+        // The forum menu's first item goes back to Home.
         openForumMenu(in: app)
-        XCTAssertTrue(wait(timeout: 10) { named.count > namedBefore }, "The forum menu does not list \(forumName).")
-        XCTAssertTrue(app.buttons["Add Forum…"].exists)
-        let homeItem = app.buttons["Home · Today & all forums"]
+        let homeItem = app.buttons["Home"]
         XCTAssertTrue(homeItem.exists)
         // Home closes the menu and keeps Home.
         homeItem.tap()

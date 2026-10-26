@@ -166,7 +166,7 @@ struct ContentView: View {
         if router.usesDrawer {
             // Not over the Forums home: the drawer is for pages.
             guard app.isDrawerAvailable else { return }
-            if !router.wantsDrawer || router.drawerDetent == .peek { router.openDrawer(at: .medium) }
+            if !router.wantsDrawer { router.openDrawer(at: .medium) }
         } else if !app.browser.showsForumsHome, !router.splitPanelMode.isVisible(onHome: false) {
             // Not over the Forums home: the panel is for pages.
             router.splitPanelMode = .shown

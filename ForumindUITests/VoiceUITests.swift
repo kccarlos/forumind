@@ -66,19 +66,62 @@ final class VoiceUITests: DCUITestCase {
         app.buttons["voiceEnd"].tap()
     }
 
-    /// iPad: the bar's microphone. iPhone: the forum menu (on a page a long
-    /// press on the AI button too; the Forums home has no drawer).
+    /// Voice running, result cards over the page, then the drawer opens
+    /// (`-dc-test-present drawer-on-voice`): the strip would be under the
+    /// sheet, so the cards become a chip in the drawer's status row whose ›
+    /// moves along them; closing the drawer brings the strip back.
+    func testTheCardsBecomeAChipInTheDrawerWhileVoiceRuns() throws {
+        try skipUnlessPhone("The AI drawer is an iPhone behavior.")
+        try requireNetwork()
+        let app = launch([
+            "-dc-sample", "-dc-page-state", "topic", "-dc-voice-fake",
+            "-dc-browse-find", "plugin", "-dc-test-present", "drawer-on-voice"
+        ])
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
+        RunLoop.current.run(until: Date().addingTimeInterval(2))
+        showBrowser(in: app)
+
+        let strip = any(app, "resultCards")
+        let stripChip = app.buttons["resultCardsChip"]
+        XCTAssertTrue(wait(timeout: 60) { strip.exists || stripChip.exists }, "No result cards after the search.")
+        startVoice(in: app)
+        let agree = app.buttons["voiceConsentAgree"]
+        if agree.waitForExistence(timeout: 10) { agree.tap() }
+        // The drawer opens a second after voice starts (the Dock goes under it).
+        let chip = any(app, "drawerCardsChip")
+        XCTAssertTrue(waitOrDump(chip, timeout: 30, in: app), "The drawer has no cards chip.")
+        XCTAssertTrue(drawerState(in: app).exists)
+        XCTAssertTrue(any(app, "drawerStatusRow").exists, "Voice runs in the drawer's status row.")
+        XCTAssertFalse(strip.exists || stripChip.exists, "The strip must not stay under the drawer.")
+        let label = any(app, "drawerCardsLabel")
+        let before = label.label
+        XCTAssertTrue(before.contains("results"), before)
+        let next = app.buttons["drawerCardsNext"]
+        XCTAssertTrue(waitForHittable(next), "The chip has no ›.")
+        next.tap()
+        XCTAssertTrue(wait(timeout: 15) { label.label != before && label.label.contains("1/") },
+                      "› did not move to the first card: \(label.label)")
+
+        closeDrawer(in: app)
+        XCTAssertTrue(wait(timeout: 10) { strip.exists || stripChip.exists }, "The strip did not come back.")
+        let end = app.buttons["voiceEnd"]
+        if end.waitForExistence(timeout: 5) { end.tap() }
+    }
+
+    /// The bar's microphone (the iPhone Forums home has one too; on a page a
+    /// long press on the AI button starts voice).
     private func startVoice(in app: XCUIApplication) {
-        if isPhone {
-            openForumMenu(in: app)
-            let item = app.buttons["Talk to Forumind"]
-            XCTAssertTrue(item.waitForExistence(timeout: 10), "The forum menu has no Talk to Forumind.")
-            item.tap()
+        // Bar items: iOS 27's toolbar reports them as not hittable, so
+        // wait for a frame on screen and tap the coordinate.
+        let mic = app.buttons["voiceButton"]
+        if waitForBarItem(mic, timeout: 5) {
+            tapBarItem(mic)
             return
         }
-        let mic = app.buttons["voiceButton"]
-        XCTAssertTrue(waitForHittable(mic, timeout: 10), "The browser bar has no microphone.")
-        mic.tap()
+        // On a page the bar has no mic: a long press on the AI button starts voice.
+        let ai = app.buttons["aiButton"]
+        XCTAssertTrue(waitForBarItem(ai, timeout: 10), "The bar has neither a microphone nor an AI button.")
+        pressBarItem(ai, duration: 1.0)
     }
 
     private func isEnglish(_ app: XCUIApplication) -> Bool {

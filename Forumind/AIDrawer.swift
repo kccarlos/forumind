@@ -3,12 +3,13 @@ import SwiftUI
 
 // MARK: - iPhone AI drawer
 //
-// A system sheet over the page with three heights: peek (header and one
-// line), medium (the page stays scrollable and tappable) and large. It shows
-// on web pages, never on the Forums home, and opens from the bar's AI button.
-// A swipe down from the peek closes it; from medium or large it only goes
-// down a height. While it is up, every root presentation is hosted inside it
-// (PresentationRouter.swift), so it comes back at the same height after each.
+// A system sheet over the page with two heights: medium (the page stays
+// scrollable and tappable) and large. It shows on web pages, never on the
+// Forums home, and opens from the bar's AI button or the hint row over the
+// bar (Dock.swift). A swipe down closes it (from large a slow drag stops at
+// medium, a flick closes it). While it is up, every root presentation is
+// hosted inside it (PresentationRouter.swift), so it comes back at the same
+// height after each.
 
 struct AIDrawerModifier: ViewModifier {
     @ObservedObject var app: AppModel
@@ -31,8 +32,8 @@ struct AIDrawerModifier: ViewModifier {
         Binding(
             get: { router.drawerPhase.isPresented },
             set: { shown in
-                // A swipe down from the peek (SwiftUI also writes false when
-                // the app closes it: the phase has moved on already then).
+                // A swipe down (SwiftUI also writes false when the app
+                // closes it: the phase has moved on already then).
                 if !shown, router.drawerPhase.isPresented {
                     router.wantsDrawer = false
                     router.dismissDrawer()
@@ -61,7 +62,6 @@ struct AIDrawerModifier: ViewModifier {
                 )
                 .presentationBackgroundInteraction(.enabled(upThrough: .medium))
                 .presentationDragIndicator(.visible)
-                .interactiveDismissDisabled(router.drawerDetent != .peek)
                 .onAppear {
                     #if DEBUG
                     if AIDrawerDebug.dropsThisPresentation() { return }
@@ -92,15 +92,6 @@ extension AppModel {
         default: break
         }
     }
-
-    /// The first topic ever opened shows the drawer once at its peek.
-    func showFirstTopicPeekIfNeeded() {
-        guard router.usesDrawer, !router.wantsDrawer, isDrawerAvailable else { return }
-        let defaults = UserDefaults.standard
-        guard !defaults.bool(forKey: PresentationRouter.firstTopicPeekKey) else { return }
-        defaults.set(true, forKey: PresentationRouter.firstTopicPeekKey)
-        router.openDrawer(at: .peek)
-    }
 }
 
 /// Keeps the drawer in step with the page, the request and the root
@@ -122,7 +113,6 @@ struct AIDrawerCoordinator: ViewModifier {
             .onChange(of: TopicMode(topicKey: app.currentTopic?.topicKey, mode: app.assistantMode)) { old, new in
                 guard old.topicKey != new.topicKey else { return }
                 if new.mode != .agent, old.mode == new.mode { app.assistantMode = .summary }
-                if new.topicKey != nil { app.showFirstTopicPeekIfNeeded() }
             }
             // A citation or solved-hint jump landed (§4.5).
             .sensoryFeedback(.selection, trigger: app.citationJump)
@@ -168,8 +158,7 @@ private struct AIDrawerContent: View {
             app: app,
             // Post & responses opens as a sheet over the drawer.
             onExpand: { route in app.router.item = .expanded(route) },
-            onOpenURL: onOpenURL,
-            drawerDetent: router.drawerDetent
+            onOpenURL: onOpenURL
         )
         .environment(\.composerFocusChanged, ComposerFocusAction { focused in
             // Never cover the keyboard.
@@ -178,6 +167,10 @@ private struct AIDrawerContent: View {
         // Manage and Settings need the room.
         .onChange(of: app.panelRoute, initial: true) {
             if app.panelRoute != .topic { setDetent(.large) }
+        }
+        // Open on a topic: the hint row's first-run tip has done its job.
+        .onChange(of: app.assistantPageState == .topic, initial: true) { _, onTopic in
+            if onTopic { router.summarizeTipSeen() }
         }
         // VoiceOver's escape (two-finger scrub) closes the drawer.
         .accessibilityElement(children: .contain)
@@ -195,7 +188,7 @@ private struct AIDrawerContent: View {
 
 #if DEBUG
 /// The drawer's height as an accessibility element for UI tests
-/// (`drawerState`, label `detent=<peek|medium|large>`).
+/// (`drawerState`, label `detent=<medium|large>`).
 private struct DrawerDebugState: View {
     @ObservedObject var router: PresentationRouter
 

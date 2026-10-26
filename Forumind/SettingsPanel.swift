@@ -77,50 +77,55 @@ struct SettingsRootView: View {
     var body: some View {
         Form {
             Section {
+                summaryRow(.assistant)
+                summaryRow(.agent)
+                NavigationLink(value: SettingsPage.voice) {
+                    Label(SettingsRootSummary.voiceToday(
+                        seconds: VoiceUsageStore().seconds(on: Date()),
+                        dailyLimitMinutes: app.settings.voice.dailyLimitMinutes
+                    ), systemImage: "waveform")
+                    .foregroundStyle(.secondary)
+                }
+                .accessibilityIdentifier("settingsSummary-voice")
+            }
+
+            Section("AI") {
                 NavigationLink(value: SettingsPage.provider) {
                     providerRow
                 }
                 .accessibilityIdentifier("settingsRow-provider")
-                SettingsSyncRow(app: app)
-            }
-
-            Section {
-                row(.forums, value: forumsValue)
-            }
-
-            Section("Assistant") {
-                row(.summaries)
-                row(.agent)
-                row(.watched, value: app.watchedTopics.isEmpty ? nil : "\(app.watchedTopics.count)")
-                row(.digest, value: app.settings.dailyDigestEnabled ? String(localized: "On") : String(localized: "Off"))
                 row(.voice, value: app.settings.voiceEnabled ? String(localized: "On") : String(localized: "Off"))
             }
 
-            Section("App") {
-                row(.browser, value: app.settings.browserBarPosition.displayName)
+            Section("Reading") {
+                row(.summaries)
+                row(.agent)
+                ReadingLanguagePicker(app: app)
+                row(.browser, value: String(localized: "Bar: \(app.settings.browserBarPosition.displayName)", comment: "Settings root, Browser row: the address bar position, e.g. Automatic"))
+            }
+
+            Section("Today & following") {
+                row(.digest, value: app.settings.dailyDigestEnabled ? String(localized: "On") : String(localized: "Off"))
+                row(.watched, value: app.watchedTopics.isEmpty ? nil : "\(app.watchedTopics.count)")
+            }
+
+            Section("Forums, sync & privacy") {
+                row(.forums, value: forumsValue)
+                SettingsSyncRow(app: app)
                 row(.data)
             }
 
             Section {
+                NavigationLink(value: SettingsPage.sharing) {
+                    SettingsRowLabel(page: .sharing, title: String(localized: "Open pages from Safari or Chrome"))
+                }
+                .accessibilityIdentifier("settingsRow-sharing")
+                row(.help)
                 languageRow
+            } header: {
+                Text("Help")
             } footer: {
                 Text("iOS manages the app language. Change it in Settings › Forumind › Language.")
-            }
-
-            Section {
-                ReadingLanguagePicker(app: app)
-            } footer: {
-                Text(ReadingLanguage.isTranslationAvailable
-                    ? "Summaries, answers, digest cards and posts can be translated into this language on your device. The daily podcast is written in it too."
-                    : "The daily podcast is written in this language. Translating needs iOS 18.")
-            }
-
-            Section {
-                row(.help)
-            } footer: {
-                Text("Forumind \(AppVersion.text())")
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, DCTheme.spacingS)
             }
         }
         .formStyle(.grouped)
@@ -132,6 +137,21 @@ struct SettingsRootView: View {
             SettingsDestination(app: app, page: page)
         }
         .accessibilityIdentifier("settingsRoot")
+    }
+
+    /// A header line: the role's name and its current model.
+    private func summaryRow(_ role: ModelRole) -> some View {
+        let model = app.modelLabel(for: role)
+        return NavigationLink(value: SettingsPage.provider) {
+            LabeledContent {
+                Text(model.isEmpty ? app.selection(for: role).provider.displayName : model)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            } label: {
+                Text(role == .assistant ? "Summaries & chat model" : "Ask the forum model")
+            }
+        }
+        .accessibilityIdentifier("settingsSummary-\(role.rawValue)")
     }
 
     private var forumsValue: String? {
@@ -242,7 +262,6 @@ struct SettingsDestination: View {
             case .data: SettingsDataPage(app: app)
             case .help: SettingsHelpPage(app: app)
             case .sharing: SettingsSharingPage()
-            case .about: SettingsAboutPage()
             case .acknowledgements: SettingsAcknowledgementsPage(app: app)
             }
         }
@@ -311,5 +330,17 @@ struct SettingsStatusPill: View {
             tint: ready ? DCTheme.success : DCTheme.warning
         )
         .accessibilityLabel(ready ? "Provider ready" : "Provider needs setup")
+    }
+}
+
+/// Derived text for the Settings root header.
+enum SettingsRootSummary {
+    /// "Voice today 4 of 30 min"; without a daily limit (0) just the minutes.
+    static func voiceToday(seconds: TimeInterval, dailyLimitMinutes: Int) -> String {
+        let used = Int(seconds / 60)
+        if dailyLimitMinutes > 0 {
+            return String(localized: "Voice today \(used) of \(dailyLimitMinutes) min", comment: "Settings header: voice minutes used today of the daily limit")
+        }
+        return String(localized: "Voice today \(used) min", comment: "Settings header: voice minutes used today, no daily limit")
     }
 }

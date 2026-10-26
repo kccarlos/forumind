@@ -146,10 +146,7 @@ class DCUITestCase: XCTestCase {
             return
         }
         let state = drawerState(in: app)
-        if state.waitForExistence(timeout: 3) {
-            if state.label == "detent=peek" { dragDrawer(in: app, to: 0.45) }
-            return
-        }
+        if state.waitForExistence(timeout: 3) { return }
         let button = app.buttons["aiButton"]
         if waitForBarItem(button, timeout: 10) { tapBarItem(button) }
         _ = state.waitForExistence(timeout: 10)
@@ -164,7 +161,7 @@ class DCUITestCase: XCTestCase {
 
     // MARK: AI drawer (iPhone)
 
-    /// DEBUG readout inside the drawer: `detent=peek|medium|large`. Gone
+    /// DEBUG readout inside the drawer: `detent=medium|large`. Gone
     /// while the drawer is closed.
     func drawerState(in app: XCUIApplication) -> XCUIElement {
         app.descendants(matching: .any)["drawerState"].firstMatch
@@ -182,8 +179,18 @@ class DCUITestCase: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(1))
     }
 
-    /// Swipes the drawer down until it closes (large and medium only go
-    /// down a height; from the peek it closes).
+    /// Flicks the drawer down by its header (closes it from any height).
+    func flickDrawer(in app: XCUIApplication) {
+        let header = app.descendants(matching: .any)["drawerHeader"].firstMatch
+        guard header.waitForExistence(timeout: 5) else { return }
+        let start = header.coordinate(withNormalizedOffset: CGVector(dx: 0.08, dy: 0.5))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.95))
+        start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .fast, thenHoldForDuration: 0)
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+    }
+
+    /// Swipes the drawer down until it closes (from medium a swipe closes
+    /// it; from large a slow one may stop at medium first).
     func closeDrawer(in app: XCUIApplication) {
         let state = drawerState(in: app)
         guard state.waitForExistence(timeout: 3) else { return }
@@ -236,7 +243,7 @@ class DCUITestCase: XCTestCase {
     /// switcher's All forums.
     func openForumsHomeFromSwitcher(in app: XCUIApplication) {
         openForumMenu(in: app)
-        let item = app.buttons["Home · Today & all forums"]
+        let item = app.buttons["Home"]
         XCTAssertTrue(item.waitForExistence(timeout: 10), "Home is missing from the forum menu.")
         item.tap()
     }

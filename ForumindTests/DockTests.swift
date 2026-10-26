@@ -8,10 +8,13 @@ final class DockTests: XCTestCase {
         drawer: Bool = false,
         voice: Bool = false,
         answer: Bool = false,
-        podcast: Bool = false
+        podcast: Bool = false,
+        hint: DrawerHint.Row? = nil
     ) -> BottomLayer {
-        BottomLayer.resolve(drawerOpen: drawer, voiceShowing: voice, answerReady: answer, podcastPlaying: podcast)
+        BottomLayer.resolve(drawerOpen: drawer, voiceShowing: voice, answerReady: answer, podcastPlaying: podcast, hint: hint)
     }
+
+    private let newReplies = DrawerHint.Row(action: .checkNew(12), isTip: false)
 
     func testBrowsingShowsTheBarAlone() {
         XCTAssertEqual(layer(), .bar)
@@ -33,6 +36,43 @@ final class DockTests: XCTestCase {
 
     func testAnswerReadyComesBeforeThePodcastRow() {
         XCTAssertEqual(layer(answer: true, podcast: true), .barWithAnswerReady)
+    }
+
+    /// voice Dock > Answer ready > podcast > hint > bar; the drawer above all.
+    func testTheHintRowComesLast() {
+        XCTAssertEqual(layer(hint: newReplies), .barWithHint(newReplies))
+        XCTAssertEqual(layer(podcast: true, hint: newReplies), .barWithPodcast)
+        XCTAssertEqual(layer(answer: true, hint: newReplies), .barWithAnswerReady)
+        XCTAssertEqual(layer(voice: true, hint: newReplies), .dock)
+        XCTAssertEqual(layer(drawer: true, hint: newReplies), .drawer)
+    }
+
+    /// The AI button's dot: new replies whose hint row another row outranks.
+    func testTheNewRepliesDotOnlyWhenTheHintRowIsOutranked() {
+        XCTAssertFalse(layer(hint: newReplies).showsNewRepliesDot(hint: newReplies), "The row says it.")
+        XCTAssertTrue(layer(podcast: true, hint: newReplies).showsNewRepliesDot(hint: newReplies))
+        XCTAssertTrue(layer(answer: true, hint: newReplies).showsNewRepliesDot(hint: newReplies))
+        XCTAssertFalse(layer(drawer: true, hint: newReplies).showsNewRepliesDot(hint: newReplies), "No bar under the drawer.")
+        XCTAssertFalse(layer(voice: true, hint: newReplies).showsNewRepliesDot(hint: newReplies), "No bar under the Dock.")
+        let setUp = DrawerHint.Row(action: .setUpAI, isTip: false)
+        XCTAssertFalse(layer(podcast: true, hint: setUp).showsNewRepliesDot(hint: setUp))
+        XCTAssertFalse(layer(podcast: true).showsNewRepliesDot(hint: nil))
+    }
+
+    /// The cards' chip in the drawer's status row.
+    func testTheCardsChipInTheDrawer() {
+        var cursor = BrowseCursor()
+        XCTAssertFalse(cursor.showsInDrawer)
+        let items = (1...4).map { BrowseItem(kind: .source, siteURL: "https://forum.example", topicID: "7", postNumber: $0, title: "T") }
+        cursor.replace(with: items, origin: .sources, current: 1)
+        XCTAssertTrue(cursor.showsInDrawer)
+        XCTAssertEqual(cursor.chipLabel, "4 sources · 2/4")
+        cursor.cards = .collapsed
+        XCTAssertTrue(cursor.showsInDrawer, "Collapsed over the page, still a chip in the drawer.")
+        cursor.cards = .hidden
+        XCTAssertFalse(cursor.showsInDrawer, "Dismissed: gone.")
+        cursor.replace(with: items, origin: .search("x"))
+        XCTAssertEqual(cursor.chipLabel, "4 results", "No card open yet: no position.")
     }
 
     func testClock() {

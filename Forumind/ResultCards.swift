@@ -20,12 +20,7 @@ struct ResultCardsOverlay: View {
         cursor.cards == .collapsed || (cursor.cards == .expanded && browser.isChromeMinimized)
     }
 
-    private var tint: Color {
-        switch cursor.origin {
-        case .research, .sources: DCTheme.agentTint
-        case .search, .focus, .none: DCTheme.brandBlue
-        }
-    }
+    private var tint: Color { cursor.tint }
 
     var body: some View {
         Group {
@@ -43,18 +38,7 @@ struct ResultCardsOverlay: View {
         .animation(DCMotion.respecting(reduceMotion, DCMotion.spring), value: cursor.cards)
     }
 
-    /// "3 results", "4 sources", "5 posts".
-    private var countLabel: String {
-        let count = cursor.items.count
-        switch cursor.origin {
-        case .research, .sources:
-            return String(localized: "\(count) sources")
-        case .focus:
-            return String(localized: "\(count) posts")
-        case .search, .none:
-            return String(localized: "\(count) results", comment: "Result cards over the page: the number of search results")
-        }
-    }
+    private var countLabel: String { cursor.countLabel }
 
     // MARK: Strip
 
@@ -216,6 +200,39 @@ struct ResultCardsOverlay: View {
         .hoverEffect(.lift)
         .accessibilityHint(Text("Shows the result cards", comment: "Accessibility hint of the collapsed result cards chip"))
         .accessibilityIdentifier("resultCardsChip")
+    }
+}
+
+extension BrowseCursor {
+    /// "3 results", "4 sources", "5 posts".
+    var countLabel: String {
+        let count = items.count
+        switch origin {
+        case .research, .sources:
+            return String(localized: "\(count) sources")
+        case .focus:
+            return String(localized: "\(count) posts")
+        case .search, .none:
+            return String(localized: "\(count) results", comment: "Result cards over the page: the number of search results")
+        }
+    }
+
+    /// "4 sources · 2/4": the cards as a chip in the AI drawer's status row
+    /// (under the drawer the strip would be hidden).
+    var chipLabel: String {
+        guard let index else { return countLabel }
+        return "\(countLabel) · \(index + 1)/\(items.count)"
+    }
+
+    /// The cards show in the drawer's status row: a list the reader has not
+    /// dismissed.
+    var showsInDrawer: Bool { cards != .hidden && !isEmpty }
+
+    var tint: Color {
+        switch origin {
+        case .research, .sources: DCTheme.agentTint
+        case .search, .focus, .none: DCTheme.brandBlue
+        }
     }
 }
 

@@ -2,9 +2,10 @@ import XCTest
 
 /// The iPhone AI drawer on sample data (`-dc-sample`, a topic page): every
 /// kind of root presentation shows over it and the drawer comes back at the
-/// same height, and the swipe rules (down from medium only goes to the peek;
-/// down from the peek closes it). The height comes from the DEBUG
-/// `drawerState` element; `-dc-test-present` triggers the presentation.
+/// same height; the swipe rules (down from medium closes it; from large a
+/// slow drag stops at medium, a flick closes it); the hint row over the bar.
+/// The height comes from the DEBUG `drawerState` element; `-dc-test-present`
+/// triggers the presentation.
 final class DrawerUITests: DCUITestCase {
     private let sample = ["-dc-sample", "-dc-page-state", "topic"]
 
@@ -72,18 +73,19 @@ final class DrawerUITests: DCUITestCase {
         XCTAssertTrue(drawerState(in: app).waitForExistence(timeout: 10), "The drawer did not come up.")
     }
 
-    /// Report or block (a routed sheet), from the peek.
+    /// Report or block (a routed sheet).
     func testReportSheetShowsOverTheDrawer() throws {
-        let app = try launchWithDrawer(presenting: "report", at: "peek")
+        let app = try launchWithDrawer(presenting: "report", at: "large")
         let sheet = app.navigationBars["Report or block"]
         XCTAssertTrue(waitOrDump(sheet, timeout: 20, in: app), "The report sheet did not show over the drawer.")
         sheet.buttons["Done"].tap()
-        assertDrawer(at: "peek", in: app, after: sheet)
+        assertDrawer(at: "large", in: app, after: sheet)
     }
 
-    /// Down from medium stops at the peek; down from the peek closes the
-    /// drawer, and the bar's AI button opens it again at medium.
-    func testSwipingDownGoesToThePeekThenCloses() throws {
+    /// Two heights, no peek: the AI button opens the drawer at medium and a
+    /// swipe down from medium closes it; from large a slow drag stops at
+    /// medium and a flick closes it.
+    func testSwipingDownClosesTheDrawer() throws {
         try skipUnlessPhone("The AI drawer is an iPhone behavior.")
         let app = launch(sample)
         let state = drawerState(in: app)
@@ -91,47 +93,81 @@ final class DrawerUITests: DCUITestCase {
         XCTAssertTrue(wait(timeout: 5) { state.label == "detent=medium" }, "Got \(state.label).")
 
         dragDrawer(in: app, to: 0.99)
-        XCTAssertTrue(wait(timeout: 5) { state.exists && state.label == "detent=peek" },
-                      "A swipe down from medium must stop at the peek.")
-        XCTAssertTrue(any(app, "drawerPeekLine").exists, "The peek shows its one line.")
-        XCTAssertFalse(app.segmentedControls["assistantModePicker"].exists, "The peek shows only the header and one line.")
-
-        dragDrawer(in: app, to: 0.99)
-        XCTAssertTrue(waitForGone(state, timeout: 5), "A swipe down from the peek must close the drawer.")
+        XCTAssertTrue(waitForGone(state, timeout: 5), "A swipe down from medium must close the drawer.")
 
         let button = app.buttons["aiButton"]
         XCTAssertTrue(waitForBarItem(button, timeout: 10), "The bar's AI button is missing.")
         tapBarItem(button)
         XCTAssertTrue(state.waitForExistence(timeout: 10))
         XCTAssertTrue(wait(timeout: 5) { state.label == "detent=medium" }, "The AI button opens the drawer at medium.")
+
+        dragDrawer(in: app, to: 0.08)
+        XCTAssertTrue(wait(timeout: 5) { state.label == "detent=large" }, "Got \(state.label), wanted large.")
+        dragDrawer(in: app, to: 0.55)
+        XCTAssertTrue(wait(timeout: 5) { state.exists && state.label == "detent=medium" },
+                      "A slow drag down from large must stop at medium; got \(state.label).")
+
+        dragDrawer(in: app, to: 0.08)
+        XCTAssertTrue(wait(timeout: 5) { state.label == "detent=large" }, "Got \(state.label), wanted large.")
+        flickDrawer(in: app)
+        XCTAssertTrue(waitForGone(state, timeout: 5), "A flick down from large must close the drawer.")
+        XCTAssertTrue(waitForBarItem(button, timeout: 10), "The bar did not come back.")
     }
 
-    /// §4.6: a topic opens with the drawer at the peek → summarize (the
-    /// DEBUG fake summary) → at large, tap `#12` → the page scrolls to post
-    /// 12 and marks it, and the drawer steps down to medium. The sample page
-    /// is the live meta topic 404728 (its posts 1–13 exist).
+    /// The first topic opened: the drawer stays closed and the hint row
+    /// over the bar has the "Summarize this topic" tip. Its text opens the
+    /// drawer at medium (and the tip has done its job); its button opens it
+    /// and starts the summary (the DEBUG fake summary).
+    func testTheHintRowOpensTheDrawerAndItsButtonSummarizes() throws {
+        try skipUnlessPhone("The AI drawer is an iPhone behavior.")
+        try requireNetwork()
+        let args = sample + ["-dc-drawer-first-run", "-dc-no-summary", "-dc-fake-summary"]
+        var app = launch(args)
+        var state = drawerState(in: app)
+        let text = app.buttons["dockHintText"]
+        XCTAssertTrue(waitOrDump(text, timeout: 20, in: app), "The first topic shows no hint row.")
+        XCTAssertFalse(state.exists, "The first topic must not open the drawer.")
+        XCTAssertEqual(text.label, "Summarize this topic")
+        XCTAssertTrue(waitForHittable(text))
+        text.tap()
+        XCTAssertTrue(state.waitForExistence(timeout: 10), "The hint row's text did not open the drawer.")
+        XCTAssertTrue(wait(timeout: 5) { state.label == "detent=medium" }, "Got \(state.label).")
+        closeDrawer(in: app)
+        XCTAssertTrue(waitForBarItem(app.buttons["aiButton"], timeout: 10))
+        XCTAssertFalse(text.exists, "The tip shows once: gone after the drawer opened.")
+        app.terminate()
+
+        app = launch(args)
+        state = drawerState(in: app)
+        let button = app.buttons["dockHintAction"]
+        XCTAssertTrue(waitOrDump(button, timeout: 20, in: app), "The hint row has no button.")
+        XCTAssertEqual(button.label, "Summarize this topic")
+        XCTAssertTrue(waitForHittable(button))
+        button.tap()
+        XCTAssertTrue(state.waitForExistence(timeout: 10), "The hint row's button did not open the drawer.")
+        XCTAssertTrue(wait(timeout: 5) { state.label == "detent=medium" }, "Got \(state.label).")
+        XCTAssertTrue(waitOrDump(app.buttons["citation-12"].firstMatch, timeout: 30, in: app),
+                      "The summary did not start.")
+    }
+
+    /// §4.6: a topic with the drawer at medium → summarize (the DEBUG fake
+    /// summary) → at large, tap `#12` → the page scrolls to post 12 and
+    /// marks it, and the drawer steps down to medium. The sample page is the
+    /// live meta topic 404728 (its posts 1–13 exist).
     func testCitationJumpScrollsThePageAndLowersTheDrawer() throws {
         try skipUnlessPhone("The AI drawer is an iPhone behavior.")
         try requireNetwork()
-        let app = launch(sample + [
-            "-dc-no-summary", "-dc-fake-summary", "-dc-browse-debug", "-dc-drawer-detent", "peek"
-        ])
+        let app = launch(sample + ["-dc-no-summary", "-dc-fake-summary", "-dc-browse-debug"])
         let state = drawerState(in: app)
         XCTAssertTrue(waitOrDump(state, timeout: 20, in: app), "The sample did not open the drawer.")
-        XCTAssertTrue(wait(timeout: 8) { state.label == "detent=peek" }, "Got \(state.label).")
-        let peek = any(app, "drawerPeekLine")
-        XCTAssertTrue(peek.waitForExistence(timeout: 5))
-        XCTAssertEqual(peek.label, "Summarize this topic")
-
-        peek.tap()
-        XCTAssertTrue(wait(timeout: 5) { state.label == "detent=medium" }, "The peek line opens the drawer.")
+        XCTAssertTrue(wait(timeout: 8) { state.label == "detent=medium" }, "Got \(state.label).")
         let summarize = app.buttons["createSummary"].firstMatch
         XCTAssertTrue(waitForHittable(summarize), "Create summary is missing.")
         summarize.tap()
 
         let citation = app.buttons["citation-12"].firstMatch
         XCTAssertTrue(waitOrDump(citation, timeout: 30, in: app), "The summary has no #12 citation.")
-        XCTAssertTrue(wait(timeout: 10) { peek.exists == false && app.buttons["retrySummary"].exists },
+        XCTAssertTrue(wait(timeout: 10) { app.buttons["retrySummary"].exists },
                       "The summary did not finish.")
 
         dragDrawer(in: app, to: 0.08)

@@ -1,97 +1,103 @@
 import Foundation
 
-// MARK: - AI drawer peek line and post citations
+// MARK: - AI drawer hint row and post citations
 //
-// The pure parts of the iPhone AI drawer (AIDrawer.swift, SummaryPanel.swift):
-// the peek's one line for each page state, and the `#N` post citations in a
-// summary (found, linked and tapped to jump to the post, §4.5).
+// The pure parts of the iPhone AI drawer (AIDrawer.swift, Dock.swift,
+// SummaryPanel.swift): the hint row over the bar while the drawer is closed,
+// and the `#N` post citations in a summary (found, linked and tapped to jump
+// to the post, §4.5).
 
-/// The peek's one line: the first sentence of the summary, or what the page
-/// is ("Summarize this topic", "Not a forum", …).
-enum DrawerPeek {
+/// The row over the bar that says what the drawer can do for this topic,
+/// only when it is worth a look: the first topic ever opened (the one-time
+/// "Summarize this topic" tip), new replies since the summary, or AI not set
+/// up or not allowed. Otherwise there is no row.
+enum DrawerHint {
     struct Input: Equatable {
         var pageState: PageContext.State
         var mode: AssistantMode = .summary
         /// The AI provider for the mode is set up.
         var providerReady = true
-        /// The summary shown (streamed text while one is being written).
-        var summary = ""
+        /// The provider isn't ready because the AI data consent was declined.
+        var consentDeclined = false
+        var hasSummary = false
+        /// A summary (or a pull of the posts) runs for the topic.
         var summaryRunning = false
+        /// The topic's post count and how many the summary covered.
+        var totalPosts: Int?
+        var summaryPostCount: Int?
     }
 
-    static func line(_ input: Input) -> String {
-        switch input.pageState {
-        case .loading:
-            return String(localized: "Loading page…")
-        case .notForum:
-            return String(localized: "Not a forum", comment: "AI drawer peek line on a page that is not a Discourse forum")
-        case .maybe:
-            return String(localized: "Might be a forum · Try again", comment: "AI drawer peek line while it is unclear whether the page is a forum")
-        case .forumHome:
-            return String(localized: "Forum home", comment: "AI drawer peek line on a forum's home or topic list")
-        case .topic:
-            break
-        }
-        if !input.providerReady {
-            return String(localized: "Set up AI", comment: "AI drawer peek line when no AI provider is set up")
-        }
-        if input.mode == .agent {
-            return String(localized: "Ask the forum")
-        }
-        if let sentence = firstSentence(of: input.summary) {
-            return sentence
-        }
-        if input.summaryRunning {
-            return String(localized: "Writing summary…")
-        }
-        return String(localized: "Summarize this topic", comment: "AI drawer peek line on a topic without a summary")
-    }
+    /// The row's trailing button.
+    enum Action: Equatable {
+        case summarize
+        /// The summary is stale; the count is nil when unknown.
+        case checkNew(Int?)
+        case setUpAI
+        case allowAI
 
-    /// The first sentence of the first text block (headings, code and tables
-    /// skipped), as plain text without citations.
-    static func firstSentence(of markdown: String) -> String? {
-        for block in MarkdownParser.parse(markdown) {
-            let text: String
-            switch block {
-            case .paragraph(let value), .quote(let value): text = value
-            case .unorderedList(let items), .orderedList(let items):
-                guard let first = items.first else { continue }
-                text = first
-            case .heading, .code, .table, .rule:
-                continue
+        /// Spoken label of the icon-only button.
+        var title: String {
+            switch self {
+            case .summarize: String(localized: "Summarize this topic", comment: "Hint row over the bar on a topic without a summary, and its button")
+            case .checkNew(let count?): String(localized: "Check \(count) new replies", comment: "Button on the hint row over the bar; the placeholder is the number of replies since the summary")
+            case .checkNew(nil): String(localized: "Check for new replies")
+            case .setUpAI: String(localized: "Set up AI", comment: "Hint row over the bar when no AI provider is set up, and its button")
+            case .allowAI: String(localized: "Allow AI", comment: "Hint row over the bar when the AI data consent was declined, and its button: show the consent again")
             }
-            let plain = plainText(PostCitations.stripped(text))
-            guard !plain.isEmpty else { continue }
-            return sentence(in: plain)
+        }
+
+        var symbol: String {
+            switch self {
+            case .summarize: "sparkles"
+            case .checkNew: "arrow.clockwise"
+            case .setUpAI, .allowAI: "key.fill"
+            }
+        }
+
+        /// The count on the badge ("99+" from 100), if any.
+        var badge: String? {
+            guard case .checkNew(let count?) = self, count > 0 else { return nil }
+            return count > 99 ? "99+" : "\(count)"
+        }
+
+        var needsAttention: Bool { self == .setUpAI || self == .allowAI }
+    }
+
+    /// The row: its text, and the button that does the action.
+    struct Row: Equatable {
+        let action: Action
+        /// The one-time first-run tip (a bulb, highlighted).
+        let isTip: Bool
+
+        var text: String {
+            switch action {
+            case .checkNew(let count?): String(localized: "\(count) new replies")
+            case .summarize, .checkNew(nil), .setUpAI, .allowAI: action.title
+            }
+        }
+    }
+
+    /// What the drawer's main action is for a page state; nil when there is
+    /// nothing to do (no topic, a summary running or up to date, Ask the forum).
+    static func action(_ input: Input) -> Action? {
+        guard input.pageState == .topic else { return nil }
+        if !input.providerReady { return input.consentDeclined ? .allowAI : .setUpAI }
+        guard input.mode == .summary, !input.summaryRunning else { return nil }
+        if !input.hasSummary { return .summarize }
+        if let total = input.totalPosts, let covered = input.summaryPostCount, total > covered {
+            return .checkNew(total - covered)
         }
         return nil
     }
 
-    private static func plainText(_ markdown: String) -> String {
-        let attributed = (try? AttributedString(
-            markdown: markdown,
-            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        )) ?? AttributedString(markdown)
-        return String(attributed.characters)
-            .components(separatedBy: .whitespacesAndNewlines)
-            .filter { !$0.isEmpty }
-            .joined(separator: " ")
-    }
-
-    /// Up to and including the first sentence end (Latin or CJK).
-    private static func sentence(in text: String) -> String {
-        var previous: Character?
-        for index in text.indices {
-            let character = text[index]
-            if "。！？".contains(character) {
-                return String(text[...index])
-            }
-            if let last = previous, ".!?".contains(last), character == " " {
-                return String(text[..<index])
-            }
-            previous = character
+    /// The hint row, or nil for no row. "Summarize this topic" shows only as
+    /// the first-run tip (`tipPending`); new replies and AI setup always.
+    static func row(_ input: Input, tipPending: Bool) -> Row? {
+        switch action(input) {
+        case nil: nil
+        case .summarize: tipPending ? Row(action: .summarize, isTip: true) : nil
+        case let action?: Row(action: action, isTip: false)
         }
-        return text
     }
 }
 
@@ -142,7 +148,7 @@ enum PostCitations {
         }
     }
 
-    /// The text without citations (the peek line, read aloud).
+    /// The text without citations (read aloud, translated).
     static func stripped(_ markdown: String) -> String {
         guard let pattern else { return markdown }
         let nsText = markdown as NSString

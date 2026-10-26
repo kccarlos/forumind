@@ -31,10 +31,6 @@ struct AssistantPanel: View {
     let onExpand: ((ExpandedPanelRoute) -> Void)?
     /// Opens a forum URL in the Browse workspace (the agent's step log uses it).
     let onOpenURL: ((URL) -> Void)?
-    /// The drawer's height (iPhone and narrow iPad windows); the split panel
-    /// is always `.large`. The header is one row (the page bar already names
-    /// the forum); at the peek only that row and one line show.
-    var drawerDetent: DrawerDetent
     @State private var exportOptions = ExportOptions()
     @State private var showingExportOptions = false
     @State private var showingInstructions = false
@@ -46,17 +42,13 @@ struct AssistantPanel: View {
     init(
         app: AppModel,
         onExpand: ((ExpandedPanelRoute) -> Void)? = nil,
-        onOpenURL: ((URL) -> Void)? = nil,
-        drawerDetent: DrawerDetent = .large
+        onOpenURL: ((URL) -> Void)? = nil
     ) {
         self.app = app
         _streams = ObservedObject(wrappedValue: app.streams)
         self.onExpand = onExpand
         self.onOpenURL = onOpenURL
-        self.drawerDetent = drawerDetent
     }
-
-    private var isPeek: Bool { drawerDetent == .peek }
 
     private var activeRecords: [WorkRecord] {
         guard let topicKey = app.currentTopic?.topicKey else { return [] }
@@ -108,11 +100,7 @@ struct AssistantPanel: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if isPeek {
-                drawerHeader
-                peekLine
-                Spacer(minLength: 0)
-            } else if app.panelRoute == .topic {
+            if app.panelRoute == .topic {
                 DrawerStatusRow(app: app, podcast: app.podcast, router: app.router, voice: app.voice)
                 drawerHeader
                 topicContent
@@ -221,7 +209,7 @@ struct AssistantPanel: View {
                     .accessibilityAddTraits(.isHeader)
                     .accessibilityIdentifier("drawerTitle")
                 Spacer(minLength: 4)
-                if !isPeek { drawerModelPill }
+                drawerModelPill
                 if bodyKind == .summary, let session = app.currentSession, session.hasSummary {
                     let text = PostCitations.stripped(session.summary)
                     TranslateButton(app: app, title: session.title, text: text, compact: true)
@@ -304,57 +292,6 @@ struct AssistantPanel: View {
     private struct PillState: Equatable {
         let role: ModelRole
         let selection: ModelSelection
-    }
-
-    /// The peek's one line (DrawerPeek): tap to open the drawer to medium.
-    /// The first topic ever opened shows it as a tip.
-    private var peekLine: some View {
-        let text = peekText
-        let showsTip = !UserDefaults.standard.bool(forKey: PresentationRouter.summarizeTipKey)
-            && bodyKind == .summary && app.isProviderReady(for: .assistant) && visibleSummary.isEmpty
-        return Button {
-            withAnimation(DCMotion.respecting(reduceMotion, DCMotion.smooth)) { app.router.drawerDetent = .medium }
-        } label: {
-            HStack(spacing: 8) {
-                if showsTip {
-                    Image(systemName: "lightbulb.fill")
-                        .foregroundStyle(DCTheme.warning)
-                        .accessibilityHidden(true)
-                }
-                Text(text)
-                    .font(.subheadline)
-                    .foregroundStyle(showsTip ? .primary : .secondary)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, showsTip ? 10 : 0)
-            .padding(.vertical, showsTip ? 6 : 0)
-            .background {
-                if showsTip {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous).fill(DCTheme.warning.opacity(0.12))
-                }
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 16)
-        .onDisappear {
-            // Seen once: the tip never comes back.
-            if showsTip { UserDefaults.standard.set(true, forKey: PresentationRouter.summarizeTipKey) }
-        }
-        .accessibilityLabel(Text(verbatim: text))
-        .accessibilityHint(Text("Opens the drawer", comment: "Accessibility hint of the AI drawer's peek line"))
-        .accessibilityIdentifier("drawerPeekLine")
-    }
-
-    private var peekText: String {
-        DrawerPeek.line(DrawerPeek.Input(
-            pageState: app.assistantPageState,
-            mode: bodyKind == .agent ? .agent : app.assistantMode,
-            providerReady: app.isProviderReady(for: app.currentRole),
-            summary: visibleSummary,
-            summaryRunning: activeSummary != nil
-        ))
     }
 
     // MARK: Drawer ··· menu
@@ -1489,7 +1426,8 @@ private struct ScrollBottomTracker: ViewModifier {
 // MARK: - AI drawer parts
 
 /// The drawer's optional 44 pt row under the grabber, only while something
-/// runs: research progress, "Answer ready", or the Today podcast.
+/// runs: voice, research progress, "Answer ready", or the Today podcast; and
+/// the result cards as a chip (the strip would be under the drawer).
 private struct DrawerStatusRow: View {
     @ObservedObject var app: AppModel
     @ObservedObject var podcast: PodcastController
@@ -1523,6 +1461,9 @@ private struct DrawerStatusRow: View {
                     app.router.item = .nowPlaying
                 }
             }
+            if app.browseCursor.showsInDrawer {
+                DrawerCardsChip(app: app, router: router)
+            }
         }
         .onChange(of: app.assistantMode) {
             if inAgentMode { router.answersSeenAt = Date() }
@@ -1543,6 +1484,63 @@ private struct DrawerStatusRow: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("drawerStatusRow")
+    }
+}
+
+/// The result cards while the drawer is up: "4 sources · 2/4" with ‹ ›,
+/// the same jumps as the strip, which comes back when the drawer closes.
+private struct DrawerCardsChip: View {
+    @ObservedObject var app: AppModel
+    @ObservedObject var router: PresentationRouter
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var cursor: BrowseCursor { app.browseCursor }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "rectangle.stack")
+                .foregroundStyle(cursor.tint)
+                .accessibilityHidden(true)
+            Text(verbatim: cursor.chipLabel)
+                .font(.subheadline.weight(.medium).monospacedDigit())
+                .foregroundStyle(cursor.tint)
+                .lineLimit(1)
+                .accessibilityIdentifier("drawerCardsLabel")
+            Spacer(minLength: 0)
+            Button {
+                move { await app.previous() }
+            } label: {
+                Image(systemName: "chevron.left").font(.subheadline.weight(.semibold))
+            }
+            .buttonStyle(DCIconButtonStyle())
+            .disabled(!cursor.hasPrevious)
+            .accessibilityLabel(Text("Previous result", comment: "Result cards over the page: open the previous card"))
+            .accessibilityIdentifier("drawerCardsPrevious")
+            Button {
+                move { await app.next() }
+            } label: {
+                Image(systemName: "chevron.right").font(.subheadline.weight(.semibold))
+            }
+            .buttonStyle(DCIconButtonStyle())
+            .disabled(!cursor.hasNext)
+            .accessibilityLabel(Text("Next result", comment: "Result cards over the page: open the next card"))
+            .accessibilityIdentifier("drawerCardsNext")
+        }
+        .padding(.leading, 16)
+        .padding(.trailing, 8)
+        .frame(height: 44)
+        .padding(.top, 10)
+        .sensoryFeedback(.selection, trigger: cursor.index)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("drawerCardsChip")
+    }
+
+    /// The page jumps to the card: a large drawer steps down so it shows.
+    private func move(_ jump: @escaping @MainActor () async -> Void) {
+        if router.drawerDetent == .large {
+            withAnimation(DCMotion.respecting(reduceMotion, DCMotion.smooth)) { router.drawerDetent = .medium }
+        }
+        Task { await jump() }
     }
 }
 

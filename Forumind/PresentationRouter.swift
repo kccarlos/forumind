@@ -144,29 +144,21 @@ enum SplitPanelMode: Equatable {
     }
 }
 
-/// Heights of the AI drawer.
+/// Heights of the AI drawer. No smaller height: closed, the hint row over
+/// the bar (Dock.swift) says what it can do.
 enum DrawerDetent: String, CaseIterable {
-    /// Header and one line.
-    case peek
     case medium
     case large
 
-    static let peekHeight: CGFloat = 96
-
     var presentationDetent: PresentationDetent {
         switch self {
-        case .peek: .height(Self.peekHeight)
         case .medium: .medium
         case .large: .large
         }
     }
 
     init(_ detent: PresentationDetent) {
-        switch detent {
-        case .large: self = .large
-        case .medium: self = .medium
-        default: self = .peek
-        }
+        self = detent == .large ? .large : .medium
     }
 }
 
@@ -218,6 +210,23 @@ final class PresentationRouter: ObservableObject {
     /// Ask the forum answers finished after this show "Answer ready" in the
     /// drawer's status row until the reader opens Ask the forum.
     @Published var answersSeenAt = Date()
+    /// The hint row's "Summarize this topic" tip is still to come: until the
+    /// drawer first opens on a topic or a summary starts. Kept in the user
+    /// defaults (`summarizeTipKey`); published so the row goes at once.
+    @Published private(set) var summarizeTipPending = !UserDefaults.standard.bool(forKey: summarizeTipKey)
+
+    func summarizeTipSeen() {
+        guard summarizeTipPending else { return }
+        summarizeTipPending = false
+        UserDefaults.standard.set(true, forKey: Self.summarizeTipKey)
+    }
+
+    #if DEBUG
+    /// After the launch arguments reset or set the tips.
+    func reloadSummarizeTip() {
+        summarizeTipPending = !UserDefaults.standard.bool(forKey: Self.summarizeTipKey)
+    }
+    #endif
 
     var drawerDetent: DrawerDetent {
         get { DrawerDetent(drawerDetentSelection) }
@@ -299,11 +308,9 @@ final class PresentationRouter: ObservableObject {
         }
     }
 
-    /// First open of a topic shows the drawer once at its peek (first run
-    /// only; afterwards the drawer appears from the AI button).
-    static let firstTopicPeekKey = "dc.drawerFirstTopicPeekShown"
-    /// First-run tips, once each (§4.5): the peek's "Summarize this topic"
-    /// and "Tap a post number to jump to it" with the first summary.
+    /// First-run tips, once each (§4.5): "Summarize this topic" over the bar
+    /// (the hint row) and "Tap a post number to jump to it" with the first
+    /// summary.
     static let summarizeTipKey = "dc.tipSummarizeShown"
     static let citationTipKey = "dc.tipCitationShown"
     /// "This topic / Whole forum" the first time the Ask box is focused (§5).
@@ -606,24 +613,27 @@ struct RouterHost: ViewModifier {
 // MARK: - DEBUG launch arguments
 
 #if DEBUG
-/// - `-dc-drawer-first-run`        the first topic shows the drawer's peek (and
-///                                 the first-run tips) again
-///                                 (other `-dc-` / `-ui-test-` launches, UI tests
-///                                 among them, count as having seen it)
-/// - `-dc-drawer-detent <detent>`  peek | medium | large once the drawer is up
+/// - `-dc-drawer-first-run`        the first-run tips show again ("Summarize this
+///                                 topic" over the bar; the sample leaves the drawer
+///                                 closed) (other `-dc-` / `-ui-test-` launches, UI
+///                                 tests among them, count as having seen them)
+/// - `-dc-drawer-detent <detent>`  medium | large once the drawer is up
 /// - `-dc-test-present <kind>`     after `-dc-test-present-after <s>` (default 6):
-///                                 settings | cover | error | report | pending-drawer
+///                                 settings | cover | error | report | pending-drawer;
+///                                 drawer-on-voice: the drawer opens once voice runs
+///                                 and result cards show
 /// - `-dc-drawer-drop-first`       the drawer's first presentation never reports
 ///                                 its content (a dropped presentation)
 extension AppModel {
     func applyDrawerDebugArguments() {
         let arguments = ProcessInfo.processInfo.arguments
-        let keys = [PresentationRouter.firstTopicPeekKey] + PresentationRouter.tipKeys
+        let keys = PresentationRouter.tipKeys
         if arguments.contains("-dc-drawer-first-run") {
             keys.forEach { UserDefaults.standard.removeObject(forKey: $0) }
         } else if arguments.contains(where: { $0.hasPrefix("-dc-") || $0.hasPrefix("-ui-test-") }) {
             keys.forEach { UserDefaults.standard.set(true, forKey: $0) }
         }
+        router.reloadSummarizeTip()
     }
 
     /// UI tests: a root presentation of each kind while the drawer is up.
@@ -637,6 +647,14 @@ extension AppModel {
             router.drawerDetent = detent
         }
         guard let kind = AssistantDebug.value("-dc-test-present") else { return }
+        if kind == "drawer-on-voice" {
+            for _ in 0..<480 where !(voice.isActive && !browseCursor.isEmpty) {
+                try? await Task.sleep(for: .milliseconds(250))
+            }
+            try? await Task.sleep(for: .seconds(1))
+            router.openDrawer(at: .medium)
+            return
+        }
         let delay = AssistantDebug.value("-dc-test-present-after").flatMap(Double.init) ?? 6
         try? await Task.sleep(for: .seconds(delay))
         switch kind {

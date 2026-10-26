@@ -115,6 +115,9 @@ final class PhysicalDeviceSmokeTests: DCUITestCase {
             let signInButton = app.buttons.matching(label(contains: "Not signed in")).firstMatch
             XCTAssertTrue(signInButton.waitForExistence(timeout: 10))
             signInButton.tap()
+            // iPhone: the account row is a submenu (Sign in, Sign-in help).
+            let signIn = app.buttons["Sign in"]
+            if signIn.waitForExistence(timeout: 5) { signIn.tap() }
 
             let loginURL = address(containing: "\(Self.forumHost)/login", in: app)
             if !loginURL.waitForExistence(timeout: 30) {
@@ -128,6 +131,13 @@ final class PhysicalDeviceSmokeTests: DCUITestCase {
         let menu = app.buttons["forumSwitcher"]
         XCTAssertTrue(menu.waitForExistence(timeout: 10))
         tapBarItem(menu)
+        // Sign-in help is a submenu of the account row. Menu items lose
+        // their identifiers on iOS 27: find the row by its host line.
+        let account = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS %@ OR label CONTAINS %@ OR label CONTAINS %@", "Signed in", "Not signed in", "Logged in as")
+        ).firstMatch
+        XCTAssertTrue(account.waitForExistence(timeout: 10))
+        account.tap()
         let help = app.buttons["Sign-in help"]
         XCTAssertTrue(help.waitForExistence(timeout: 10))
         help.tap()
@@ -419,8 +429,10 @@ final class PhysicalDeviceSmokeTests: DCUITestCase {
         XCTAssertTrue(any(app, "agentMaxTopicReads").exists)
         tapNavigationBack(in: app)
 
-        XCTAssertTrue(app.buttons["settingsRow-watched"].waitForExistence(timeout: 10))
-        app.buttons["settingsRow-watched"].tap()
+        // Below the fold since the Settings root was regrouped.
+        let watchedSettingsRow = app.buttons["settingsRow-watched"]
+        XCTAssertTrue(reveal(watchedSettingsRow, in: app))
+        watchedSettingsRow.tap()
         XCTAssertTrue(app.navigationBars["Watched topics"].waitForExistence(timeout: 10))
         XCTAssertTrue(reveal(any(app, "watchAutoRefresh"), in: app))
         tapNavigationBack(in: app)
@@ -563,7 +575,11 @@ final class PhysicalDeviceSmokeTests: DCUITestCase {
         }
         XCTAssertTrue(waitForGone(recentRow, timeout: 5))
 
+        // Saved summaries sit above Recent activity; the list recycles
+        // rows scrolled off, so scroll back up to them.
         let deleteSummaryRow = app.staticTexts["Swipe test delete summary"]
+        let list = app.collectionViews["historyView"]
+        for _ in 0..<6 where !(deleteSummaryRow.exists && deleteSummaryRow.isHittable) { list.swipeDown() }
         XCTAssertTrue(reveal(deleteSummaryRow, in: app))
         deleteSummaryRow.swipeRight()
         let deleteSummary = app.buttons["Delete saved summary"]
@@ -573,6 +589,8 @@ final class PhysicalDeviceSmokeTests: DCUITestCase {
         XCTAssertTrue(waitForGone(deleteSummaryRow, timeout: 5))
 
         let keepSummaryRow = app.staticTexts["Swipe test keep summary"]
+        // It may sit above the list's top edge (under the header) by now.
+        for _ in 0..<6 where !(keepSummaryRow.exists && keepSummaryRow.isHittable) { list.swipeDown() }
         XCTAssertTrue(reveal(keepSummaryRow, in: app))
         keepSummaryRow.swipeLeft()
         let keepSummary = app.buttons["Keep saved summary"]
@@ -832,19 +850,22 @@ final class PhysicalDeviceSmokeTests: DCUITestCase {
             || app.buttons.matching(label(contains: "Signed in")).firstMatch.exists,
             "The account row is missing."
         )
-        let help = app.buttons["Sign-in help"]
-        XCTAssertTrue(help.exists)
         XCTAssertTrue(app.buttons["Settings"].exists)
-        XCTAssertTrue(app.buttons["Share Page"].exists)
-        XCTAssertTrue(app.buttons["Copy Link"].exists)
-        XCTAssertTrue(
-            app.descendants(matching: .any).matching(label(contains: "Block Ads on This Site")).firstMatch.exists,
-            "Block Ads on This Site is missing."
-        )
-        XCTAssertTrue(app.buttons["Add Forum…"].exists)
-        XCTAssertTrue(app.buttons["Home · Today & all forums"].exists)
+        XCTAssertTrue(app.buttons["Share"].exists, "The Share submenu is missing.")
+        XCTAssertTrue(app.buttons["Home"].exists)
         XCTAssertTrue(app.buttons["History"].exists)
 
+        // Sign-in help and the per-site ad switch are in the account row's submenu.
+        // Menu items lose their identifiers on iOS 27: find the account row by its host line.
+        app.buttons.matching(
+            NSPredicate(format: "label CONTAINS %@ OR label CONTAINS %@ OR label CONTAINS %@", "Signed in", "Not signed in", "Logged in as")
+        ).firstMatch.tap()
+        let help = app.buttons["Sign-in help"]
+        XCTAssertTrue(help.waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            app.descendants(matching: .any).matching(label(contains: "Block Ads on This Site")).firstMatch.exists,
+            "Block Ads on This Site is missing from the account submenu."
+        )
         help.tap()
         XCTAssertTrue(app.navigationBars["Forum Login"].waitForExistence(timeout: 10))
         app.buttons["Done"].tap()
@@ -1063,7 +1084,7 @@ final class PhysicalDeviceSmokeTests: DCUITestCase {
 
         // Opening a topic never switches workspaces on its own; in the
         // single-pane layout the user opens the Assistant explicitly (iPhone:
-        // the AI drawer; past its first-run peek it stays closed).
+        // the AI drawer stays closed).
         if isPhone {
             XCTAssertFalse(drawerState(in: app).exists, "Opening a topic must not open the AI drawer.")
             showAssistant(in: app)

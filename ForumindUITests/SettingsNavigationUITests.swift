@@ -5,14 +5,16 @@ final class SettingsNavigationUITests: DCUITestCase {
     /// Root row identifier suffix → the pushed page's navigation title.
     private let pages: [(row: String, title: String)] = [
         ("provider", "AI models"),
-        ("sync", "iCloud Sync"),
-        ("forums", "Forums"),
+        ("voice", "Voice"),
         ("summaries", "Summaries & chat"),
         ("agent", "Ask the forum"),
-        ("watched", "Watched topics"),
         ("browser", "Browser"),
+        ("digest", "Daily digest & podcast"),
+        ("watched", "Watched topics"),
+        ("forums", "Forums"),
+        ("sync", "iCloud Sync"),
         ("data", "Data & privacy"),
-        ("help", "Help")
+        ("help", "Help & about")
     ]
 
     func testEachRootRowOpensItsPageAndBackReturns() throws {
@@ -45,17 +47,11 @@ final class SettingsNavigationUITests: DCUITestCase {
             XCTAssertTrue(waitForGone(app.navigationBars[page.title], timeout: 5))
         }
 
-        // Help's own sub-pages push and pop too.
-        let help = app.buttons["settingsRow-help"]
-        XCTAssertTrue(reveal(help, in: app))
-        help.tap()
-        XCTAssertTrue(app.navigationBars["Help"].waitForExistence(timeout: 10))
-        let sharing = app.buttons["How to share from Safari or Chrome"]
+        // The Help section's share guide pushes and pops too.
+        let sharing = app.buttons["settingsRow-sharing"]
         XCTAssertTrue(reveal(sharing, in: app))
         sharing.tap()
         XCTAssertTrue(app.navigationBars["Share from Safari or Chrome"].waitForExistence(timeout: 10))
-        app.navigationBars.buttons["Help"].firstMatch.tap()
-        XCTAssertTrue(app.navigationBars["Help"].waitForExistence(timeout: 10))
         tapNavigationBack(in: app)
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 10))
 
@@ -300,6 +296,8 @@ final class SettingsNavigationUITests: DCUITestCase {
         case "browser": expected = app.segmentedControls["browserBarPosition"]
         case "data": expected = any(app, "clearAllData")
         case "help": expected = any(app, "replayOnboarding")
+        case "digest": expected = any(app, "podcastDailyEnabled")
+        case "voice": expected = any(app, "voiceSessionLimit")
         default: expected = nil
         }
         guard let expected else { return }

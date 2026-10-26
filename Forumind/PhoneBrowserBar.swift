@@ -135,7 +135,7 @@ struct PhoneBrowser<Page: View>: View {
     @ViewBuilder
     private func splitItems(_ split: SplitBarContext) -> some View {
         let controls = 5 + (app.showsVoiceButton ? 1 : 0)
-        ForumMenuButton(app: app, browser: browser, voice: app.voice, actions: actions)
+        ForumMenuButton(app: app, browser: browser, actions: actions)
         SplitNavigationButtons(browser: browser)
         PhoneTitleCapsule(
             app: app,
@@ -153,7 +153,7 @@ struct PhoneBrowser<Page: View>: View {
 
     @ViewBuilder
     private var phoneItems: some View {
-        ForumMenuButton(app: app, browser: browser, voice: app.voice, actions: actions)
+        ForumMenuButton(app: app, browser: browser, actions: actions)
         PhoneTitleCapsule(
             app: app,
             browser: browser,
@@ -170,6 +170,8 @@ struct PhoneBrowser<Page: View>: View {
             PhoneAIButton(
                 app: app,
                 voice: app.voice,
+                router: app.router,
+                podcast: app.podcast,
                 isAvailable: app.isDrawerAvailable && browser.currentURL != nil,
                 onOpen: actions.openAssistant
             )
@@ -606,14 +608,20 @@ struct SiteBlocking {
 
 // MARK: - AI button
 
-/// Opens the drawer at medium; a long press starts voice (when set up).
+/// Opens the drawer at medium; a long press starts voice (when set up). A
+/// dot when the topic has new replies and another row holds the hint row's
+/// place (`BottomLayer.showsNewRepliesDot`).
 struct PhoneAIButton: View {
     @ObservedObject var app: AppModel
     @ObservedObject var voice: VoiceController
+    /// The layer's inputs, for the dot.
+    @ObservedObject var router: PresentationRouter
+    @ObservedObject var podcast: PodcastController
     let isAvailable: Bool
     let onOpen: () -> Void
 
     private var canTalk: Bool { app.showsVoiceButton }
+    private var showsNewRepliesDot: Bool { app.bottomLayer.showsNewRepliesDot(hint: app.drawerHint) }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// The research progress around the button; a short arc while the
@@ -644,6 +652,15 @@ struct PhoneAIButton: View {
             .symbolEffect(.bounce, value: reduceMotion ? nil : app.readyAnswer?.id)
             .frame(width: DCTheme.controlHeight, height: DCTheme.controlHeight)
             .overlay { researchRing }
+            .overlay(alignment: .topTrailing) {
+                if showsNewRepliesDot {
+                    Circle()
+                        .fill(Color.red)
+                        .frame(width: 8, height: 8)
+                        .padding(8)
+                        .accessibilityHidden(true)
+                }
+            }
             .contentShape(Circle())
             .onTapGesture {
                 guard isAvailable else { return }
@@ -656,6 +673,7 @@ struct PhoneAIButton: View {
             }
             .accessibilityElement()
             .accessibilityLabel(Text("AI assistant", comment: "iPhone browser bar button that opens the AI drawer"))
+            .accessibilityValue(showsNewRepliesDot ? Text("New replies", comment: "Accessibility value of the iPhone AI button while its dot says the topic has new replies") : Text(verbatim: ""))
             .accessibilityHint(canTalk ? Text("Touch and hold to talk to Forumind", comment: "Accessibility hint of the iPhone AI button when voice is set up") : Text(verbatim: ""))
             .accessibilityAddTraits(.isButton)
             .accessibilityRemoveTraits(isAvailable ? [] : .isButton)
@@ -677,7 +695,6 @@ struct PhoneAIButton: View {
 struct ForumMenuButton: View {
     @ObservedObject var app: AppModel
     @ObservedObject var browser: ForumBrowserModel
-    @ObservedObject var voice: VoiceController
     let actions: BrowserActions
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -688,6 +705,12 @@ struct ForumMenuButton: View {
 
     var body: some View {
         Menu {
+            Section {
+                Button(action: actions.showForumsHome) {
+                    Label("Home", systemImage: "square.grid.2x2")
+                }
+                .accessibilityIdentifier("switcherAllForums")
+            }
             headerSection
             ControlGroup {
                 Button(action: goBack) { Label("Back", systemImage: "chevron.backward") }
@@ -703,9 +726,15 @@ struct ForumMenuButton: View {
                 Button(action: goHome) { Label(homeLabel, systemImage: "house") }
                     .accessibilityIdentifier("browserHome")
             }
+            // Four icons in one row (the default size wraps Home to its own).
+            .controlGroupStyle(.palette)
+            .controlSize(.small)
+            // A palette keeps the menu open after a tap (the page would
+            // change behind it, e.g. Back from Home); these are commands.
+            .menuActionDismissBehavior(.enabled)
             pageSection
             if let pageURL {
-                Section {
+                Menu {
                     ShareLink(item: pageURL) {
                         Label("Share Page", systemImage: "square.and.arrow.up")
                     }
@@ -715,30 +744,27 @@ struct ForumMenuButton: View {
                     } label: {
                         Label("Copy Link", systemImage: "link")
                     }
-                }
-            }
-            if pageURL != nil, let blocks = SiteBlocking(app: app, url: pageURL).isBlockingHere {
-                Toggle(isOn: blocks) {
-                    Label("Block Ads on This Site", systemImage: "shield.lefthalf.filled")
-                }
-                .accessibilityIdentifier("menuToggleAdsOnSite")
-            }
-            if let topic {
-                Button {
-                    actions.report(topic)
                 } label: {
-                    Label("Report or block…", systemImage: "flag")
+                    Label("Share", systemImage: "square.and.arrow.up")
                 }
-                .accessibilityIdentifier("menuReportOrBlock")
+                .accessibilityIdentifier("forumMenuShare")
             }
-            switchSection
             Section {
-                Button(action: actions.showForumsHome) {
-                    Label("Home · Today & all forums", systemImage: "square.grid.2x2")
+                if let topic {
+                    Button {
+                        actions.report(topic)
+                    } label: {
+                        Label("Report or block…", systemImage: "flag")
+                    }
+                    .accessibilityIdentifier("menuReportOrBlock")
                 }
-                .accessibilityIdentifier("switcherAllForums")
+            }
+            Section {
                 Button { actions.openPanel(.history) } label: {
                     Label("History", systemImage: "clock.arrow.circlepath")
+                }
+                Button { actions.openPanel(.settings) } label: {
+                    Label("Settings", systemImage: "gearshape")
                 }
             }
         } label: {
@@ -771,18 +797,34 @@ struct ForumMenuButton: View {
     private var headerSection: some View {
         Section {
             if let forum {
-                Button(action: openAccount) {
+                Menu {
+                    Button(action: openAccount) {
+                        if browser.isAuthenticated {
+                            Label("Open account", systemImage: "person.crop.circle")
+                        } else {
+                            Label("Sign in", systemImage: "person.badge.key")
+                        }
+                    }
+                    .accessibilityIdentifier("forumMenuAccountOpen")
+                    Button(action: actions.showLoginInfo) {
+                        Label("Sign-in help", systemImage: "questionmark.circle")
+                    }
+                    .accessibilityIdentifier("forumMenuSignInHelp")
+                    // Per-site settings live with the forum, not in the root menu.
+                    if pageURL != nil, let blocks = SiteBlocking(app: app, url: pageURL).isBlockingHere {
+                        Section {
+                            Toggle(isOn: blocks) {
+                                Label("Block Ads on This Site", systemImage: "shield.lefthalf.filled")
+                            }
+                            .accessibilityIdentifier("menuToggleAdsOnSite")
+                        }
+                    }
+                } label: {
                     Text(forum.displayName)
                     Text(accountLine(for: forum))
                     Image(systemName: browser.isAuthenticated ? "person.crop.circle.fill" : "person.badge.key")
                 }
                 .accessibilityIdentifier("forumMenuAccount")
-                Button(action: actions.showLoginInfo) {
-                    Label("Sign-in help", systemImage: "questionmark.circle")
-                }
-            }
-            Button { actions.openPanel(.settings) } label: {
-                Label("Settings", systemImage: "gearshape")
             }
         }
     }
@@ -801,39 +843,9 @@ struct ForumMenuButton: View {
             }
             if self.topic != nil, ReadingLanguage.isTranslationAvailable {
                 Button(action: actions.translatePosts) {
-                    Label("Translate Posts on Screen", systemImage: "translate")
+                    Label("Translate", systemImage: "translate")
                 }
                 .accessibilityIdentifier("menuTranslatePosts")
-            }
-            // Voice also starts from a long press on the AI button.
-            if app.showsVoiceButton {
-                Button {
-                    voice.toggle()
-                } label: {
-                    if voice.isActive {
-                        Label("End voice", systemImage: "mic.slash")
-                    } else {
-                        Label("Talk to Forumind", systemImage: "mic")
-                    }
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var switchSection: some View {
-        let pinned = app.pinnedForums
-        let recents = app.recentForums.filter { recent in !pinned.contains { $0.siteURL == recent.siteURL } }.prefix(5)
-        Section("Switch forum") {
-            ForEach(pinned + recents) { other in
-                Button {
-                    actions.openForum(other)
-                } label: {
-                    Label(other.displayName, systemImage: app.isCurrent(other) ? "checkmark" : Self.letterSymbol(for: other))
-                }
-            }
-            Button(action: actions.addForum) {
-                Label("Add Forum…", systemImage: "plus")
             }
         }
     }
@@ -867,14 +879,5 @@ struct ForumMenuButton: View {
     private func openAccount() {
         let opened = browser.isAuthenticated ? browser.loadHome() : browser.loadLogin()
         if !opened { actions.showForumsHome() }
-    }
-
-    /// A letter tile symbol for menus (they take symbols, not views).
-    static func letterSymbol(for forum: Forum) -> String {
-        let initial = ForumIcon.initial(of: forum.displayName, siteURL: forum.siteURL).lowercased()
-        guard let character = initial.first, character.isASCII, character.isLetter || character.isNumber else {
-            return "globe"
-        }
-        return "\(character).square.fill"
     }
 }

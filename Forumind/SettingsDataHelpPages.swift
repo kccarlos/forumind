@@ -155,9 +155,51 @@ struct SettingsHelpPage: View {
     @ObservedObject var app: AppModel
     @Environment(\.replayOnboarding) private var replayOnboarding
     @Environment(\.openURL) private var openURL
+    /// The developer switch (VoiceDebug): shown after seven taps on Build.
+    @AppStorage("voice.debug.textInput") private var typesToVoice = false
+    @State private var buildTaps = 0
 
     var body: some View {
         Form {
+            Section {
+                VStack(spacing: DCTheme.spacingM) {
+                    BrandMark(size: 84)
+                        .shadow(color: Color(hex: 0x4A6BFF, opacity: 0.3), radius: 12, y: 6)
+                    Text("Forumind").font(.title3.weight(.bold))
+                    Text("Summaries, chat, and answers for any Discourse forum.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, DCTheme.spacingM)
+                LabeledContent("Version", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—")
+                LabeledContent("Build", value: Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—")
+                    .contentShape(Rectangle())
+                    .onTapGesture { buildTaps += 1 }
+                    .accessibilityIdentifier("aboutBuild")
+            }
+
+            if buildTaps >= 7 || typesToVoice {
+                // For testing builds; not translated.
+                Section {
+                    Toggle(isOn: $typesToVoice) {
+                        Text(verbatim: "Type instead of speak (voice)")
+                    }
+                    .accessibilityIdentifier("developerVoiceTextInput")
+                } header: {
+                    Text(verbatim: "Developer")
+                } footer: {
+                    Text(verbatim: "Adds a text field to the voice bar. Typed turns go to the model as realtimeInput.text, so tool calls can be checked without the microphone.")
+                }
+            }
+
+            Section("How it works") {
+                helpLine("text.alignleft", String(localized: "Open a forum topic and Forumind summarizes it; chat about it with the assistant."))
+                helpLine("sparkle.magnifyingglass", String(localized: "Ask the forum searches, reads the most relevant topics and answers with numbered sources you can open."))
+                helpLine("waveform", String(localized: "Voice lets you talk with the assistant while you read."))
+            }
+
             Section {
                 Button {
                     DCHaptics.tap()
@@ -165,13 +207,10 @@ struct SettingsHelpPage: View {
                 } label: {
                     HStack(spacing: DCTheme.spacingM) {
                         SettingsIcon(symbol: "play.fill", tint: DCTheme.brandPurple)
-                        Text("Replay the walkthrough").foregroundStyle(.primary)
+                        Text("Show onboarding again").foregroundStyle(.primary)
                     }
                 }
                 .accessibilityIdentifier("replayOnboarding")
-                NavigationLink(value: SettingsPage.sharing) {
-                    SettingsRowLabel(page: .sharing, title: String(localized: "How to share from Safari or Chrome"))
-                }
             }
 
             Section {
@@ -206,12 +245,23 @@ struct SettingsHelpPage: View {
             }
 
             Section {
-                NavigationLink(value: SettingsPage.about) {
-                    SettingsRowLabel(page: .about, value: AppVersion.text())
+                NavigationLink(value: SettingsPage.acknowledgements) {
+                    SettingsRowLabel(page: .acknowledgements)
                 }
+                .accessibilityIdentifier("settingsRow-acknowledgements")
+                Link(destination: AppVersion.repositoryURL) {
+                    Label("Source code on GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
+                }
+            } footer: {
+                Text("Forumind works with Discourse forums. It is an independent app and is not affiliated with or endorsed by Civilized Discourse Construction Kit, Inc. Discourse is a trademark of its respective owner.")
             }
         }
         .formStyle(.grouped)
+    }
+
+    private func helpLine(_ symbol: String, _ text: String) -> some View {
+        Label(text, systemImage: symbol)
+            .font(.subheadline)
     }
 }
 
@@ -229,65 +279,6 @@ struct SettingsSharingPage: View {
             .frame(maxWidth: .infinity)
         }
         .background(DCTheme.pageBackground)
-    }
-}
-
-struct SettingsAboutPage: View {
-    /// The developer switch (VoiceDebug): shown after seven taps on Build.
-    @AppStorage("voice.debug.textInput") private var typesToVoice = false
-    @State private var buildTaps = 0
-
-    var body: some View {
-        Form {
-            Section {
-                VStack(spacing: DCTheme.spacingM) {
-                    BrandMark(size: 84)
-                        .shadow(color: Color(hex: 0x4A6BFF, opacity: 0.3), radius: 12, y: 6)
-                    Text("Forumind").font(.title3.weight(.bold))
-                    Text("Summaries, chat, and answers for any Discourse forum.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, DCTheme.spacingM)
-            }
-
-            Section {
-                LabeledContent("Version", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—")
-                LabeledContent("Build", value: Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—")
-                    .contentShape(Rectangle())
-                    .onTapGesture { buildTaps += 1 }
-                    .accessibilityIdentifier("aboutBuild")
-            }
-
-            if buildTaps >= 7 || typesToVoice {
-                // For testing builds; not translated.
-                Section {
-                    Toggle(isOn: $typesToVoice) {
-                        Text(verbatim: "Type instead of speak (voice)")
-                    }
-                    .accessibilityIdentifier("developerVoiceTextInput")
-                } header: {
-                    Text(verbatim: "Developer")
-                } footer: {
-                    Text(verbatim: "Adds a text field to the voice bar. Typed turns go to the model as realtimeInput.text, so tool calls can be checked without the microphone.")
-                }
-            }
-
-            Section {
-                NavigationLink(value: SettingsPage.acknowledgements) {
-                    SettingsRowLabel(page: .acknowledgements)
-                }
-                .accessibilityIdentifier("settingsRow-acknowledgements")
-                Link(destination: AppVersion.repositoryURL) {
-                    Label("Source code on GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
-                }
-            } footer: {
-                Text("Forumind works with Discourse forums. It is an independent app and is not affiliated with or endorsed by Civilized Discourse Construction Kit, Inc. Discourse is a trademark of its respective owner.")
-            }
-        }
-        .formStyle(.grouped)
     }
 }
 

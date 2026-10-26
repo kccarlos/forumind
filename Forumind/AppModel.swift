@@ -793,6 +793,7 @@ final class AppModel: ObservableObject {
             panelRoute = .history
             return
         }
+        router.summarizeTipSeen()
         enqueueSummary(for: topic, batchLimit: batchLimit, regenerate: regenerate)
     }
 

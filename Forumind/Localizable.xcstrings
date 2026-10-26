@@ -7415,23 +7415,6 @@
         }
       }
     },
-    "Forum home" : {
-      "comment" : "AI drawer peek line on a forum's home or topic list",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "论坛首页"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "論壇首頁"
-          }
-        }
-      }
-    },
     "Forum menu" : {
       "comment" : "Accessibility hint of the iPhone bar's forum avatar",
       "localizations" : {
@@ -9803,23 +9786,6 @@
         }
       }
     },
-    "Might be a forum · Try again" : {
-      "comment" : "AI drawer peek line while it is unclear whether the page is a forum",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "可能是论坛 · 重试"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "可能是論壇 · 重試"
-          }
-        }
-      }
-    },
     "Minimize results" : {
       "comment" : "Result cards over the page: shrink them to a small chip",
       "localizations" : {
@@ -10096,6 +10062,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "新問題"
+          }
+        }
+      }
+    },
+    "New replies" : {
+      "comment" : "Accessibility value of the iPhone AI button while its dot says the topic has new replies",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有新回复"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有新回覆"
           }
         }
       }
@@ -10770,23 +10753,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "不是 Discourse 論壇"
-          }
-        }
-      }
-    },
-    "Not a forum" : {
-      "comment" : "AI drawer peek line on a page that is not a Discourse forum",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "不是论坛"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "不是論壇"
           }
         }
       }
@@ -12052,7 +12018,7 @@
       }
     },
     "Opens the drawer" : {
-      "comment" : "Accessibility hint of the AI drawer's peek line",
+      "comment" : "Accessibility hint of the AI drawer's hint row over the bar",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -15463,7 +15429,7 @@
       }
     },
     "Set up AI" : {
-      "comment" : "AI drawer peek line when no AI provider is set up",
+      "comment" : "Hint row over the bar when no AI provider is set up, and its button",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -16855,7 +16821,7 @@
       }
     },
     "Summarize this topic" : {
-      "comment" : "AI drawer peek line on a topic without a summary",
+      "comment" : "Hint row over the bar on a topic without a summary, and its button",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -22102,6 +22068,316 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "「自行架設的最佳方式是什麼？」"
+          }
+        }
+      }
+    },
+    "AI" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI"
+          }
+        }
+      }
+    },
+    "Reading" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "阅读"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "閱讀"
+          }
+        }
+      }
+    },
+    "Today & following" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今日与关注"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今日與關注"
+          }
+        }
+      }
+    },
+    "Forums, sync & privacy" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "论坛、同步与隐私"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "論壇、同步與隱私"
+          }
+        }
+      }
+    },
+    "Bar: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "栏位：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "列位置：%@"
+          }
+        }
+      }
+    },
+    "Voice today %lld of %lld min" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今日语音 %1$lld / %2$lld 分钟"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今日語音 %1$lld / %2$lld 分鐘"
+          }
+        }
+      }
+    },
+    "Voice today %lld min" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今日语音 %lld 分钟"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今日語音 %lld 分鐘"
+          }
+        }
+      }
+    },
+    "Help & about" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "帮助与关于"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "說明與關於"
+          }
+        }
+      }
+    },
+    "Daily digest & podcast" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每日摘要与播客"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每日摘要與 Podcast"
+          }
+        }
+      }
+    },
+    "Licences" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "许可"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "授權"
+          }
+        }
+      }
+    },
+    "Show onboarding again" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再次显示新手引导"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再次顯示新手導覽"
+          }
+        }
+      }
+    },
+    "Open a forum topic and Forumind summarizes it; chat about it with the assistant." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开论坛主题，Forumind 会为其生成摘要，你也可以与助手聊这个主题。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟論壇主題，Forumind 會為其產生摘要，你也可以與助理聊這個主題。"
+          }
+        }
+      }
+    },
+    "Ask the forum searches, reads the most relevant topics and answers with numbered sources you can open." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "论坛问答会搜索并阅读最相关的主题，并附上可打开的编号来源作答。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "論壇問答會搜尋並閱讀最相關的主題，並附上可開啟的編號來源作答。"
+          }
+        }
+      }
+    },
+    "Voice lets you talk with the assistant while you read." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音让你在阅读时与助手对话。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "語音讓你在閱讀時與助理對話。"
+          }
+        }
+      }
+    },
+    "Open account" : {
+      "comment" : "Forum menu, in the account submenu: opens the signed-in account page",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开账户"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟帳戶"
+          }
+        }
+      }
+    },
+    "Sign in" : {
+      "comment" : "Forum menu, in the account submenu: opens the forum sign-in page",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登录"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登入"
+          }
+        }
+      }
+    },
+    "Check %lld new replies" : {
+      "comment" : "Button on the hint row over the bar; the placeholder is the number of replies since the summary",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Check %lld new reply"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Check %lld new replies"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查看 %lld 条新回复"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查看 %lld 則新回覆"
+          }
+        }
+      }
+    },
+    "Allow AI" : {
+      "comment" : "Hint row over the bar when the AI data consent was declined, and its button: show the consent again",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "允许 AI"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "允許 AI"
           }
         }
       }
