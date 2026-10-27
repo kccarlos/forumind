@@ -8,6 +8,7 @@ extension SiteKind {
 /// `Discourse`, `discourse-base-uri`, or `#data-discourse-setup`.
 struct DiscourseRecognizer: SiteRecognizer {
     var kind: SiteKind { .discourse }
+    var platformName: String { "Discourse" }
 
     var factKeys: PageFactKeys {
         PageFactKeys(
@@ -41,7 +42,10 @@ struct DiscourseRecognizer: SiteRecognizer {
         return SitePageMatch(
             siteURL: siteURL,
             basePath: normalized,
-            forumName: facts.meta["og:site_name"] ?? ""
+            forumName: facts.meta["og:site_name"] ?? "",
+            kind: kind,
+            platformName: platformName,
+            topicID: topicID(fromURL: url, basePath: normalized)
         )
     }
 

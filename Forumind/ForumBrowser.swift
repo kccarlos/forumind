@@ -550,7 +550,7 @@ final class ForumBrowserModel: NSObject, ObservableObject {
           return {
             statusCode: response.status,
             statusText: response.statusText,
-            retryAfter: response.headers.get("Retry-After") || "",
+            headers: Object.fromEntries(response.headers),
             body: await response.text()
           };
         } finally {
@@ -588,7 +588,7 @@ final class ForumBrowserModel: NSObject, ObservableObject {
         return ForumResourceResponse(
             statusCode: statusCode,
             statusText: result["statusText"] as? String ?? "",
-            retryAfter: result["retryAfter"] as? String,
+            headers: (result["headers"] as? [String: String]) ?? [:],
             data: Data(body.utf8)
         )
     }
@@ -615,7 +615,7 @@ final class ForumBrowserModel: NSObject, ObservableObject {
         return ForumResourceResponse(
             statusCode: http.statusCode,
             statusText: HTTPURLResponse.localizedString(forStatusCode: http.statusCode),
-            retryAfter: http.value(forHTTPHeaderField: "Retry-After"),
+            headers: http.lowercasedHeaders,
             data: data
         )
     }

@@ -81,6 +81,10 @@ struct AgentRunOutcome: Equatable {
 
 enum AgentError: LocalizedError {
     case missingArgument(String)
+    /// The argument's name and why it is wrong (model-visible, recoverable).
+    case invalidArgument(String, reason: String)
+    /// The site has closed its comment search; the run goes on without it.
+    case commentsUnavailable
     case topicBudgetExhausted(Int)
     /// The tool asked for and the names this run offers.
     case unknownTool(String, available: [String])
@@ -92,6 +96,10 @@ enum AgentError: LocalizedError {
         switch self {
         case .missingArgument(let name):
             String(localized: "Missing argument \"\(name)\".", comment: "Ask the forum step error; the placeholder is a technical argument name such as query or topic_id")
+        case .invalidArgument(let name, let reason):
+            String(localized: "Invalid argument \"\(name)\": \(reason)", comment: "Ask the forum step error; the first placeholder is a technical argument name, the second the reason (English)")
+        case .commentsUnavailable:
+            String(localized: "This site does not allow searching comments. Use search_forum and read_topic instead.", comment: "Ask the forum step error: the WordPress site closed its comment search")
         case .topicBudgetExhausted(let limit):
             String(localized: "The topic-read budget (\(limit)) is used up; answer with what you have.", comment: "Ask the forum step error; the number is the maximum topic reads per run")
         case .unknownTool(let name, let available):
@@ -108,6 +116,9 @@ enum AgentError: LocalizedError {
     var modelDescription: String {
         switch self {
         case .missingArgument(let name): "Missing argument \"\(name)\"."
+        case .invalidArgument(let name, let reason): "Invalid argument \"\(name)\": \(reason)"
+        case .commentsUnavailable:
+            "COMMENTS_UNAVAILABLE: This site does not allow searching comments. Use search_forum and read_topic instead."
         case .topicBudgetExhausted(let limit):
             "The topic-read budget (\(limit)) is used up; answer with what you have."
         case .unknownTool(let name, let available):
@@ -691,9 +702,24 @@ final class AppModel: ObservableObject {
     /// How a link on `siteURL` is read: the site's adapter, with the forum's base
     /// path. Nothing parses when the site has no adapter.
     func linkParser(siteURL: String) -> AgentSources.Parse {
+        linkParser(siteURL: siteURL, known: [:])
+    }
+
+    /// The parser of one run's links: the adapter's, then the permalinks the
+    /// run's tools showed (`AgentRun.knownLinks`), for a platform whose links
+    /// carry no topic id.
+    func linkParser(for run: AgentRun) -> AgentSources.Parse {
+        linkParser(siteURL: run.siteURL, known: run.knownLinks)
+    }
+
+    private func linkParser(siteURL: String, known: [String: String]) -> AgentSources.Parse {
         let links = adapter(for: siteURL)?.links
         let basePath = ForumSite.parse(siteURL: siteURL)?.basePath ?? ""
-        return AgentSources.Parse(basePath: basePath) { links?.parse($0, basePath: basePath) }
+        return AgentSources.Parse(basePath: basePath) { url in
+            guard let links else { return nil }
+            if let link = links.parse(url, basePath: basePath) { return link }
+            return known[AgentSources.knownKey(url, links: links)].map { SiteLink(topicID: $0, slug: nil, postNumber: nil) }
+        }
     }
 
     /// The forum a URL is on: a directory forum, else the page's forum.
@@ -1030,7 +1056,7 @@ final class AppModel: ObservableObject {
             throw ForumDirectoryError.invalidAddress
         }
         finishAddForum(key, lastFailure.map { .failed($0) } ?? .unsupported)
-        throw ForumDirectoryError.notDiscourse(ForumSite.host(of: firstCandidate))
+        throw ForumDirectoryError.notSupported(ForumSite.host(of: firstCandidate))
     }
 
     /// Fetches a forum's name and icon in the background. Only the name and
@@ -1283,7 +1309,7 @@ final class AppModel: ObservableObject {
                     answer: result == .completed ? run.answer : "",
                     sources: result == .completed
                         ? AgentSources.extract(
-                            from: run.answer, run: run, sessions: sessions, parse: linkParser(siteURL: run.siteURL)
+                            from: run.answer, run: run, sessions: sessions, parse: linkParser(for: run)
                         )
                         : [],
                     error: run.error
@@ -2494,6 +2520,7 @@ final class AppModel: ObservableObject {
             configuration: context.configuration,
             provider: context.provider,
             customPrompt: context.topicInstructions,
+            discussion: adapter.discussion,
             batchLimit: context.batchLimit,
             onDelta: { delta in
                 // Deltas of a cancelled job must not recreate its stream.
@@ -2582,6 +2609,7 @@ final class AppModel: ObservableObject {
             history: session.history,
             contextLimit: context.contextLimit,
             customPrompt: context.topicInstructions,
+            discussion: adapter.discussion,
             configuration: context.configuration,
             provider: context.provider,
             onDelta: { delta in
@@ -2797,6 +2825,7 @@ final class AppModel: ObservableObject {
         switch tool {
         case .searchForum, .searchComments:
             let results = try await runSiteQuery(tool, action, adapter: adapter, siteURL: siteURL, pace: context.forumRequestPace)
+            run.remember(results.topics.map { ($0.url, $0.topicID) } + results.hits.map { ($0.url, $0.topic.topicID) }, links: adapter.links)
             return (
                 String(localized: "\(results.topics.count) topics", comment: "Ask the forum step outcome: number of topics found"),
                 AgentPrompt.format(listings: results.topics, hits: results.hits)
@@ -2804,6 +2833,7 @@ final class AppModel: ObservableObject {
 
         case .listLatest:
             let listings = try await runSiteQuery(tool, action, adapter: adapter, siteURL: siteURL, pace: context.forumRequestPace).topics
+            run.remember(listings.map { ($0.url, $0.topicID) }, links: adapter.links)
             return (String(localized: "\(listings.count) topics", comment: "Ask the forum step outcome: number of topics found"), AgentPrompt.format(listings: listings, limit: 30))
 
         case .readTopic:
@@ -2811,6 +2841,7 @@ final class AppModel: ObservableObject {
                 action, adapter: adapter, run: &run, recordID: recordID, context: context,
                 progress: { stepProgress(0.1 + 0.8 * $0) }
             )
+            run.remember([(session.url, session.topicID)], links: adapter.links)
             let bounded = PromptBuilder.boundedForumContext(
                 moderated(session.source, siteURL: session.siteURL, topicID: session.topicID),
                 limit: context.agentReadLimit
@@ -2850,6 +2881,7 @@ final class AppModel: ObservableObject {
                     topic: session.instructions,
                     global: context.globalInstructions
                 ),
+                discussion: adapter.discussion,
                 batchLimit: context.batchLimit,
                 onDelta: { _ in },
                 onProgress: { feed.handle($0) }

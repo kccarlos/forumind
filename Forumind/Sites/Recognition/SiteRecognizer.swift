@@ -5,6 +5,9 @@ import Foundation
 /// (nothing here may use an adapter or the network).
 protocol SiteRecognizer: Sendable {
     var kind: SiteKind { get }
+    /// The platform's proper noun ("Discourse"), not localized: the share badge
+    /// and not-a-forum copy name it.
+    var platformName: String { get }
     /// The facts the probe must collect for `recognize` and the adapter's `session`.
     var factKeys: PageFactKeys { get }
     /// nil when the page is not this platform. `url` is the page's address now
@@ -30,4 +33,11 @@ struct SitePageMatch: Equatable, Sendable {
     var basePath: String
     /// Empty when the page does not say.
     var forumName: String
+    var kind: SiteKind
+    /// The recognizer's `platformName`.
+    var platformName: String
+    /// The topic the page shows, when the recognizer can name it: from the
+    /// facts where the URL carries no id (a WordPress slug permalink), else from
+    /// its own `topicID(fromURL:basePath:)`. nil on a forum's home or list pages.
+    var topicID: String?
 }

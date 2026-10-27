@@ -11,7 +11,7 @@ struct VoiceSiteProfile: Sendable, Equatable {
     var languageHint: String
 
     /// A site-neutral voice, for a session that starts where no site is known
-    /// once more than one platform exists (`SiteRegistry.voiceFallback`).
+    /// (`SiteRegistry.voiceFallback`).
     static let neutral = VoiceSiteProfile(
         persona: "a reading companion for online forums and discussion sites",
         findHint: "Search matches words, so search a forum in its own language even when the user speaks another language.",
@@ -53,12 +53,9 @@ extension SiteRegistry {
         kind.flatMap(adapter(for:)).map(VoiceSite.init(adapter:)) ?? voiceFallback
     }
 
-    /// In P0 the first adapter's phrases with the union of all adapters'
-    /// options, which is that adapter alone while Discourse is the only one.
-    /// TODO(P1): with a second adapter this must be `VoiceSiteProfile.neutral`
-    /// (VoiceSiteTests.testTheFallbackIsNeutralOnceTwoAdaptersAreRegistered).
+    /// A session that starts where no site is known speaks as the neutral
+    /// persona, with the union of all adapters' options.
     var voiceFallback: VoiceSite {
-        guard let first = adapters.first else { return VoiceSite(profile: .neutral, topicFilters: false) }
-        return VoiceSite(profile: first.voice, topicFilters: adapters.contains { $0.capabilities.topicFilters != nil })
+        VoiceSite(profile: .neutral, topicFilters: adapters.contains { $0.capabilities.topicFilters != nil })
     }
 }

@@ -15,8 +15,6 @@ Forumind/AppModel.swift|site: .discourse,
 Forumind/AppModel.swift|string: "https://meta.discourse.org/t/ui-test-delete/999997"
 Forumind/AppModel.swift|string: "https://meta.discourse.org/t/ui-test-keep/999998"
 Forumind/AppModel.swift|string: "https://meta.discourse.org/t/ui-test-topic/999999"
-Forumind/ContentView.swift|? String(localized: "Enter a web address such as meta.discourse.org or a full https:// link. Paths such as /t/topic-name/123 open on the current forum.")
-Forumind/ContentView.swift|return String(localized: "Open a forum first, then enter a path such as /t/topic-name/123.")
 Forumind/ForumSite.swift|return "\(site.host)\(site.basePath)/t/\(id)"
 Forumind/Podcast/PodcastScript.swift|(#"/t/[\w-]*/?\d"#, "a forum link"),
 Forumind/SampleContent.swift|See the [announcement](https://meta.discourse.org/t/introducing-the-unified-new-view-for-the-topic-list/404728) for screenshots.

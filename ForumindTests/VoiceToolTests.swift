@@ -247,22 +247,24 @@ final class VoiceToolTests: XCTestCase {
         XCTAssertEqual(app.voiceSite.profile, FakeSiteAdapter().voice, "the page's site decides the session's words")
     }
 
-    /// TODO(P1): once a second platform is registered, a session that starts
-    /// where no site is known must speak as a neutral persona, not as the
-    /// first adapter's (`SiteRegistry.voiceFallback`). Today it names
-    /// Discourse, so this is an expected failure; it turns into a plain
-    /// failure the day someone makes the fallback neutral without removing
-    /// the marker.
-    func testTheFallbackIsNeutralOnceTwoAdaptersAreRegistered() {
+    /// A session that starts where no site is known speaks as the neutral
+    /// persona, whatever adapters are registered; the options are the union.
+    func testTheFallbackIsNeutralWhateverAdaptersAreRegistered() {
         let twoAdapters = SiteRegistry(adapters: [DiscourseAdapter(), FakeSiteAdapter()])
-        XCTExpectFailure("TODO(P1): voiceFallback must be a neutral persona once a second adapter exists (plan 3.4)")
         XCTAssertEqual(twoAdapters.voiceFallback.profile, .neutral)
+        XCTAssertTrue(twoAdapters.voiceFallback.offersAuthorFocus, "Discourse supports topic filters")
+        XCTAssertEqual(twoAdapters.voiceSite(for: nil).profile, .neutral)
+        XCTAssertEqual(twoAdapters.voiceSite(for: .discourse).profile, DiscourseAdapter().voice, "a known site keeps its own words")
+        XCTAssertEqual(SiteRegistry(adapters: [DiscourseAdapter()]).voiceFallback.profile, .neutral)
+        XCTAssertEqual(SiteRegistry(adapters: [FakeSiteAdapter()]).voiceFallback.profile, .neutral)
+        let text = VoiceInstructions.system(answerLength: .normal, eyesFree: false, forumName: nil, site: twoAdapters.voiceFallback.profile)
+        XCTAssertFalse(text.contains("Discourse"))
+        XCTAssertTrue(text.contains(VoiceSiteProfile.neutral.persona))
     }
 
-    /// Fails as soon as the build registers a second platform while the fallback still names the first.
-    func testTheStandardRegistryNeverShipsASecondPlatformWithANonNeutralFallback() {
-        guard SiteRegistry.standard.adapters.count >= 2 else { return }
-        XCTAssertEqual(SiteRegistry.standard.voiceFallback.profile, .neutral, "make voiceFallback neutral (plan 3.4)")
+    /// The shipped registry never falls back to one platform's persona.
+    func testTheStandardRegistryFallbackIsNeutral() {
+        XCTAssertEqual(SiteRegistry.standard.voiceFallback.profile, .neutral)
     }
 
     // MARK: Settings and consent

@@ -289,7 +289,7 @@ enum DigestPlanner {
                         title: topic.title,
                         slug: topic.slug,
                         reason: .trending,
-                        postCount: topic.postsCount
+                        postCount: topic.postsCount ?? 0
                     )
                     guard used.insert(card.topicKey).inserted else { continue }
                     if let known = facts[card.topicKey] { card.apply(known) }

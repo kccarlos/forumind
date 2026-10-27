@@ -107,6 +107,13 @@ with:
 | Apps, smart home, and hardware | [Home Assistant Community](https://community.home-assistant.io), [Obsidian Forum](https://forum.obsidian.md), [Level1Techs Forums](https://forum.level1techs.com) |
 | Chinese-language communities | [美卡论坛 USCardForum](https://www.uscardforum.com), [LINUX DO](https://linux.do) |
 
+**WordPress sites** work too: open a blog post, or add the site by its
+address, and Forumind reads the article and its reader comments through the
+site's public REST API (comment search included, where the site allows it).
+Sites that turn the REST API off, or use plain `?p=` permalinks without
+`/wp-json/`, are not supported. Forumind is not affiliated with WordPress or
+the WordPress Foundation.
+
 The app suggests a few of these when you set it up; add any other forum by its
 address. Forum names belong to their owners; Forumind isn't affiliated with
 these communities. Know a Discourse forum that should be listed?

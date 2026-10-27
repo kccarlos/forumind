@@ -21,7 +21,10 @@ struct SiteRegistry: Sendable {
     /// Kind -> adapter. Adding a platform is its recognizer in
     /// `SiteRecognizers.standard` plus its line here.
     static let adapterFactories: [SiteKind: @Sendable () -> any SiteAdapter] = {
-        var factories: [SiteKind: @Sendable () -> any SiteAdapter] = [.discourse: { DiscourseAdapter() }]
+        var factories: [SiteKind: @Sendable () -> any SiteAdapter] = [
+            .discourse: { DiscourseAdapter() },
+            .wordpress: { WordPressAdapter() }
+        ]
         #if FORUMIND_LABS
         // factories[.reddit] = { RedditAdapter() }      // P2
         #endif

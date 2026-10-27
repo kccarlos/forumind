@@ -6,6 +6,8 @@ import Foundation
 /// `list_latest`) and every optional capability nil (unless a test sets one). It makes no requests.
 struct FakeSiteAdapter: SiteAdapter {
     static let kind = SiteKind("fake")
+    /// The article revision the fake stamps on its page.
+    static let revision = "2026-10-20T12:00:00"
     /// Two posts in the shared raw shape, as one page.
     static let pageContent = """
     alice | 2026-10-20 12:00:00 UTC | #1
@@ -30,6 +32,8 @@ struct FakeSiteAdapter: SiteAdapter {
     var queryResult: SiteQueryResult?
     /// When set, a read waits here until the test releases it.
     var readGate: ReadGate?
+    /// Every query `run` received, in order.
+    var queryLog = QueryLog()
 
     var kind: SiteKind { Self.kind }
     var recognizer: any SiteRecognizer { FakeRecognizer(generator: generator, claimedHost: claimedHost) }
@@ -67,15 +71,30 @@ struct FakeSiteAdapter: SiteAdapter {
                 AgentToolSpec(
                     name: AgentToolName.searchComments.rawValue,
                     description: "Search the comments of this site.",
-                    parameters: [.init(name: "query", description: "Search text", required: true)]
+                    parameters: [
+                        .init(name: "query", description: "Search text", required: true),
+                        .init(name: "category", description: "Category name", required: false),
+                        .init(name: "after", description: "YYYY-MM-DD", required: false),
+                        .init(name: "before", description: "YYYY-MM-DD", required: false),
+                        .init(name: "page", description: "1 to 3", required: false)
+                    ]
                 )
             ],
             query: { tool, arguments in
                 guard tool == .searchComments else { throw SiteQueryError.unsupported }
                 guard let text = arguments["query"], !text.isEmpty else { throw AgentError.missingArgument("query") }
-                return .search(text: text, scope: .comments)
+                return .search(text: text, scope: .comments, options: try SearchOptions(arguments: arguments))
             },
             postLinkHint: { "(post N: \($0.absoluteString)#pN)" }
+        )
+    }
+
+    var discussion: DiscussionProfile {
+        DiscussionProfile(
+            openingHeading: "Fake opener",
+            material: "a fake site thread",
+            blocks: "#1 is the first fake entry; later numbers are fake answers.",
+            signals: "There are no signals on a fake site."
         )
     }
 
@@ -132,7 +151,8 @@ struct FakeSiteAdapter: SiteAdapter {
             blocks: [
                 PostBlock(number: 1, author: "alice", date: time(12, 0), anchor: "comment-1", score: nil),
                 PostBlock(number: 2, author: "bob", date: time(12, 5), anchor: "comment-2", score: nil)
-            ]
+            ],
+            revision: Self.revision
         )
         await onPage?(page)
         await progress(ForumFetchProgress(completedPages: 1, totalPages: 1, totalPosts: 2, message: "Read"))
@@ -147,8 +167,27 @@ struct FakeSiteAdapter: SiteAdapter {
     }
 
     func run(_ query: SiteQuery, net: SiteNetwork) async throws -> SiteQueryResult {
+        queryLog.append(query)
         guard let queryResult else { throw SiteQueryError.unsupported }
         return queryResult
+    }
+}
+
+/// The queries a fake adapter ran (a struct adapter cannot record them itself).
+final class QueryLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var queries: [SiteQuery] = []
+
+    var all: [SiteQuery] {
+        lock.lock()
+        defer { lock.unlock() }
+        return queries
+    }
+
+    func append(_ query: SiteQuery) {
+        lock.lock()
+        queries.append(query)
+        lock.unlock()
     }
 }
 
@@ -260,12 +299,16 @@ struct FakeRecognizer: SiteRecognizer {
     var claimedHost: String?
 
     var kind: SiteKind { FakeSiteAdapter.kind }
-    var factKeys: PageFactKeys { PageFactKeys(meta: ["generator", "fake-site"]) }
+    var platformName: String { "FakeCMS" }
+    var factKeys: PageFactKeys { PageFactKeys(meta: ["generator", "fake-site", "fake-topic"]) }
 
     func recognize(facts: PageFacts, url: URL) -> SitePageMatch? {
         guard facts.meta["generator"] == generator, let origin = ForumSite.origin(of: url)?.origin else { return nil }
         return SitePageMatch(
-            siteURL: origin, basePath: "", forumName: facts.meta["fake-site"] ?? ""
+            siteURL: origin, basePath: "", forumName: facts.meta["fake-site"] ?? "",
+            kind: kind, platformName: platformName,
+            // The id may live only in the facts (a permalink without one).
+            topicID: facts.meta["fake-topic"] ?? topicID(fromURL: url, basePath: "")
         )
     }
 

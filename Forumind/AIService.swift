@@ -25,6 +25,7 @@ class AIService {
         configuration: ProviderConfiguration,
         provider: AIProvider,
         customPrompt: String,
+        discussion: DiscussionProfile,
         batchLimit: Int = SummaryBatchLimit.default,
         onDelta: @escaping @MainActor (String) -> Void,
         onProgress: @escaping @MainActor (SummaryProgressEvent) -> Void = { _ in }
@@ -34,6 +35,7 @@ class AIService {
                 content: content,
                 configuration: configuration,
                 customPrompt: customPrompt,
+                discussion: discussion,
                 onDelta: onDelta,
                 onProgress: onProgress
             )
@@ -43,6 +45,7 @@ class AIService {
             configuration: configuration,
             provider: provider,
             customPrompt: customPrompt,
+            discussion: discussion,
             batchLimit: SummaryBatchLimit.normalized(batchLimit),
             maxLevel: 4,
             onDelta: onDelta,
@@ -57,6 +60,7 @@ class AIService {
         configuration: ProviderConfiguration,
         provider: AIProvider,
         customPrompt: String,
+        discussion: DiscussionProfile,
         batchLimit: Int,
         maxLevel: Int,
         onDelta: @escaping @MainActor (String) -> Void,
@@ -66,7 +70,7 @@ class AIService {
         if chunks.count == 1 {
             await onProgress(.finalStarted(combining: false))
             return try await streamText(
-                system: PromptBuilder.summarySystem(custom: customPrompt),
+                system: PromptBuilder.summarySystem(custom: customPrompt, discussion: discussion),
                 messages: [ChatMessage(role: .user, content: content)],
                 configuration: configuration,
                 provider: provider,
@@ -79,6 +83,7 @@ class AIService {
         var partials = try await summarizeBatches(
             chunks,
             level: 1,
+            discussion: discussion,
             configuration: configuration,
             provider: provider,
             onDelta: onDelta,
@@ -96,6 +101,7 @@ class AIService {
             partials = try await summarizeBatches(
                 regrouped,
                 level: level,
+                discussion: discussion,
                 configuration: configuration,
                 provider: provider,
                 onDelta: onDelta,
@@ -108,7 +114,7 @@ class AIService {
         await onDelta("\n\n_\(combining)_\n")
         await onProgress(.finalStarted(combining: true))
         return try await streamText(
-            system: PromptBuilder.summarySystem(custom: customPrompt),
+            system: PromptBuilder.summarySystem(custom: customPrompt, discussion: discussion),
             messages: [
                 ChatMessage(
                     role: .user,
@@ -138,6 +144,7 @@ class AIService {
     private func summarizeBatches(
         _ chunks: [String],
         level: Int,
+        discussion: DiscussionProfile,
         configuration: ProviderConfiguration,
         provider: AIProvider,
         onDelta: @escaping @MainActor (String) -> Void,
@@ -152,7 +159,7 @@ class AIService {
             await onDelta("\n\n_\(reading)_\n")
             await onProgress(.batchStarted(level: level, index: index, count: chunks.count))
             let partial = try await streamText(
-                system: PromptBuilder.chunkPrompt,
+                system: PromptBuilder.chunkPrompt(discussion),
                 messages: [ChatMessage(role: .user, content: chunk)],
                 configuration: configuration,
                 provider: provider,
@@ -171,6 +178,7 @@ class AIService {
         history: [ChatMessage],
         contextLimit: Int,
         customPrompt: String,
+        discussion: DiscussionProfile,
         configuration: ProviderConfiguration,
         provider: AIProvider,
         onDelta: @escaping @MainActor (String) -> Void,
@@ -183,6 +191,7 @@ class AIService {
                 history: history,
                 contextLimit: contextLimit,
                 customPrompt: customPrompt,
+                discussion: discussion,
                 configuration: configuration,
                 onDelta: onDelta,
                 summaryIsStale: summaryIsStale
@@ -194,6 +203,7 @@ class AIService {
                 custom: customPrompt,
                 source: boundedSource,
                 summary: summary,
+                discussion: discussion,
                 summaryIsStale: summaryIsStale
             ),
             messages: Array(history.suffix(24)),

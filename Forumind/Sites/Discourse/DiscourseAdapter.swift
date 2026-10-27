@@ -40,6 +40,7 @@ struct DiscourseAdapter: SiteAdapter {
 
     var agent: AgentSiteProfile { DiscourseAgent.profile }
     var voice: VoiceSiteProfile { DiscourseAgent.voice }
+    var discussion: DiscussionProfile { DiscourseAgent.discussion }
 
     func siteURLCandidates(fromAddress address: String) -> [String] {
         Self.candidateSiteURLs(fromAddress: address)
@@ -50,36 +51,23 @@ struct DiscourseAdapter: SiteAdapter {
     /// Discourse routes (`/t/`, `/latest`, `/c/`, …) to find a subfolder base
     /// path; the bare origin is always tried last.
     private static func candidateSiteURLs(fromAddress address: String) -> [String] {
-        var text = address.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !text.contains(where: \.isWhitespace) else { return [] }
-        if text.range(of: "^[A-Za-z][A-Za-z0-9+.-]*://", options: .regularExpression) == nil {
-            let host = text.split(separator: "/").first.map(String.init) ?? text
-            let isLocal = host.hasPrefix("localhost") || host.hasPrefix("127.0.0.1")
-            guard host.contains(".") || isLocal else { return [] }
-            text = (isLocal ? "http://" : "https://") + text
-        }
-        guard let url = URL(string: text),
-              let origin = ForumSite.origin(of: url)
-        else {
-            return []
-        }
+        guard let address = SiteAddress.parse(address) else { return [] }
         let routes: Set<String> = [
             "t", "latest", "top", "new", "unread", "categories", "c", "tag", "tags",
             "u", "users", "search", "login", "session", "about", "g", "groups", "posts",
             "raw", "badges", "faq", "guidelines", "tos", "privacy", "my"
         ]
-        let segments = url.path.split(separator: "/").map(String.init)
         var baseSegments: [String] = []
-        for segment in segments {
+        for segment in address.pathSegments {
             if routes.contains(segment) || segment.hasSuffix(".json") { break }
             baseSegments.append(segment)
         }
         var candidates: [String] = []
         if !baseSegments.isEmpty {
             let basePath = ForumSite.normalizeBasePath("/" + baseSegments.joined(separator: "/"))
-            if !basePath.isEmpty { candidates.append(origin.origin + basePath) }
+            if !basePath.isEmpty { candidates.append(address.origin + basePath) }
         }
-        candidates.append(origin.origin)
+        candidates.append(address.origin)
         return candidates
     }
 
@@ -113,7 +101,7 @@ struct DiscourseAdapter: SiteAdapter {
     func run(_ query: SiteQuery, net: SiteNetwork) async throws -> SiteQueryResult {
         let api = DiscourseAPI(net: net)
         switch query {
-        case .search(let text, let scope):
+        case .search(let text, let scope, _):
             var search = text
             switch scope {
             case .forum: break

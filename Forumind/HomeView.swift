@@ -481,7 +481,7 @@ private struct HomeList: View {
             BrandMark(size: 52)
             Text("Start with a forum")
                 .font(.title2.weight(.heavy))
-            Text("Open any Discourse community to summarize long topics, chat about them, or ask the whole forum a question.")
+            Text("Open any forum or article to summarize long topics, chat about them, or ask the whole forum a question.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

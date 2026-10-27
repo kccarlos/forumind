@@ -176,7 +176,7 @@ struct SettingsHelpPage: View {
                     BrandMark(size: 84)
                         .shadow(color: Color(hex: 0x4A6BFF, opacity: 0.3), radius: 12, y: 6)
                     Text("Forumind").font(.title3.weight(.bold))
-                    Text("Summaries, chat, and answers for any Discourse forum.")
+                    Text("Summaries, chat, and answers for any forum or article.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -263,7 +263,10 @@ struct SettingsHelpPage: View {
                     Label("Source code on GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
                 }
             } footer: {
-                Text("Forumind works with Discourse forums. It is an independent app and is not affiliated with or endorsed by Civilized Discourse Construction Kit, Inc. Discourse is a trademark of its respective owner.")
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Forumind works with Discourse forums. It is an independent app and is not affiliated with or endorsed by Civilized Discourse Construction Kit, Inc. Discourse is a trademark of its respective owner.")
+                    Text("WordPress is a trademark of the WordPress Foundation. Forumind is an independent app and is not affiliated with or endorsed by WordPress or the WordPress Foundation.")
+                }
             }
         }
         .formStyle(.grouped)

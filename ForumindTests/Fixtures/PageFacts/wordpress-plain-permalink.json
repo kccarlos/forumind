@@ -1,0 +1,16 @@
+{
+  "url": "https://example.com/?p=1001",
+  "title": "Hello from the blog - Example Blog",
+  "meta": {
+    "og:site_name": "Example Blog"
+  },
+  "links": {
+    "https://api.w.org/": "https://example.com/?rest_route=/",
+    "shortlink": "https://example.com/?p=1001"
+  },
+  "elements": {},
+  "matches": [],
+  "htmlClass": "",
+  "bodyClass": "single single-post postid-1001",
+  "iconURL": ""
+}

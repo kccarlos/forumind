@@ -194,11 +194,11 @@ private struct DetectionBadge: View {
     private var text: String {
         switch detection {
         case .site(let match):
-            return String(localized: "Discourse forum detected · \(match.forumName)", comment: "The argument is the forum's name")
+            return String(localized: "\(match.platformName) site detected · \(match.forumName)", comment: "The first argument is the platform's name such as Discourse or WordPress, the second the site's name")
         case .notDetected:
-            return String(localized: "Couldn't confirm this is a Discourse forum")
+            return String(localized: "Couldn't confirm this is a supported site")
         case .unknown:
-            return String(localized: "Discourse forum? Forumind will check when it opens")
+            return String(localized: "Supported site? Forumind will check when it opens")
         }
     }
 

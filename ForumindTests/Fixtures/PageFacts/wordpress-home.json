@@ -1,0 +1,15 @@
+{
+  "url": "https://example.com/",
+  "title": "Example Blog",
+  "meta": {
+    "og:site_name": "Example Blog"
+  },
+  "links": {
+    "https://api.w.org/": "https://example.com/wp-json/"
+  },
+  "elements": {},
+  "matches": [],
+  "htmlClass": "no-js",
+  "bodyClass": "home blog",
+  "iconURL": ""
+}

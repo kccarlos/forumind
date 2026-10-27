@@ -75,7 +75,8 @@ the same recognizers and a probe script generated from them (see Share
 extension).
 
 **Site adapters.** Everything that knows a platform lives in `Forumind/Sites/`
-behind one protocol, `SiteAdapter`. Discourse is the only adapter today.
+behind one protocol, `SiteAdapter`. Discourse and WordPress are the adapters
+today, in that recognition order.
 Contributors adding a platform: [ADDING_A_SITE.md](ADDING_A_SITE.md).
 
 | File | Role |
@@ -84,10 +85,11 @@ Contributors adding a platform: [ADDING_A_SITE.md](ADDING_A_SITE.md).
 | `Sites/SiteAdapter.swift` | `SiteAdapter` (a value of pure functions plus network calls through `SiteNetwork`; no state), `SiteLinks` (pure URL building and parsing), `TopicRef`, `TopicReadRequest`, `SiteQuery`/`SiteQueryResult`, `AgentToolName` and `AgentSiteProfile`. |
 | `Sites/SiteCapabilities.swift` | `SiteCapabilities`: the optional abilities, each present and working or nil (active topics, post lookup, topic filters, page bridge, login and search page URLs, session reader, first-party path patterns). |
 | `Sites/SiteRegistry.swift` | `SiteRegistry`: the adapters in this build, in recognition order. Lookup by kind, recognition, the union of declared fact keys and first-party patterns, the voice setup. `adapterFactories` pairs each kind with its adapter. |
-| `Sites/Recognition/` | What the share extension also compiles, so nothing here may use an adapter or the network: `SiteRecognizer`, `SiteRecognizers.standard` (the one list of platforms), `PageFacts`/`PageFactKeys`, `PageFactsProbe` (builds the probe script), `DiscourseRecognizer`. |
+| `Sites/Recognition/` | What the share extension also compiles, so nothing here may use an adapter or the network: `SiteRecognizer`, `SiteRecognizers.standard` (the one list of platforms), `PageFacts`/`PageFactKeys`, `PageFactsProbe` (builds the probe script), `DiscourseRecognizer`, `WordPressRecognizer`. |
 | `Sites/SiteNetwork.swift` | `SiteNetwork` (transport plus `SiteRequestContext`, scoped to one site; a URL outside the site is refused) and the context (cookies, in-page loader, pace) gathered once per job. |
 | `Sites/Shared/` | Code every adapter may use: `RawTopicFormat` (the one shape of a topic's AI-facing text), `PostBlock`, `PagedTopicFetch` (the paced page loop), `TopicFacts`. |
 | `Sites/Discourse/` | The Discourse adapter: `DiscourseAdapter`, `DiscourseAPI` (requests), `DiscourseRoutes` (URLs), `DiscourseParsing`, `DiscoursePagePlan` (which raw pages to fetch), `DiscourseDOM` (the in-page bridge and moderation scripts), `DiscourseAgent` (tool specs, voice words), `DiscourseSuggestions`. |
+| `Sites/WordPress/` | The WordPress adapter, a second worked example: `WordPressAdapter`, `WordPressAPI` (REST requests; paging read from `X-WP-Total` headers, closed comments and pages past the last read as empty), `WordPressLinks` (`/?p=ID`), `WordPressParsing` (article and comments into `RawTopicFormat`), `WordPressPagePlan`, `WordPressTools` (post and comment search, latest, post lookup), `WordPressActiveTopics` (digest: newest posts and recent comments), `WordPressAgent` (tool specs, voice and discussion profiles). It has no page bridge, sign-in page or session reader, so the app never scripts a WordPress page and navigates by URL. |
 
 **Layering.** Only `Forumind/Sites/` may name a platform.
 `scripts/ci/check-site-layering.sh` fails when Swift code outside it mentions a

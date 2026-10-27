@@ -63,12 +63,13 @@ extension AIService {
         content: String,
         configuration: ProviderConfiguration,
         customPrompt: String,
+        discussion: DiscussionProfile,
         onDelta: @escaping @MainActor (String) -> Void,
         onProgress: @escaping @MainActor (SummaryProgressEvent) -> Void = { _ in }
     ) async throws -> String {
         let backend = try appleIntelligence.requireBackend()
         let contextTokens = await appleIntelligence.contextTokens(for: backend)
-        let system = PromptBuilder.summarySystem(custom: customPrompt)
+        let system = PromptBuilder.summarySystem(custom: customPrompt, discussion: discussion)
         var batchLimit = AppleIntelligenceBudget.summaryBatchCharacters(
             contextTokens: contextTokens,
             sample: String(content.prefix(4_000)),
@@ -82,6 +83,7 @@ extension AIService {
                     configuration: configuration,
                     provider: .appleIntelligence,
                     customPrompt: customPrompt,
+                    discussion: discussion,
                     batchLimit: batchLimit,
                     maxLevel: AppleIntelligenceBudget.maxFoldLevels,
                     onDelta: onDelta,
@@ -107,6 +109,7 @@ extension AIService {
         history: [ChatMessage],
         contextLimit: Int,
         customPrompt: String,
+        discussion: DiscussionProfile,
         configuration: ProviderConfiguration,
         onDelta: @escaping @MainActor (String) -> Void,
         summaryIsStale: Bool
@@ -118,6 +121,7 @@ extension AIService {
             custom: customPrompt,
             source: "",
             summary: summary,
+            discussion: discussion,
             summaryIsStale: summaryIsStale
         )
         let fixed = template.count + recent.reduce(0) { $0 + min($1.content.count, 1_500) }
@@ -136,6 +140,7 @@ extension AIService {
                         custom: customPrompt,
                         source: bounded,
                         summary: summary,
+                        discussion: discussion,
                         summaryIsStale: summaryIsStale
                     ),
                     messages: recent,

@@ -38,19 +38,19 @@
         }
       }
     },
-    "%@ doesn’t look like a Discourse forum." : {
-      "comment" : "Add forum error; the placeholder is a web address such as forum.example.com",
+    "%@ doesn’t look like a supported site. Forumind works with %@." : {
+      "comment" : "Add forum error; the first placeholder is a web address such as forum.example.com, the second the supported platforms such as Discourse and WordPress",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ 看起来不是 Discourse 论坛。"
+            "value" : "%@ 看起来不是受支持的网站。Forumind 适用于 %@。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ 看起來不是 Discourse 論壇。"
+            "value" : "%@ 看起來不是受支援的網站。Forumind 適用於 %@。"
           }
         }
       }
@@ -309,23 +309,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ · 剛剛"
-          }
-        }
-      }
-    },
-    "%@ · not a Discourse forum" : {
-      "comment" : "Assistant header subtitle; the placeholder is a website host",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ · 不是 Discourse 论坛"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ · 不是 Discourse 論壇"
           }
         }
       }
@@ -2250,18 +2233,18 @@
         }
       }
     },
-    "Add the forum — the app checks it’s Discourse." : {
+    "Add the forum — the app checks that it’s supported." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "添加论坛——App 会检查它是否为 Discourse 论坛。"
+            "value" : "添加论坛——App 会检查它是否受支持。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "加入論壇——App 會檢查它是否為 Discourse 論壇。"
+            "value" : "加入論壇——App 會檢查它是否受支援。"
           }
         }
       }
@@ -4511,18 +4494,18 @@
         }
       }
     },
-    "Catch up on any Discourse forum in seconds" : {
+    "Catch up on any forum or article in seconds" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "几秒钟跟上任何 Discourse 论坛的讨论"
+            "value" : "几秒钟跟上任何论坛或文章的讨论"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "幾秒鐘掌握任何 Discourse 論壇的討論"
+            "value" : "幾秒鐘掌握任何論壇或文章的討論"
           }
         }
       }
@@ -6316,22 +6299,6 @@
         }
       }
     },
-    "Discourse forum" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Discourse 论坛"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Discourse 論壇"
-          }
-        }
-      }
-    },
     "Discourse’s own community for features, support, and plugins." : {
       "comment" : "Description of a suggested forum",
       "localizations" : {
@@ -6730,18 +6697,18 @@
         }
       }
     },
-    "Enter a web address such as meta.discourse.org or a full https:// link. Paths such as /t/topic-name/123 open on the current forum." : {
+    "Enter a web address such as meta.discourse.org or a full https:// link. A path such as /about opens on the current forum." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "输入网址（如 meta.discourse.org）或完整的 https:// 链接。/t/topic-name/123 这样的路径会在当前论坛中打开。"
+            "value" : "输入网址（如 meta.discourse.org）或完整的 https:// 链接。/about 这样的路径会在当前论坛中打开。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "輸入網址（如 meta.discourse.org）或完整的 https:// 連結。/t/topic-name/123 這類路徑會在目前論壇中打開。"
+            "value" : "輸入網址（如 meta.discourse.org）或完整的 https:// 連結。/about 這類路徑會在目前論壇中打開。"
           }
         }
       }
@@ -7506,18 +7473,18 @@
     "Forumind %@" : {
       "shouldTranslate" : false
     },
-    "Forumind couldn’t confirm %@ yet. If it’s a Discourse forum, add it so the assistant can read topics with your current login." : {
+    "Forumind couldn’t confirm %@ yet. If it’s a %@ site, add it so the assistant can read topics with your current login." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Forumind 暂时无法确认 %@。如果它是 Discourse 论坛，请添加它，助手就能用你当前的登录身份阅读话题。"
+            "value" : "Forumind 暂时无法确认 %@。如果它是 %@ 网站，请添加它，助手就能用你当前的登录身份阅读话题。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Forumind 暫時無法確認 %@。如果它是 Discourse 論壇，請加入它，助理就能用你目前的登入身分閱讀話題。"
+            "value" : "Forumind 暫時無法確認 %@。如果它是 %@ 網站，請加入它，助理就能用你目前的登入身分閱讀話題。"
           }
         }
       }
@@ -7587,18 +7554,18 @@
         }
       }
     },
-    "Forumind works on forums built with Discourse. Open one to summarize topics, chat about them, or ask the whole forum a question." : {
+    "Forumind works with %@ sites. Open one to summarize topics, chat about them, or ask the whole forum a question." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Forumind 适用于基于 Discourse 的论坛。打开一个论坛，即可总结话题、围绕话题聊天，或向整个论坛提问。"
+            "value" : "Forumind 适用于 %@ 网站。打开一个，即可总结话题、围绕话题聊天，或向整个论坛提问。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Forumind 適用於以 Discourse 架設的論壇。打開一個論壇，即可摘要話題、針對話題聊天，或向整個論壇提問。"
+            "value" : "Forumind 適用於 %@ 網站。打開一個，即可摘要話題、針對話題聊天，或向整個論壇提問。"
           }
         }
       }
@@ -8727,18 +8694,18 @@
         }
       }
     },
-    "Is this a Discourse forum?" : {
+    "Is this a supported site?" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "这是 Discourse 论坛吗？"
+            "value" : "这是受支持的网站吗？"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "這是 Discourse 論壇嗎？"
+            "value" : "這是受支援的網站嗎？"
           }
         }
       }
@@ -9199,19 +9166,19 @@
         }
       }
     },
-    "Listed latest topics" : {
+    "Listed the latest" : {
       "comment" : "Agent step",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "列出了最新话题"
+            "value" : "列出了最新内容"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "列出了最新話題"
+            "value" : "列出了最新內容"
           }
         }
       }
@@ -9427,18 +9394,18 @@
         }
       }
     },
-    "Looks like a Discourse topic" : {
+    "Looks like a topic" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "看起来是 Discourse 话题"
+            "value" : "看起来是一个话题"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "看起來是 Discourse 話題"
+            "value" : "看起來是一個話題"
           }
         }
       }
@@ -9736,6 +9703,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "缺少參數「%@」。"
+          }
+        }
+      }
+    },
+    "Invalid argument \"%@\": %@" : {
+      "comment" : "Ask the forum step error; the first placeholder is a technical argument name, the second the reason (English)",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "参数“%@”无效:%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "參數「%@」無效:%@"
           }
         }
       }
@@ -10645,18 +10629,18 @@
         }
       }
     },
-    "Not a Discourse forum" : {
+    "Not a supported site" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "不是 Discourse 论坛"
+            "value" : "不是受支持的网站"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "不是 Discourse 論壇"
+            "value" : "不是受支援的網站"
           }
         }
       }
@@ -11452,50 +11436,50 @@
         }
       }
     },
-    "Open a Discourse forum first." : {
+    "Open a forum first, or add the forum again." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "请先打开一个 Discourse 论坛。"
+            "value" : "请先打开一个论坛，或重新添加该论坛。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "請先打開一個 Discourse 論壇。"
+            "value" : "請先打開一個論壇，或重新加入該論壇。"
           }
         }
       }
     },
-    "Open a Discourse topic first." : {
+    "Open a topic or article first." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "请先打开一个 Discourse 话题。"
+            "value" : "请先打开一个话题或文章。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "請先打開一個 Discourse 話題。"
+            "value" : "請先打開一個話題或文章。"
           }
         }
       }
     },
-    "Open a forum first, then enter a path such as /t/topic-name/123." : {
+    "Open a forum first, then enter a path such as /about." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "请先打开一个论坛，然后输入路径，例如 /t/topic-name/123。"
+            "value" : "请先打开一个论坛，然后输入路径，例如 /about。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "請先打開一個論壇，然後輸入路徑，例如 /t/topic-name/123。"
+            "value" : "請先打開一個論壇，然後輸入路徑，例如 /about。"
           }
         }
       }
@@ -11580,18 +11564,18 @@
         }
       }
     },
-    "Open any Discourse community to summarize long topics, chat about them, or ask the whole forum a question." : {
+    "Open any forum or article to summarize long topics, chat about them, or ask the whole forum a question." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "打开任意 Discourse 社区，即可总结长话题、就话题聊天，或向整个论坛提问。"
+            "value" : "打开任意论坛或文章，即可总结长话题、就话题聊天，或向整个论坛提问。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "打開任何 Discourse 社群，即可為長話題產生摘要、就話題聊天，或向整個論壇提問。"
+            "value" : "打開任何論壇或文章，即可為長話題產生摘要、就話題聊天，或向整個論壇提問。"
           }
         }
       }
@@ -12070,34 +12054,34 @@
         }
       }
     },
-    "Paste any page of a Discourse forum, or type its address." : {
+    "Paste any page of a supported site, or type its address." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "粘贴 Discourse 论坛的任意页面，或输入它的地址。"
+            "value" : "粘贴受支持网站的任意页面，或输入它的地址。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "貼上 Discourse 論壇的任何頁面，或輸入它的網址。"
+            "value" : "貼上受支援網站的任何頁面，或輸入它的網址。"
           }
         }
       }
     },
-    "Paste the address of any Discourse forum, or a link to one of its pages." : {
+    "Paste the address of any supported site, or a link to one of its pages." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "粘贴任意 Discourse 论坛的地址，或它某个页面的链接。"
+            "value" : "粘贴任意受支持网站的地址，或它某个页面的链接。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "貼上任何 Discourse 論壇的網址，或它某個頁面的連結。"
+            "value" : "貼上任何受支援網站的網址，或它某個頁面的連結。"
           }
         }
       }
@@ -14940,6 +14924,23 @@
         }
       }
     },
+    "Searched comments for “%@”" : {
+      "comment" : "Agent step; the placeholder is the search query",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已搜索评论“%@”"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已搜尋留言「%@」"
+          }
+        }
+      }
+    },
     "Searches %@ for your question." : {
       "comment" : "How Ask the forum works; the placeholder is a forum name",
       "localizations" : {
@@ -16499,18 +16500,18 @@
         }
       }
     },
-    "Summaries, chat, and answers for any Discourse forum." : {
+    "Summaries, chat, and answers for any forum or article." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "为任何 Discourse 论坛提供摘要、聊天和解答。"
+            "value" : "为任何论坛或文章提供摘要、聊天和解答。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "為任何 Discourse 論壇提供摘要、聊天和解答。"
+            "value" : "為任何論壇或文章提供摘要、聊天和解答。"
           }
         }
       }
@@ -17812,6 +17813,29 @@
         }
       }
     },
+    "The site does not report a comment total: stopped after %lld pages of comments." : {
+      "comment" : "Progress while reading a WordPress post's comments when the site sends no total",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The site does not report a comment total: stopped after %lld pages of comments."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "该站点未提供评论总数：读取 %lld 页评论后停止。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "該網站未提供留言總數：讀取 %lld 頁留言後停止。"
+          }
+        }
+      }
+    },
     "The summary didn’t finish" : {
       "comment" : "Drawer: a summary run failed; the reason follows",
       "localizations" : {
@@ -18060,6 +18084,23 @@
         }
       }
     },
+    "This site does not allow searching comments. Use search_forum and read_topic instead." : {
+      "comment" : "Ask the forum step error: the WordPress site closed its comment search",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此网站不允许搜索评论。请改用 search_forum 和 read_topic。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此網站不允許搜尋留言。請改用 search_forum 和 read_topic。"
+          }
+        }
+      }
+    },
     "This Topic" : {
       "localizations" : {
         "zh-Hans" : {
@@ -18125,18 +18166,18 @@
         }
       }
     },
-    "This page isn’t a Discourse forum" : {
+    "This page isn’t a supported site" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此页面不是 Discourse 论坛"
+            "value" : "此页面不是受支持的网站"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此頁面不是 Discourse 論壇"
+            "value" : "此頁面不是受支援的網站"
           }
         }
       }
@@ -18511,7 +18552,7 @@
       }
     },
     "Top posts" : {
-      "comment" : "Digest card link: opens the topic's most liked posts (Discourse's summary view)",
+      "comment" : "Digest card link: opens the topic's most liked posts (a site's own summary view, where it has one)",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -22192,18 +22233,18 @@
         }
       }
     },
-    "Any Discourse forum, including subfolder installs like example.com/forum. You can also paste a link to one of its pages." : {
+    "%@ sites, including subfolder installs like example.com/forum. You can also paste a link to one of their pages." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "任意 Discourse 论坛，包括 example.com/forum 这样的子目录安装。也可以粘贴其中某个页面的链接。"
+            "value" : "%@ 网站，包括 example.com/forum 这样的子目录安装。也可以粘贴其中某个页面的链接。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "任何 Discourse 論壇，包括 example.com/forum 這類子目錄安裝。也可以貼上其中某個頁面的連結。"
+            "value" : "%@ 網站，包括 example.com/forum 這類子目錄安裝。也可以貼上其中某個頁面的連結。"
           }
         }
       }
@@ -22545,6 +22586,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "助理在頁面旁邊時，工具列一律在頂部：「頂部」和「底部」只適用於單欄佈局。"
+          }
+        }
+      }
+    },
+    "WordPress is a trademark of the WordPress Foundation. Forumind is an independent app and is not affiliated with or endorsed by WordPress or the WordPress Foundation." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WordPress 是 WordPress Foundation 的商标。Forumind 是一款独立 App，与 WordPress 或 WordPress Foundation 无关联，也未获其认可。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WordPress 是 WordPress Foundation 的商標。Forumind 是一款獨立 App，與 WordPress 或 WordPress Foundation 無關聯，也未獲其認可。"
           }
         }
       }

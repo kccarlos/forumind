@@ -9,7 +9,7 @@ PageFactsProbe.prototype = {
     var result;
     try {
       result = ((() => {
-  const keys = {"elements":{"data-discourse-setup":["baseUri"],"data-preloaded":["preloaded:currentUser.username"]},"links":[],"meta":["og:title","generator","discourse-base-uri","og:site_name"],"selectors":[".current-user","[data-current-user]"]};
+  const keys = {"elements":{"data-discourse-setup":["baseUri"],"data-preloaded":["preloaded:currentUser.username"]},"links":["https://api.w.org/","shortlink"],"meta":["og:title","generator","discourse-base-uri","og:site_name"],"selectors":[".current-user","[data-current-user]"]};
   const cache = new Map();
   const clip = (value, limit = 500) =>
     typeof value === "string" ? value.trim().slice(0, limit) : "";

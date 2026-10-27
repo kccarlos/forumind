@@ -184,7 +184,7 @@ final class ForumRobustnessTests: XCTestCase {
                 }
                 if resumeNow { continuation.resume() }
             }
-            return ForumResourceResponse(statusCode: 500, statusText: "", retryAfter: nil, data: Data())
+            return ForumResourceResponse(statusCode: 500, statusText: "", headers: [:], data: Data())
         }
 
         func release() {

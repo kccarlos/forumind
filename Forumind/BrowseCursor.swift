@@ -67,7 +67,7 @@ struct BrowseItem: Codable, Equatable, Identifiable {
     /// `siteURL`'s forum.
     init?(source: AgentSources.Source, siteURL: String, adapter: any SiteAdapter) {
         guard ForumSite.isSameForum(url: source.url, siteURL: siteURL),
-              let topicID = adapter.recognizer.looseTopicID(in: source.url)
+              let topicID = source.topicID ?? adapter.recognizer.looseTopicID(in: source.url)
         else {
             return nil
         }

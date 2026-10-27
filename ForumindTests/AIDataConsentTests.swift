@@ -26,8 +26,8 @@ final class AIDataConsentTests: XCTestCase {
         let service = app.aiService
 
         let paths: [(String, () async throws -> String)] = [
-            ("summary", { try await service.generateSummary(content: "Post", configuration: configuration, provider: .openAI, customPrompt: "", onDelta: { _ in }) }),
-            ("chat", { try await service.answer(source: "Post", summary: "", history: [ChatMessage(role: .user, content: "Q")], contextLimit: 1_000, customPrompt: "", configuration: configuration, provider: .openAI, onDelta: { _ in }) }),
+            ("summary", { try await service.generateSummary(content: "Post", configuration: configuration, provider: .openAI, customPrompt: "", discussion: DiscourseAdapter().discussion, onDelta: { _ in }) }),
+            ("chat", { try await service.answer(source: "Post", summary: "", history: [ChatMessage(role: .user, content: "Q")], contextLimit: 1_000, customPrompt: "", discussion: DiscourseAdapter().discussion, configuration: configuration, provider: .openAI, onDelta: { _ in }) }),
             ("complete", { try await service.complete(system: "S", messages: [ChatMessage(role: .user, content: "Q")], configuration: configuration, provider: .openAI) }),
             ("planner", {
                 let action = try await PromptAgentPlanner(aiService: service).nextAction(

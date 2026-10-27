@@ -242,9 +242,13 @@ final class MultiForumTests: XCTestCase {
 
         do {
             _ = try await app.addForum(fromAddress: "news.example.org")
-            XCTFail("A non-Discourse site was added")
+            XCTFail("An unsupported site was added")
         } catch let error as ForumDirectoryError {
-            XCTAssertEqual(error, .notDiscourse("news.example.org"))
+            XCTAssertEqual(error, .notSupported("news.example.org"))
+            XCTAssertEqual(
+                error.errorDescription,
+                "news.example.org doesn’t look like a supported site. Forumind works with \(SiteRecognizers.platformNames())."
+            )
         }
         do {
             _ = try await app.addForum(fromAddress: "not an address")
@@ -389,20 +393,41 @@ final class MultiForumTests: XCTestCase {
         let app = AppModel(store: temporaryStore())
         app.startAgentRun(goal: "Anything?")
         XCTAssertTrue(app.agentRuns.isEmpty)
-        XCTAssertEqual(app.presentedError, "Open a Discourse forum first.")
-        XCTAssertEqual(AssistantError.noTopic.localizedDescription, "Open a Discourse topic first.")
+        XCTAssertEqual(app.presentedError, "Open a forum first, or add the forum again.")
+        XCTAssertEqual(AssistantError.noTopic.localizedDescription, "Open a topic or article first.")
     }
 
+    /// Every registered adapter (and the fake) fills the three slots; the
+    /// default prompt, the always-appended section, the chunk and the chat
+    /// prompt carry them, and none names another platform.
     func testSummaryAndChatPromptsAreForumNeutral() {
-        let summary = PromptBuilder.summarySystem(custom: "")
-        XCTAssertTrue(summary.contains("Discourse forum discussion"))
-        XCTAssertTrue(summary.contains("same language as the discussion"))
-        XCTAssertFalse(summary.contains("Use Chinese"))
-        XCTAssertTrue(PromptBuilder.summarySystem(custom: "Be brief.").hasPrefix("Be brief."))
-        XCTAssertFalse(PromptBuilder.chunkPrompt.contains("中文"))
-        let chat = PromptBuilder.chatSystem(custom: "", source: "s", summary: "")
-        XCTAssertTrue(chat.contains("Discourse forum discussion"))
-        XCTAssertTrue(chat.contains("same language as the user's question"))
+        let adapters: [any SiteAdapter] = SiteRegistry.standard.adapters + [FakeSiteAdapter()]
+        let slotsOf: (any SiteAdapter) -> [String] = { [$0.discussion.material, $0.discussion.blocks, $0.discussion.signals] }
+        let platformNames = ["Discourse", "WordPress", "Reddit", "Fake"]
+        for adapter in adapters {
+            let own = slotsOf(adapter)
+            let foreign = platformNames.filter { name in
+                !own.contains { $0.localizedCaseInsensitiveContains(name) }
+            }
+            let prompts = [
+                PromptBuilder.summarySystem(custom: "", discussion: adapter.discussion),
+                PromptBuilder.summarySystem(custom: "Be brief.", discussion: adapter.discussion),
+                PromptBuilder.chunkPrompt(adapter.discussion),
+                PromptBuilder.chatSystem(custom: "", source: "s", summary: "", discussion: adapter.discussion)
+            ]
+            XCTAssertTrue(prompts[0].contains("## \(adapter.discussion.openingHeading)\n"), adapter.kind.id)
+            XCTAssertFalse(PromptBuilder.defaultSummaryPrompt(adapter.discussion).contains("Discourse"))
+            for prompt in prompts {
+                for slot in own { XCTAssertTrue(prompt.contains(slot), "\(adapter.kind.id): \(slot)") }
+                XCTAssertTrue(prompt.contains("username | date | #N"))
+                for name in foreign { XCTAssertFalse(prompt.contains(name), "\(adapter.kind.id) names \(name)") }
+                XCTAssertFalse(prompt.contains("中文"))
+            }
+            XCTAssertTrue(prompts[0].contains("same language as the discussion"))
+            XCTAssertTrue(prompts[1].hasPrefix("Be brief."))
+            XCTAssertTrue(prompts[1].contains("**CITATIONS:**"))
+            XCTAssertTrue(prompts[3].contains("same language as the user's question"))
+        }
     }
 
     // MARK: Review fixes

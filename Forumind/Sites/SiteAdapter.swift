@@ -15,6 +15,8 @@ protocol SiteAdapter: Sendable {
     var agent: AgentSiteProfile { get }
     /// The words of this site in the voice agent (§3.4).
     var voice: VoiceSiteProfile { get }
+    /// What the material is in the summary, chunk and chat prompts (§11).
+    var discussion: DiscussionProfile { get }
 
     // Add forum / directory
     /// Well-known public forums offered before the user adds any.
@@ -69,8 +71,49 @@ enum SearchScope: Equatable, Sendable {
 /// cases they don't support (`SiteQueryError.unsupported`), but the agent never
 /// offers a tool whose query they reject, because tool specs come from the same adapter.
 enum SiteQuery: Equatable, Sendable {
-    case search(text: String, scope: SearchScope)
+    case search(text: String, scope: SearchScope, options: SearchOptions = SearchOptions())
     case latest
+}
+
+/// Filters of a search that is not written in the query text. Discourse puts
+/// them in its query syntax and ignores these; a platform with a REST search
+/// reads them. The profile's `query` validates the model's arguments into this.
+struct SearchOptions: Equatable, Sendable {
+    /// A category name or slug.
+    var category: String?
+    var after: Date?
+    var before: Date?
+    /// 1-based result page.
+    var page = 1
+}
+
+extension SearchOptions {
+    /// From a search tool's string arguments: `category` (when the tool has
+    /// one), dates as `YYYY-MM-DD`, `page` 1 to 3. Anything else throws
+    /// `AgentError.invalidArgument` (the model sees it and corrects the call).
+    init(arguments: [String: String], allowsCategory: Bool = true) throws {
+        self.init()
+        if allowsCategory, let category = arguments["category"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !category.isEmpty {
+            self.category = category
+        }
+        func date(_ name: String) throws -> Date? {
+            guard let text = arguments[name]?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return nil }
+            let format = Date.ISO8601FormatStyle(timeZone: TimeZone(secondsFromGMT: 0)!).year().month().day()
+            guard text.count == 10, let parsed = try? Date(text, strategy: format) else {
+                throw AgentError.invalidArgument(name, reason: "use the form YYYY-MM-DD.")
+            }
+            return parsed
+        }
+        after = try date("after")
+        before = try date("before")
+        if let text = arguments["page"]?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+            guard let number = Int(text), (1...3).contains(number) else {
+                throw AgentError.invalidArgument("page", reason: "use a number from 1 to 3.")
+            }
+            page = number
+        }
+    }
 }
 
 enum SiteQueryError: Error, Equatable {
@@ -91,6 +134,10 @@ protocol SiteLinks: Sendable {
     func postURL(topicURL: URL, number: Int, anchor: String?) -> URL
     /// The topic page without post, query or fragment.
     func topicPageURL(_ url: URL) -> URL
+    /// The address a shown topic page is remembered by (`ForumTopic.url`). Kept
+    /// apart from `topicPageURL` because Discourse keeps the post number the
+    /// page is at and WordPress must keep its `?p=` query.
+    func canonicalPageURL(_ url: URL) -> URL
     /// A URL on this platform's site → topic id, slug, post number.
     func parse(_ url: URL, basePath: String) -> SiteLink?
     /// Lands on the newest post when its number is unknown (Discourse `/last`), else nil.
@@ -98,6 +145,11 @@ protocol SiteLinks: Sendable {
 }
 
 extension SiteLinks {
+    /// The page address without query and fragment.
+    func canonicalPageURL(_ url: URL) -> URL {
+        ForumSite.withoutQueryAndFragment(url)
+    }
+
     /// The topic, or with a `postNumber` that post of it. Nil for an invalid
     /// topic or a post number below 1. `anchor` is the post's `PostBlock.anchor`
     /// when the caller has the read page.

@@ -458,6 +458,7 @@ extension AppModel {
             return card
         }
 
+        guard let adapter = adapter(for: card.siteURL) else { throw AssistantError.noForum }
         if let session = sessions[card.topicKey], session.hasSummary,
            let covered = session.summaryPostCount, covered >= card.postCount {
             let text = try await aiService.generateSummary(
@@ -465,6 +466,7 @@ extension AppModel {
                 configuration: context.configuration,
                 provider: context.provider,
                 customPrompt: DigestPrompt.instructions(for: card, fromSavedSummary: true),
+                discussion: adapter.discussion,
                 batchLimit: context.batchLimit,
                 onDelta: { _ in }
             )
@@ -474,7 +476,6 @@ extension AppModel {
         }
 
         let cached = sessions[card.topicKey]
-        guard let adapter = adapter(for: card.siteURL) else { throw AssistantError.noForum }
         let fetch = try await adapter.readTopic(
             TopicReadRequest(
                 topic: TopicRef(siteURL: card.siteURL, topicID: card.topicID),
@@ -503,6 +504,7 @@ extension AppModel {
             configuration: context.configuration,
             provider: context.provider,
             customPrompt: DigestPrompt.instructions(for: card, fromSavedSummary: false),
+            discussion: adapter.discussion,
             batchLimit: context.batchLimit,
             onDelta: { _ in }
         )

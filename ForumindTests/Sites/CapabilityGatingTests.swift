@@ -128,7 +128,10 @@ final class CapabilityGatingTests: XCTestCase {
     func testTheContentBlockersExemptionsAreTheRegisteredSitesUnion() {
         let discourse = DiscourseAdapter.firstPartyPathPatterns
         XCTAssertEqual(SiteRegistry(adapters: [DiscourseAdapter(), FakeSiteAdapter()]).firstPartyPathPatterns, discourse)
-        XCTAssertEqual(SiteRegistry.standard.firstPartyPathPatterns, discourse)
-        XCTAssertEqual(ContentBlockingRules.firstPartyPathPatterns, discourse)
+        let union = discourse + WordPressAdapter.firstPartyPathPatterns
+        XCTAssertEqual(SiteRegistry.standard.firstPartyPathPatterns, union)
+        XCTAssertEqual(ContentBlockingRules.firstPartyPathPatterns, union)
+        // Discourse's own exemptions stay the first entries, unchanged.
+        XCTAssertEqual(Array(ContentBlockingRules.firstPartyPathPatterns.prefix(discourse.count)), discourse)
     }
 }

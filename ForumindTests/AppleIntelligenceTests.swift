@@ -242,7 +242,7 @@ final class AppleIntelligenceTests: XCTestCase {
     func testBatchLimitIsDerivedFromTheContextWindow() {
         let english = String(repeating: "The quick brown fox jumps over the lazy dog. ", count: 100)
         let chinese = String(repeating: "这张信用卡的年费值得吗？大家怎么看。", count: 100)
-        let system = PromptBuilder.summarySystem(custom: "")
+        let system = PromptBuilder.summarySystem(custom: "", discussion: DiscourseAdapter().discussion)
 
         let onDevice = AppleIntelligenceBudget.summaryBatchCharacters(contextTokens: 4_096, sample: english, systemPrompt: system)
         XCTAssertLessThan(onDevice, SummaryBatchLimit.minimum, "the on-device window is far below the hosted minimum")
@@ -280,6 +280,7 @@ final class AppleIntelligenceTests: XCTestCase {
             configuration: configuration,
             provider: .appleIntelligence,
             customPrompt: "",
+            discussion: DiscourseAdapter().discussion,
             batchLimit: SummaryBatchLimit.maximum, // the user's slider is ignored
             onDelta: { _ in }
         )
@@ -307,6 +308,7 @@ final class AppleIntelligenceTests: XCTestCase {
             configuration: configuration,
             provider: .appleIntelligence,
             customPrompt: "",
+            discussion: DiscourseAdapter().discussion,
             onDelta: { _ in },
             onProgress: { event in
                 events.append(event)
@@ -337,6 +339,7 @@ final class AppleIntelligenceTests: XCTestCase {
             configuration: configuration,
             provider: .appleIntelligence,
             customPrompt: "",
+            discussion: DiscourseAdapter().discussion,
             onDelta: { _ in },
             onProgress: { events.append($0) }
         )
@@ -353,6 +356,7 @@ final class AppleIntelligenceTests: XCTestCase {
             configuration: configuration,
             provider: .appleIntelligence,
             customPrompt: "",
+            discussion: DiscourseAdapter().discussion,
             onDelta: { streamed += $0 }
         )
         XCTAssertEqual(summary, "Fits now.")
@@ -367,6 +371,7 @@ final class AppleIntelligenceTests: XCTestCase {
                 configuration: configuration,
                 provider: .appleIntelligence,
                 customPrompt: "",
+                discussion: DiscourseAdapter().discussion,
                 onDelta: { _ in }
             )
             XCTFail("expected contextExceeded")
@@ -387,6 +392,7 @@ final class AppleIntelligenceTests: XCTestCase {
             history: [ChatMessage(role: .user, content: "Is it worth it?")],
             contextLimit: 30_000,
             customPrompt: "",
+            discussion: DiscourseAdapter().discussion,
             configuration: configuration,
             provider: .appleIntelligence,
             onDelta: { _ in }
@@ -614,7 +620,7 @@ final class AppleIntelligenceTests: XCTestCase {
         let batch = AppleIntelligenceBudget.summaryBatchCharacters(
             contextTokens: tokens,
             sample: post(1),
-            systemPrompt: PromptBuilder.summarySystem(custom: "")
+            systemPrompt: PromptBuilder.summarySystem(custom: "", discussion: DiscourseAdapter().discussion)
         )
         // About 2.2 batches: several section requests plus the final combine.
         var posts: [String] = []
@@ -625,6 +631,7 @@ final class AppleIntelligenceTests: XCTestCase {
             configuration: configuration,
             provider: .appleIntelligence,
             customPrompt: "",
+            discussion: DiscourseAdapter().discussion,
             onDelta: { streamed += $0 }
         )
         XCTAssertFalse(summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)

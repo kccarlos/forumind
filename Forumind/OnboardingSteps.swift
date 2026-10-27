@@ -119,7 +119,7 @@ struct OnboardingWelcomePage: View {
                 .opacity(appeared ? 1 : 0)
             OnboardingHeader(
                 eyebrow: String(localized: "Welcome to Forumind"),
-                title: String(localized: "Catch up on any Discourse forum in seconds"),
+                title: String(localized: "Catch up on any forum or article in seconds"),
                 subtitle: String(localized: "Browse your forums, get clear summaries of long topics, and ask questions with answers that cite their sources."),
                 alignment: .center
             )
@@ -369,7 +369,7 @@ struct OnboardingForumsPage: View {
                     .font(.footnote)
                     .foregroundStyle(DCTheme.success)
             } else {
-                Text("Paste the address of any Discourse forum, or a link to one of its pages.")
+                Text("Paste the address of any supported site, or a link to one of its pages.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

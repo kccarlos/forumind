@@ -514,8 +514,8 @@ struct NotForumState: View {
         VStack(alignment: .leading, spacing: 14) {
             StateCardHeader(
                 eyebrow: "Current page",
-                title: "This page isn’t a Discourse forum",
-                text: "Forumind works on forums built with Discourse. Open one to summarize topics, chat about them, or ask the whole forum a question.",
+                title: "This page isn’t a supported site",
+                text: "Forumind works with \(SiteRecognizers.platformNames()) sites. Open one to summarize topics, chat about them, or ask the whole forum a question.",
                 tint: .secondary
             )
             if let host = app.pageContext.url?.host {
@@ -576,13 +576,13 @@ struct MaybeForumState: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             StateCardHeader(
-                eyebrow: "Looks like a Discourse topic",
-                title: "Is this a Discourse forum?",
-                text: "Forumind couldn’t confirm \(host) yet. If it’s a Discourse forum, add it so the assistant can read topics with your current login.",
+                eyebrow: "Looks like a topic",
+                title: "Is this a supported site?",
+                text: "Forumind couldn’t confirm \(host) yet. If it’s a \(SiteRecognizers.platformNames(.or)) site, add it so the assistant can read topics with your current login.",
                 tint: DCTheme.warning
             )
             VStack(alignment: .leading, spacing: 8) {
-                step(1, "Add the forum — the app checks it’s Discourse.")
+                step(1, "Add the forum — the app checks that it’s supported.")
                 step(2, "Then create a summary or ask the forum a question.")
             }
             if let errorText {
@@ -675,7 +675,7 @@ struct ForumHomeState: View {
                 HStack(alignment: .top, spacing: 12) {
                     AssistantForumIcon(forum: forum, size: 44)
                     StateCardHeader(
-                        eyebrow: "Discourse forum",
+                        eyebrow: LocalizedStringKey(app.sites.adapter(for: forum.kind)?.recognizer.platformName ?? ""),
                         title: "You’re on \(forum.displayName)",
                         text: "Open a topic to summarize it, or ask the whole forum a question."
                     )

@@ -335,6 +335,144 @@ final class DailyDigestTests: XCTestCase {
         XCTAssertTrue(harness.ai.calls.isEmpty)
     }
 
+
+    // MARK: WordPress source (P1 W9)
+
+    /// 16 newer posts and one older than the newest 15; comments on the old
+    /// post (3) and on the newest (1), newest comment first.
+    private func busyWordPressSite() -> WordPressFixtureSite {
+        let site = WordPressFixtureSite(comments: [])
+        var posts = (1...16).map {
+            WordPressFixtureSite.post(2000 + $0, "Fresh \($0)", String(format: "2026-08-%02dT10:00:00", $0), excerpt: "Excerpt \($0)")
+        }
+        posts.append(WordPressFixtureSite.post(900, "Old but busy", "2026-01-01T10:00:00"))
+        site.posts = posts
+        func comment(_ id: Int, post: Int, _ day: Int) -> [String: Any] {
+            ["id": id, "post": post, "parent": 0, "author_name": "u\(id)", "date_gmt": "2026-08-\(String(format: "%02d", day))T12:00:00",
+             "content": ["rendered": "<p>x</p>"]]
+        }
+        // Oldest first: the site answers `order=desc` newest first.
+        site.comments = [comment(1, post: 900, 1), comment(2, post: 900, 2), comment(3, post: 900, 3), comment(4, post: 2016, 16)]
+        return site
+    }
+
+    func testWordPressActiveTopicsWithinEachBudget() async {
+        let source = WordPressActiveTopics()
+        let siteURL = WordPressFixtureSite.siteURL
+
+        let none = busyWordPressSite()
+        var result = await source.activeTopics(siteURL: siteURL, budget: 0, net: none.network())
+        XCTAssertEqual(result.requests, 0)
+        XCTAssertNil(result.topics)
+        XCTAssertTrue(none.requests.isEmpty)
+
+        // One request: the newest posts, 15 of the 17.
+        let one = busyWordPressSite()
+        result = await source.activeTopics(siteURL: siteURL, budget: 1, net: one.network())
+        XCTAssertEqual(result.requests, 1)
+        XCTAssertEqual(result.failures, 0)
+        XCTAssertEqual(result.topics?.map(\.id), Array((2002...2016).reversed()))
+        XCTAssertEqual(one.requestLines, ["/wp-json/wp/v2/posts?_fields=id,title,link,date_gmt,excerpt&order=desc&orderby=date&per_page=15"])
+        XCTAssertNil(result.topics?.first?.postsCount, "a listing says no count")
+
+        // Two: the recent comments too. The old post is commented most but its
+        // title was not fetched, so it is skipped; the newest commented post leads.
+        let two = busyWordPressSite()
+        result = await source.activeTopics(siteURL: siteURL, budget: 2, net: two.network())
+        XCTAssertEqual(result.requests, 2)
+        XCTAssertEqual(result.failures, 0)
+        XCTAssertEqual(result.topics?.map(\.id), [2016] + Array((2002...2015).reversed()))
+        XCTAssertEqual(two.requests.map(\.path), ["/wp-json/wp/v2/posts", "/wp-json/wp/v2/comments"])
+        XCTAssertEqual(two.requests[1].query["per_page"], "50")
+
+        // Three: the old post's title, and it comes first (most comments).
+        let three = busyWordPressSite()
+        result = await source.activeTopics(siteURL: siteURL, budget: 3, net: three.network())
+        XCTAssertEqual(result.requests, 3)
+        XCTAssertEqual(result.failures, 0)
+        XCTAssertEqual(result.topics?.map(\.id), [900, 2016] + Array((2002...2015).reversed()))
+        XCTAssertEqual(result.topics?.first?.title, "Old but busy")
+        XCTAssertEqual(three.requests[2].query["include"], "900")
+        XCTAssertEqual(three.requests[2].query["per_page"], "1")
+
+        // More budget than it needs: nothing to title when every commented post is already listed.
+        let covered = WordPressFixtureSite(comments: [WordPressFixtureSite.comment(1)])
+        covered.posts = [WordPressFixtureSite.defaultPosts[0]]
+        result = await source.activeTopics(siteURL: siteURL, budget: 9, net: covered.network())
+        XCTAssertEqual(result.requests, 2)
+        XCTAssertEqual(result.topics?.map(\.id), [1001])
+    }
+
+    func testWordPressClosedCommentsAreNoActivityNotAFailure() async {
+        for status in [401, 403, 404] {
+            let site = busyWordPressSite()
+            site.respond { $0.path.hasSuffix("/comments") ? .init(status: status, body: Data("{}".utf8)) : nil }
+            let result = await WordPressActiveTopics().activeTopics(siteURL: WordPressFixtureSite.siteURL, budget: 3, net: site.network())
+            XCTAssertEqual(result.requests, 2, "\(status)")
+            XCTAssertEqual(result.failures, 0, "\(status)")
+            XCTAssertEqual(result.topics?.count, 15, "\(status): the newest posts")
+        }
+    }
+
+    func testWordPressFailuresCountOncePerRequestAndKeepWhatWorked() async {
+        // The comments request fails: the newest posts stay.
+        let comments = busyWordPressSite()
+        comments.respond { $0.path.hasSuffix("/comments") ? .init(status: 500, body: Data("{}".utf8)) : nil }
+        var result = await WordPressActiveTopics().activeTopics(siteURL: WordPressFixtureSite.siteURL, budget: 3, net: comments.network())
+        XCTAssertEqual(result.requests, 2)
+        XCTAssertEqual(result.failures, 1)
+        XCTAssertEqual(result.topics?.count, 15)
+
+        // The newest posts fail: the commented posts are titled by the third request.
+        let posts = busyWordPressSite()
+        posts.respond { $0.path.hasSuffix("/posts") && $0.query["include"] == nil ? .init(status: 500, body: Data("{}".utf8)) : nil }
+        result = await WordPressActiveTopics().activeTopics(siteURL: WordPressFixtureSite.siteURL, budget: 3, net: posts.network())
+        XCTAssertEqual(result.requests, 3)
+        XCTAssertEqual(result.failures, 1)
+        XCTAssertEqual(result.topics?.map(\.id).sorted(), [900, 2016])
+
+        // Everything fails: no list at all.
+        let down = busyWordPressSite()
+        down.respond { _ in .init(status: 500, body: Data("{}".utf8)) }
+        result = await WordPressActiveTopics().activeTopics(siteURL: WordPressFixtureSite.siteURL, budget: 3, net: down.network())
+        XCTAssertNil(result.topics)
+        XCTAssertEqual(result.failures, 2, "no titles to fetch without comments")
+    }
+
+    func testWordPressACancelledRunCountsNoFailure() async {
+        let site = busyWordPressSite()
+        let net = site.network()
+        let task = Task { await WordPressActiveTopics().activeTopics(siteURL: WordPressFixtureSite.siteURL, budget: 3, net: net) }
+        task.cancel()
+        let result = await task.value
+        XCTAssertEqual(result.failures, 0)
+        XCTAssertLessThanOrEqual(result.requests, 1, "stops at the first cancelled request")
+    }
+
+    func testPrefetchReadsAWordPressForumThroughItsSource() async throws {
+        let wordpress = WordPressFixtureSite(commentCount: 3)
+        wordpress.posts = [WordPressFixtureSite.defaultPosts[0]]
+        let forum = Forum(siteURL: WordPressFixtureSite.siteURL, kind: .wordpress, name: "Example Blog", isPinned: true, pinOrder: 0)
+        let harness = makeHarness(
+            snapshot: AppSnapshot(forums: [forum]),
+            sites: .standard,
+            service: wordpress.service()
+        )
+        let prefetch = await harness.app.prefetchDigestInputs(background: true)
+
+        XCTAssertEqual(prefetch.trending[forum.siteURL]?.map(\.id), [1001])
+        XCTAssertEqual(wordpress.requests.prefix(2).map(\.path), ["/wp-json/wp/v2/posts", "/wp-json/wp/v2/comments"])
+        // The list's two requests and the card's one overview read.
+        XCTAssertEqual(prefetch.requestCount, 3)
+        XCTAssertEqual(prefetch.failedCount, 0)
+        let facts = try XCTUnwrap(prefetch.topics["example.com/t/1001"])
+        XCTAssertEqual(facts.postCount, 4, "three comments and the article")
+        let card = try XCTUnwrap(harness.app.planDigestCards(using: prefetch).cards.first)
+        XCTAssertEqual(card.topicID, "1001")
+        XCTAssertEqual(card.postCount, 4, "the listing had no count; the overview raised it")
+        XCTAssertTrue(StateForumStub.requests.isEmpty)
+    }
+
     // MARK: Helpers
 
     private struct Harness {
@@ -349,7 +487,8 @@ final class DailyDigestTests: XCTestCase {
         directory: URL? = nil,
         keys: InMemoryProviderKeyStore? = nil,
         scheduler: BackgroundTaskScheduling = FakeTaskScheduler(),
-        sites: SiteRegistry = .standard
+        sites: SiteRegistry = .standard,
+        service: ForumService? = nil
     ) -> Harness {
         let folder = directory ?? FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -365,7 +504,7 @@ final class DailyDigestTests: XCTestCase {
         let ai = StateAIStub()
         let app = AppModel(
             store: store,
-            forumService: ForumService(
+            forumService: service ?? ForumService(
                 session: URLSession(configuration: configuration),
                 pacer: ForumRequestPacer(clock: InstantPacingClock())
             ),

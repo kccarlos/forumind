@@ -398,7 +398,7 @@ extension AppModel {
         let rules = browser.moderationRules
         let hits = results.hits.filter { hit in
             !(hit.username.map { rules.hidesUser($0, siteURL: siteURL) } ?? false)
-                && !rules.hidesPost(hit.postNumber, siteURL: siteURL, topicID: hit.topic.topicID)
+                && !(hit.postNumber.map { rules.hidesPost($0, siteURL: siteURL, topicID: hit.topic.topicID) } ?? false)
                 && !rules.hidesText(hit.blurb ?? "")
                 && !rules.hidesText(hit.topic.title)
         }
@@ -703,7 +703,8 @@ extension AppModel {
     func followSources(_ sources: [AgentSources.Source], selecting source: AgentSources.Source, siteURL: String) {
         let items = sourceItems(sources, siteURL: siteURL)
         let parse = linkParser(siteURL: siteURL)
-        let index = items.firstIndex { $0.topicID == parse(source.url)?.topicID && $0.postNumber == source.postNumber }
+        let topicID = source.topicID ?? parse(source.url)?.topicID
+        let index = items.firstIndex { $0.topicID == topicID && $0.postNumber == source.postNumber }
         browseCursor.replace(with: items, origin: .sources, current: index)
     }
 
@@ -851,7 +852,7 @@ extension AppModel {
                     siteURL: topic.siteURL, id: Int(topic.topicID) ?? 0, title: topic.title ?? "",
                     slug: topic.slug ?? topic.topicID,
                     url: self.currentTopic?.url ?? URL(string: topic.siteURL) ?? URL(string: "about:blank")!,
-                    postsCount: 0
+                    postsCount: nil
                 )), at: .post(post), includeContent: false)
             }
             if let query {

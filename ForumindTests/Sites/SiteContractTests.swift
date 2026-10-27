@@ -2,8 +2,8 @@ import XCTest
 @testable import Forumind
 
 // S1 of the site-adapter refactor (dev/docs/SITE_ADAPTERS_PLAN.md §8.1): one
-// generic suite run over every adapter (`DiscourseAdapter` and the made-up
-// `FakeSiteAdapter`). Each adapter supplies a `SiteFixture`. The suite grows
+// generic suite run over every adapter (`DiscourseAdapter`, the made-up
+// `FakeSiteAdapter` and, from P1 W7, `WordPressAdapter`). Each adapter supplies a `SiteFixture`. The suite grows
 // with each step; recognition, blocks and the shared raw format join later.
 
 // MARK: Discourse fixture server
@@ -90,6 +90,10 @@ private struct SiteFixture {
     /// Forum requests a first read makes, and a second read with its pages.
     let firstReadRequests: Int
     let cachedReadRequests: Int
+    /// Whether a post link carries the post number (Discourse `/N`); anchored platforms don't.
+    let linksCarryPostNumbers: Bool
+    /// Post numbers `postLookup` finds in the fixture.
+    var lookupNumbers = [5, 10]
     /// A fresh network (and request log) for one test.
     let network: () -> SiteNetwork
     let requests: () -> [String]
@@ -105,6 +109,7 @@ private func discourseFixture() -> SiteFixture {
         slug: "topic-123",
         firstReadRequests: 2,   // topic JSON, one /raw page
         cachedReadRequests: 1,  // topic JSON only
+        linksCarryPostNumbers: true,
         network: {
             ContractStub.reset()
             let configuration = URLSessionConfiguration.ephemeral
@@ -129,6 +134,7 @@ private func fakeFixture() -> SiteFixture {
         slug: "seven",
         firstReadRequests: 0,
         cachedReadRequests: 0,
+        linksCarryPostNumbers: true,
         network: {
             SiteNetwork(service: ForumService(), siteURL: "https://fake.example.com", context: SiteRequestContext())
         },
@@ -136,7 +142,31 @@ private func fakeFixture() -> SiteFixture {
     )
 }
 
-private func allFixtures() -> [SiteFixture] { [discourseFixture(), fakeFixture()] }
+/// WordPress at `https://example.com`: the article by alice, one comment by bob.
+private func wordpressFixture() -> SiteFixture {
+    SiteFixture(
+        name: "wordpress",
+        adapter: WordPressAdapter(),
+        siteURL: WordPressFixtureSite.siteURL,
+        basePath: "",
+        topicID: WordPressFixtureSite.postID,
+        slug: "",
+        firstReadRequests: 2,   // the article, comment page 1
+        cachedReadRequests: 2,  // the same: the revision and count are compared
+        linksCarryPostNumbers: false,
+        lookupNumbers: [2],
+        network: {
+            var reply = WordPressFixtureSite.comment(1, author: "bob")
+            reply["content"] = ["rendered": "<p>A reply.</p>"]
+            let site = WordPressFixtureSite(comments: [reply])
+            WordPressFixtureSite.latest = site
+            return site.network()
+        },
+        requests: { WordPressFixtureSite.latest?.requestLines ?? [] }
+    )
+}
+
+private func allFixtures() -> [SiteFixture] { [discourseFixture(), fakeFixture(), wordpressFixture()] }
 
 // MARK: Tests
 
@@ -166,10 +196,15 @@ final class SiteContractTests: XCTestCase {
         XCTAssertNil(SiteRegistry(adapters: []).adapter(for: .discourse))
     }
 
-    func testStandardRegistryHoldsDiscourseOnly() {
+    func testStandardRegistryHoldsDiscourseThenWordPress() {
         let registry = SiteRegistry.standard
-        XCTAssertEqual(registry.adapters.map(\.kind), [.discourse])
-        XCTAssertEqual(registry.allAgentToolNames, AgentPrompt.tools(for: DiscourseAgent.profile).map(\.name))
+        XCTAssertEqual(registry.adapters.map(\.kind), [.discourse, .wordpress])
+        XCTAssertEqual(
+            registry.allAgentToolNames,
+            ["search_forum", "list_latest", "search_comments", "read_topic", "summarize_topic",
+             "saved_summaries", "watch_topic", "final_answer"]
+        )
+        XCTAssertEqual(SiteRecognizers.standard.map(\.kind), registry.adapters.map(\.kind))
         XCTAssertEqual(registry.firstPartyPathPatterns, ContentBlockingRules.firstPartyPathPatterns)
     }
 
@@ -226,7 +261,7 @@ final class SiteContractTests: XCTestCase {
             XCTAssertNil(parsed.postNumber, fixture.name)
 
             let post = links.postURL(topicURL: topic, number: 7, anchor: "p7")
-            XCTAssertEqual(links.parse(post, basePath: fixture.basePath)?.postNumber, 7, fixture.name)
+            XCTAssertEqual(links.parse(post, basePath: fixture.basePath)?.postNumber, fixture.linksCarryPostNumbers ? 7 : nil, fixture.name)
             XCTAssertEqual(links.parse(post, basePath: fixture.basePath)?.topicID, fixture.topicID, fixture.name)
             XCTAssertEqual(links.topicPageURL(post), topic, fixture.name)
             XCTAssertNotNil(links.homeURL(siteURL: fixture.siteURL), fixture.name)
@@ -382,8 +417,8 @@ final class SiteContractTests: XCTestCase {
                         .init(id: 1172723, number: 5, username: "bob", likeCount: nil)
                     ]
                 )
-                let posts = try await lookup.posts([5, 10], in: topic, facts: facts, net: fixture.network())
-                XCTAssertEqual(Set(posts.map(\.number)), [5, 10], fixture.name)
+                let posts = try await lookup.posts(fixture.lookupNumbers, in: topic, facts: facts, net: fixture.network())
+                XCTAssertEqual(Set(posts.map(\.number)), Set(fixture.lookupNumbers), fixture.name)
             }
         }
     }

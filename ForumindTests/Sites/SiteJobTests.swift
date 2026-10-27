@@ -213,6 +213,68 @@ final class SiteJobTests: XCTestCase {
         XCTAssertEqual(parse(try XCTUnwrap(sources.first?.url))?.topicID, "42")
     }
 
+    /// The widened shapes end to end: options reach the adapter, an invalid
+    /// argument is a recoverable observation, and numberless hits and listings
+    /// print their numberless forms.
+    func testWidenedQueriesAndResultsRunThroughTheAgent() async throws {
+        var fake = FakeSiteAdapter()
+        fake.queryResult = SiteQueryResult(
+            topics: [ForumTopicListing(
+                siteURL: fakeSite, id: 42, title: "Topic 42", slug: "42",
+                url: URL(string: "\(fakeSite)/topic/42")!, postsCount: nil, lastPostedAt: "2026-10-21T08:00:00Z"
+            )],
+            hits: [ForumSearchHit(
+                topic: ForumTopicListing(
+                    siteURL: fakeSite, id: 42, title: "Topic 42", slug: "42",
+                    url: URL(string: "\(fakeSite)/topic/42")!, postsCount: nil
+                ),
+                postNumber: nil, username: "bob", blurb: "Fees went up.", postedAt: "2026-10-21T08:00:00Z",
+                url: URL(string: "\(fakeSite)/topic/42#comment-9")!
+            )]
+        )
+        let planner = ScriptedAgentPlanner(actions: [
+            AgentAction(thought: "", tool: "search_comments", arguments: ["query": "fees", "after": "yesterday"]),
+            AgentAction(thought: "", tool: "search_comments", arguments: ["query": "fees", "page": "9"]),
+            AgentAction(thought: "", tool: "search_comments", arguments: [
+                "query": "fees", "category": "News", "after": "2026-10-01", "before": "2026-10-31", "page": "2"
+            ]),
+            AgentAction(thought: "", tool: AgentPrompt.finalAnswerTool, arguments: ["answer": "Done."])
+        ])
+        let harness = makeHarness(
+            forums: [Forum(siteURL: fakeSite, kind: FakeSiteAdapter.kind, name: "Fake")], fake: fake, planner: planner
+        )
+        harness.app.startAgentRun(goal: "fees?", siteURL: fakeSite)
+        try await waitUntil { harness.app.agentRuns.first?.isFinished ?? false }
+        let run = try XCTUnwrap(harness.app.agentRuns.first)
+        XCTAssertEqual(run.result, .completed, run.error)
+
+        XCTAssertEqual(
+            planner.transcripts[1].last?.content,
+            "ERROR from search_comments:\nInvalid argument \"after\": use the form YYYY-MM-DD."
+        )
+        XCTAssertEqual(
+            planner.transcripts[2].last?.content,
+            "ERROR from search_comments:\nInvalid argument \"page\": use a number from 1 to 3."
+        )
+        XCTAssertEqual(planner.transcripts[3].last?.content, """
+            OBSERVATION from search_comments:
+            - id 42: Topic 42 — last activity 2026-10-21 — \(fakeSite)/topic/42
+              @bob (2026-10-21): Fees went up.
+
+            \(AgentPrompt.unnumberedHitsNote)
+            """)
+        // Only the valid call reached the adapter, with its options.
+        let queries = fake.queryLog.all
+        XCTAssertEqual(queries.count, 1)
+        guard case .search(let text, let scope, let options) = try XCTUnwrap(queries.first) else { return XCTFail() }
+        XCTAssertEqual(text, "fees")
+        XCTAssertEqual(scope, .comments)
+        XCTAssertEqual(options.category, "News")
+        XCTAssertEqual(options.page, 2)
+        XCTAssertEqual(options.after, ISO8601DateFormatter().date(from: "2026-10-01T00:00:00Z"))
+        XCTAssertEqual(options.before, ISO8601DateFormatter().date(from: "2026-10-31T00:00:00Z"))
+    }
+
     /// Items, digest cards and podcast chapters of another platform build that
     /// platform's URLs (a post is `#pN`, a topic has no slug).
     func testLinksOfAnItemACardAndAChapterComeFromTheirSitesAdapter() {
@@ -268,7 +330,7 @@ final class SiteJobTests: XCTestCase {
 }
 
 /// Plays the model's actions in order, then answers; records the prompt and every turn's transcript.
-private final class ScriptedAgentPlanner: AgentPlanner, @unchecked Sendable {
+final class ScriptedAgentPlanner: AgentPlanner, @unchecked Sendable {
     private var actions: [AgentAction]
     private(set) var system = ""
     private(set) var transcripts: [[ChatMessage]] = []

@@ -438,6 +438,9 @@ struct RawForumPage: Codable, Equatable {
     /// The posts of `content`, same order. The adapter writes both in one
     /// call and nothing edits either afterwards: one fact, two representations.
     var blocks: [PostBlock] = []
+    /// What the platform says about the article's version when this page was
+    /// fetched (opaque; only the adapter compares it). nil for Discourse.
+    var revision: String?
 
     /// Posts per raw page.
     static let size = 100
@@ -694,17 +697,24 @@ struct ForumTopic: Equatable, Identifiable {
         forumName: String? = nil,
         recognizer: any SiteRecognizer
     ) -> ForumTopic? {
-        guard let url,
-              let siteURL = ForumSite.siteURL(fromPage: url, basePath: basePath),
-              let topicID = recognizer.topicID(fromURL: url, basePath: basePath)
-        else {
-            return nil
-        }
+        guard let url, let topicID = recognizer.topicID(fromURL: url, basePath: basePath) else { return nil }
+        return parse(url: url, title: title, basePath: basePath, forumName: forumName, topicID: topicID)
+    }
 
-        var canonical = URLComponents(url: url, resolvingAgainstBaseURL: false)
-        canonical?.query = nil
-        canonical?.fragment = nil
-        guard let canonicalURL = canonical?.url else { return nil }
+    /// The same with a topic id already known (the recognition match's, which
+    /// the facts may supply where the URL carries none).
+    static func parse(
+        url: URL?,
+        title: String?,
+        basePath: String = "",
+        forumName: String? = nil,
+        topicID: String,
+        links: (any SiteLinks)? = nil
+    ) -> ForumTopic? {
+        guard let url, let siteURL = ForumSite.siteURL(fromPage: url, basePath: basePath) else { return nil }
+        // The platform decides what identifies its page (Discourse: the path
+        // with its post number; WordPress: the permalink or its `?p=` query).
+        let canonicalURL = links?.canonicalPageURL(url) ?? ForumSite.withoutQueryAndFragment(url)
         let normalizedTitle = title?.trimmingCharacters(in: .whitespacesAndNewlines)
         let name = ForumSite.displayName(siteURL: siteURL, name: forumName)
         return ForumTopic(
@@ -813,6 +823,10 @@ struct AgentRun: Codable, Identifiable, Equatable {
     /// Follow-up questions and their answers, in order.
     var followUps: [ChatMessage] = []
     var topicIDs: [String] = []
+    /// The topic ids behind the permalinks the run's tools showed, by
+    /// `AgentSources.knownKey`: how a citation of a link with no id in it
+    /// (a WordPress slug) finds its topic.
+    var knownLinks: [String: String] = [:]
     var error = ""
     var provider: AIProvider
     var model: String
@@ -822,6 +836,16 @@ struct AgentRun: Codable, Identifiable, Equatable {
     var completedAt: Date?
 
     var readTopicCount: Int { topicIDs.count }
+
+    /// More than a long run needs; a synced record stays small.
+    static let knownLinkLimit = 300
+
+    /// Notes the topic behind each link a tool showed (see `knownLinks`).
+    mutating func remember(_ found: [(url: URL, topicID: String)], links: any SiteLinks) {
+        for (url, topicID) in found where knownLinks.count < Self.knownLinkLimit {
+            knownLinks[AgentSources.knownKey(url, links: links)] = topicID
+        }
+    }
 
     var isFinished: Bool { result != nil }
 
@@ -836,7 +860,7 @@ struct AgentRun: Codable, Identifiable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case id, siteURL, goal, result, steps, transcript, answer, initialAnswer, followUps
-        case topicIDs, error, provider, model, origin, createdAt, updatedAt, completedAt
+        case topicIDs, knownLinks, error, provider, model, origin, createdAt, updatedAt, completedAt
     }
 
     init(from decoder: Decoder) throws {
@@ -851,6 +875,7 @@ struct AgentRun: Codable, Identifiable, Equatable {
         initialAnswer = try container.decode(String.self, forKey: .initialAnswer)
         followUps = try container.decode([ChatMessage].self, forKey: .followUps)
         topicIDs = try container.decode([String].self, forKey: .topicIDs)
+        knownLinks = try container.decodeIfPresent([String: String].self, forKey: .knownLinks) ?? [:]
         error = try container.decode(String.self, forKey: .error)
         provider = try container.decode(AIProvider.self, forKey: .provider)
         model = try container.decode(String.self, forKey: .model)
@@ -924,7 +949,8 @@ struct ForumTopicListing: Codable, Equatable, Identifiable {
     var slug: String
     /// The topic's page, set by the adapter that parsed it.
     var url: URL
-    var postsCount: Int
+    /// nil when the platform's listing does not say.
+    var postsCount: Int?
     var lastPostedAt: String?
     var excerpt: String?
     /// From topic lists (`/latest.json`, `/top.json`); nil from search.
@@ -952,13 +978,17 @@ struct ForumTopicOverview: Equatable {
 /// several posts of one topic; hits keep the forum's order.
 struct ForumSearchHit: Equatable, Identifiable {
     var topic: ForumTopicListing
-    var postNumber: Int
+    /// nil when the platform does not number posts in a result (a comment hit
+    /// knows its number only after the post is read).
+    var postNumber: Int?
     var username: String?
     var blurb: String?
+    /// When the post was written, as the platform reports it; nil from Discourse.
+    var postedAt: String?
     /// The topic opened at this post, set by the adapter that parsed it.
     var url: URL
 
-    var id: String { "\(topic.id)/\(postNumber)" }
+    var id: String { postNumber.map { "\(topic.id)/\($0)" } ?? url.absoluteString }
 }
 
 /// A post fetched by id (`/t/{id}/posts.json`), its cooked HTML as plain text.
@@ -1101,7 +1131,8 @@ struct ForumFetchResult: Equatable {
 struct ForumResourceResponse {
     var statusCode: Int
     var statusText: String
-    var retryAfter: String?
+    /// Lowercased names.
+    var headers: [String: String]
     var data: Data
 }
 
@@ -1122,9 +1153,9 @@ enum AssistantError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .noTopic:
-            String(localized: "Open a Discourse topic first.")
+            String(localized: "Open a topic or article first.")
         case .noForum:
-            String(localized: "Open a Discourse forum first.")
+            String(localized: "Open a forum first, or add the forum again.")
         case .missingConfiguration(let message):
             message
         case .invalidResponse:

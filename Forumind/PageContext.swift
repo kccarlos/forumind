@@ -124,7 +124,8 @@ struct PageContext: Equatable {
                 siteURL: match.siteURL,
                 name: name,
                 iconURL: matchingFacts.iconURL ?? known?.iconURL,
-                adapter: adapter
+                adapter: adapter,
+                topicID: match.topicID
             )
         }
 
@@ -139,7 +140,10 @@ struct PageContext: Equatable {
                 siteURL: knownForum.siteURL,
                 name: ForumSite.displayName(siteURL: knownForum.siteURL, name: knownForum.name),
                 iconURL: knownForum.iconURL,
-                adapter: adapter
+                adapter: adapter,
+                topicID: adapter.recognizer.topicID(
+                    fromURL: url, basePath: ForumSite.parse(siteURL: knownForum.siteURL)?.basePath ?? ""
+                )
             )
         }
 
@@ -160,12 +164,13 @@ struct PageContext: Equatable {
         siteURL: String,
         name: String,
         iconURL: URL?,
-        adapter: any SiteAdapter
+        adapter: any SiteAdapter,
+        topicID: String?
     ) -> PageContext {
         let basePath = ForumSite.parse(siteURL: siteURL)?.basePath ?? ""
-        let topic = ForumTopic.parse(
-            url: url, title: title, basePath: basePath, forumName: name, recognizer: adapter.recognizer
-        )
+        let topic = topicID.flatMap {
+            ForumTopic.parse(url: url, title: title, basePath: basePath, forumName: name, topicID: $0, links: adapter.links)
+        }
         return PageContext(
             url: url,
             site: adapter.kind,

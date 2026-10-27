@@ -496,7 +496,7 @@ struct AgentView: View {
 
     private func answerSection(_ run: AgentRun) -> some View {
         let answer = run.initialAnswer.isEmpty ? run.answer : run.initialAnswer
-        let sources = AgentSources.extract(from: answer, run: run, sessions: app.sessions, parse: app.linkParser(siteURL: run.siteURL))
+        let sources = AgentSources.extract(from: answer, run: run, sessions: app.sessions, parse: app.linkParser(for: run))
         return VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
                 Image(systemName: "text.bubble.fill")
@@ -555,7 +555,7 @@ struct AgentView: View {
                 .accessibilityIdentifier("agentAnswerMenu")
             }
 
-            MarkdownView(AgentSources.annotate(answer, sources: sources, parse: app.linkParser(siteURL: run.siteURL)))
+            MarkdownView(AgentSources.annotate(answer, sources: sources, parse: app.linkParser(for: run)))
                 .textSelection(.enabled)
                 .accessibilityIdentifier("agentAnswer")
 
@@ -665,52 +665,26 @@ struct AgentView: View {
     // MARK: Presentation helpers
 
     private func toolIcon(_ tool: String) -> String {
-        switch tool {
-        case "search_forum": "magnifyingglass"
-        case "list_latest": "clock"
-        case "read_topic": "doc.text"
-        case "summarize_topic": "text.alignleft"
-        case "saved_summaries": "tray.full"
-        case "watch_topic": "eye"
-        case AgentPrompt.finalAnswerTool: "checkmark"
-        default: "questionmark"
-        }
+        AgentToolName(rawValue: tool)?.symbol ?? "questionmark"
     }
 
     private func toolTint(_ tool: String) -> Color {
-        switch tool {
-        case "search_forum", "list_latest": DCTheme.brandBlue
-        case "read_topic", "saved_summaries": DCTheme.chatTint
-        case "summarize_topic": DCTheme.agentTint
-        case "watch_topic": DCTheme.warning
-        case AgentPrompt.finalAnswerTool: DCTheme.success
-        default: .secondary
+        switch AgentToolName(rawValue: tool)?.tint {
+        case .search?: DCTheme.brandBlue
+        case .read?: DCTheme.chatTint
+        case .summarize?: DCTheme.agentTint
+        case .watch?: DCTheme.warning
+        case .answer?: DCTheme.success
+        case nil: .secondary
         }
     }
 
     private func toolTitle(_ step: AgentStep) -> String {
-        func topicName() -> String {
+        guard let tool = AgentToolName(rawValue: step.tool) else { return step.tool }
+        return tool.title(query: step.arguments["query"] ?? "") {
             if let topicKey = step.topicKey, let title = app.sessions[topicKey]?.title { return title }
             let id = step.arguments["topic_id"] ?? ""
             return String(localized: "topic \(id)", comment: "A topic without a known title; the placeholder is its number")
-        }
-        let query = step.arguments["query"] ?? ""
-        switch step.tool {
-        case "search_forum":
-            return String(localized: "Searched “\(query)”", comment: "Agent step; the placeholder is the search query")
-        case "list_latest": return String(localized: "Listed latest topics", comment: "Agent step")
-        case "read_topic":
-            return String(localized: "Read \(topicName())", comment: "Agent step (past tense); the placeholder is a topic title")
-        case "summarize_topic":
-            return String(localized: "Summarized \(topicName())", comment: "Agent step; the placeholder is a topic title")
-        case "saved_summaries":
-            return query.isEmpty
-                ? String(localized: "Checked saved summaries", comment: "Agent step")
-                : String(localized: "Saved summaries: \(query)", comment: "Agent step; the placeholder is a search query")
-        case "watch_topic":
-            return String(localized: "Watching \(topicName())", comment: "Agent step; the placeholder is a topic title")
-        case AgentPrompt.finalAnswerTool: return String(localized: "Wrote the answer", comment: "Agent step")
-        default: return step.tool
         }
     }
 

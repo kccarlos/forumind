@@ -43,6 +43,13 @@ final class ForumRedirectGuard: NSObject, URLSessionTaskDelegate, @unchecked Sen
 }
 
 
+/// A successful forum response: the body and the headers (lowercased names),
+/// for adapters that read paging totals from them (`X-WP-Total`).
+struct ForumHTTPResponse: Sendable {
+    var data: Data
+    var headers: [String: String]
+}
+
 /// The shared transport: one paced, retried GET of a forum URL. It knows no
 /// platform; adapters build URLs and parse responses on top of it (through
 /// `SiteNetwork`). Every request is paced per host (`ForumRequestPacer`, see
@@ -77,8 +84,8 @@ final class ForumService: Sendable {
     /// One forum request, paced per host. A `429` gives the slot back, pushes
     /// the host's next start back by `Retry-After` (or an exponential
     /// backoff) and tries again, up to `maximumRetries` times. The one request
-    /// path: adapters reach it through `SiteNetwork.data`.
-    func data(_ url: URL, accept: String? = nil, context: SiteRequestContext) async throws -> Data {
+    /// path: adapters reach it through `SiteNetwork.data` and `.response`.
+    func response(_ url: URL, accept: String? = nil, context: SiteRequestContext) async throws -> ForumHTTPResponse {
         let pace = context.pace
         var rateLimited = 0
         var transient = 0
@@ -102,9 +109,9 @@ final class ForumService: Sendable {
             }
 
             switch outcome {
-            case .success(let data):
+            case .success(let response):
                 await pacer.release(host)
-                return data
+                return response
             case .failure(let status, let detail, let retryAfter):
                 if status == 429 && rateLimited < maximumRetries {
                     // The back-off is in place before the slot passes on:
@@ -125,8 +132,13 @@ final class ForumService: Sendable {
         }
     }
 
+    /// Same request as `response`, the body only.
+    func data(_ url: URL, accept: String? = nil, context: SiteRequestContext) async throws -> Data {
+        try await response(url, accept: accept, context: context).data
+    }
+
     private enum Outcome {
-        case success(Data)
+        case success(ForumHTTPResponse)
         case failure(status: Int, detail: String, retryAfter: String?)
     }
 
@@ -140,12 +152,12 @@ final class ForumService: Sendable {
                     try await resourceLoader(url)
                 }
                 if (200..<300).contains(response.statusCode) {
-                    return .success(response.data)
+                    return .success(ForumHTTPResponse(data: response.data, headers: response.headers))
                 }
                 return .failure(
                     status: response.statusCode,
                     detail: String(data: response.data, encoding: .utf8) ?? response.statusText,
-                    retryAfter: response.retryAfter
+                    retryAfter: response.headers["retry-after"]
                 )
             } catch {
                 // The page could not make the request (its fetch failed or
@@ -174,7 +186,7 @@ final class ForumService: Sendable {
             throw AssistantError.invalidResponse
         }
         if (200..<300).contains(http.statusCode) {
-            return .success(data)
+            return .success(ForumHTTPResponse(data: data, headers: http.lowercasedHeaders))
         }
         return .failure(
             status: http.statusCode,
@@ -185,6 +197,19 @@ final class ForumService: Sendable {
     }
 }
 
+
+extension HTTPURLResponse {
+    /// Header names lowercased (HTTP names are case-insensitive).
+    var lowercasedHeaders: [String: String] {
+        var result: [String: String] = [:]
+        for (name, value) in allHeaderFields {
+            if let name = name as? String, let value = value as? String {
+                result[name.lowercased()] = value
+            }
+        }
+        return result
+    }
+}
 
 // MARK: - Prompt cancellation
 

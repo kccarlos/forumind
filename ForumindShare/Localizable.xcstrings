@@ -81,18 +81,18 @@
         }
       }
     },
-    "Couldn't confirm this is a Discourse forum" : {
+    "Couldn't confirm this is a supported site" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无法确认这是 Discourse 论坛"
+            "value" : "无法确认这是受支持的网站"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "無法確認這是 Discourse 論壇"
+            "value" : "無法確認這是受支援的網站"
           }
         }
       }
@@ -113,35 +113,35 @@
         }
       }
     },
-    "Discourse forum detected · %@" : {
-      "comment" : "The argument is the forum's name",
+    "%@ site detected · %@" : {
+      "comment" : "The first argument is the platform's name such as Discourse or WordPress, the second the site's name",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已检测到 Discourse 论坛 · %@"
+            "value" : "已检测到 %@ 网站 · %@"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已偵測到 Discourse 論壇 · %@"
+            "value" : "已偵測到 %@ 網站 · %@"
           }
         }
       }
     },
-    "Discourse forum? Forumind will check when it opens" : {
+    "Supported site? Forumind will check when it opens" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "是 Discourse 论坛吗？打开时 Forumind 会进行检查"
+            "value" : "是受支持的网站吗？打开时 Forumind 会进行检查"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "是 Discourse 論壇嗎？打開時 Forumind 會進行檢查"
+            "value" : "是受支援的網站嗎？打開時 Forumind 會進行檢查"
           }
         }
       }

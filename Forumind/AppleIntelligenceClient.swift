@@ -134,7 +134,7 @@ struct AppleIntelligenceGeneratedAction {
     @Guide(
         description: "The tool to call.",
         .anyOf([
-            "search_forum", "list_latest", "read_topic", "summarize_topic",
+            "search_forum", "list_latest", "search_comments", "read_topic", "summarize_topic",
             "saved_summaries", "watch_topic", "final_answer"
         ])
     )

@@ -1511,6 +1511,7 @@ final class StateAIStub: AIService {
         configuration: ProviderConfiguration,
         provider: AIProvider,
         customPrompt: String,
+        discussion: DiscussionProfile,
         batchLimit: Int = SummaryBatchLimit.default,
         onDelta: @escaping @MainActor (String) -> Void,
         onProgress: @escaping @MainActor (SummaryProgressEvent) -> Void = { _ in }
@@ -1528,6 +1529,7 @@ final class StateAIStub: AIService {
         history: [ChatMessage],
         contextLimit: Int,
         customPrompt: String,
+        discussion: DiscussionProfile,
         configuration: ProviderConfiguration,
         provider: AIProvider,
         onDelta: @escaping @MainActor (String) -> Void,

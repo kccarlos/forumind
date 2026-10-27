@@ -83,14 +83,14 @@ private final class RequestLog {
             return ForumResourceResponse(
                 statusCode: failure.status,
                 statusText: "Too Many Requests",
-                retryAfter: failure.retryAfter,
+                headers: failure.retryAfter.map { ["retry-after": $0] } ?? [:],
                 data: Data()
             )
         }
         let body = url.path.hasSuffix(".json")
             ? #"{"posts_count":\#(postsCount),"highest_post_number":\#(postsCount),"title":"Topic"}"#
             : "raw-page-\(page ?? 0)"
-        return ForumResourceResponse(statusCode: 200, statusText: "OK", retryAfter: nil, data: Data(body.utf8))
+        return ForumResourceResponse(statusCode: 200, statusText: "OK", headers: [:], data: Data(body.utf8))
     }
 }
 

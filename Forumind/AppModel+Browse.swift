@@ -179,6 +179,9 @@ extension AppModel {
     /// - `-dc-launch <destination>` applies the launch rule (automatic | home |
     ///                       lastForum) although this is a `-dc-` launch
     /// - `-dc-open <url>`    opens a page on launch
+    /// - `-dc-fixture-model <url>` points the Ollama provider at a local
+    ///                       fixture server (`/api/chat`) and selects it, so a UI
+    ///                       test runs real jobs without a network model
     /// - `-dc-show-switcher` opens the forum switcher after launch (ContentView)
     /// - `-dc-browse-post`, `-dc-browse-find`, `-dc-browse-debug` post-level
     ///                       browsing (AppModel+Navigation.swift)
@@ -201,6 +204,14 @@ extension AppModel {
             if ForumIconPolicy.loadsRemoteIcons {
                 for forum in forums { refreshForumInfo(siteURL: forum.siteURL) }
             }
+        }
+        if let index = arguments.firstIndex(of: "-dc-fixture-model"), index + 1 < arguments.count {
+            var configuration = settings.configuration(for: .ollama)
+            configuration.baseURL = arguments[index + 1]
+            configuration.model = "fixture-model"
+            configuration.apiKey = ""
+            settings.setConfiguration(configuration, for: .ollama)
+            selectModel(ModelSelection(provider: .ollama, model: configuration.model), for: .both)
         }
         if let index = arguments.firstIndex(of: "-dc-open"), index + 1 < arguments.count,
            let url = URL(string: arguments[index + 1]) {

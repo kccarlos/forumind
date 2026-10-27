@@ -1,0 +1,6 @@
+{
+  "name": "Example Blog &amp; Notes",
+  "home": "https://example.com",
+  "namespaces": ["oembed/1.0", "wp/v2", "wp-site-health/v1"],
+  "site_icon_url": "https://example.com/wp-content/uploads/icon-512.png"
+}

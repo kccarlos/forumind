@@ -34,10 +34,17 @@ struct SiteNetwork: Sendable {
 
     /// One paced, retried GET through `ForumService`. Refuses a URL outside the site.
     func data(_ url: URL, accept: String? = nil) async throws -> Data {
+        try await response(url, accept: accept).data
+    }
+
+    /// `data` with the response headers (lowercased names). Over the in-page
+    /// loader or a proxy a header the site sent may be missing: callers must
+    /// cope with its absence.
+    func response(_ url: URL, accept: String? = nil) async throws -> ForumHTTPResponse {
         guard ForumSite.isSameForum(url: url, siteURL: siteURL) else {
             throw SiteNetworkError.outsideSite(url)
         }
-        return try await service.data(url, accept: accept, context: context)
+        return try await service.response(url, accept: accept, context: context)
     }
 
     /// `data` decoded as a JSON object; `invalidResponse` when it is not one.

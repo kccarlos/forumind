@@ -203,6 +203,7 @@ final class CoreTests: XCTestCase {
             custom: "",
             source: "Latest post and reply",
             summary: "Older summary",
+            discussion: DiscourseAdapter().discussion,
             summaryIsStale: true
         )
 
@@ -239,7 +240,8 @@ final class CoreTests: XCTestCase {
         let prompt = PromptBuilder.chatSystem(
             custom: "",
             source: "Original post\n\nReply one",
-            summary: ""
+            summary: "",
+            discussion: DiscourseAdapter().discussion
         )
 
         XCTAssertTrue(prompt.contains("No saved summary; rely on the forum source."))
@@ -526,6 +528,7 @@ final class CoreTests: XCTestCase {
             history: [ChatMessage(role: .user, content: "question")],
             contextLimit: 10_000,
             customPrompt: "",
+            discussion: DiscourseAdapter().discussion,
             configuration: ProviderConfiguration(
                 model: "test-model",
                 baseURL: "https://example.test/v1",
@@ -564,7 +567,8 @@ final class CoreTests: XCTestCase {
                 apiKey: "key"
             ),
             provider: .openAI,
-            customPrompt: ""
+            customPrompt: "",
+            discussion: DiscourseAdapter().discussion
         ) { _ in }
 
         XCTAssertEqual(summary, "Summary")
@@ -936,6 +940,7 @@ final class CoreTests: XCTestCase {
             history: [ChatMessage(role: .user, content: "Reply with only the number of points in the welcome offer.")],
             contextLimit: 10_000,
             customPrompt: "",
+            discussion: DiscourseAdapter().discussion,
             configuration: configuration,
             provider: .nvidia,
             onDelta: { delta in streamed += delta }
@@ -1037,6 +1042,7 @@ final class CoreTests: XCTestCase {
             history: [ChatMessage(role: .user, content: "Reply with only the number of points in the welcome offer.")],
             contextLimit: 10_000,
             customPrompt: "",
+            discussion: DiscourseAdapter().discussion,
             configuration: configuration,
             provider: .vertexAI,
             onDelta: { delta in streamed += delta }

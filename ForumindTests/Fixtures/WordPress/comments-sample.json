@@ -1,0 +1,36 @@
+[
+  {
+    "id": 301,
+    "parent": 0,
+    "author_name": "bob",
+    "date_gmt": "2026-05-14T17:02:05",
+    "content": { "rendered": "<p>Got the 10x on my first try.</p>" }
+  },
+  {
+    "id": 302,
+    "parent": 301,
+    "author_name": "carol \n",
+    "date_gmt": "2026-05-14T17:30:00",
+    "content": { "rendered": "<p>Confirmed &#8211; same here, &amp; it posted instantly.</p>" }
+  },
+  {
+    "id": 303,
+    "parent": 0,
+    "author_name": "",
+    "date_gmt": "2026-05-14T18:00:00",
+    "content": { "rendered": "" }
+  },
+  {
+    "id": 304,
+    "parent": 99,
+    "author_name": "Jane &#038; Doe",
+    "date_gmt": "2026-05-14T18:15:00",
+    "content": { "rendered": "<p>Replying to a comment on an earlier page.</p>" }
+  },
+  {
+    "id": 305,
+    "parent": 303,
+    "author_name": "bob",
+    "content": { "rendered": "<p>No date on this one.</p>" }
+  }
+]

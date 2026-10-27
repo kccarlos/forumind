@@ -441,10 +441,10 @@ struct AddressError: Identifiable {
 
     var message: String {
         if isPath, !hasForum {
-            return String(localized: "Open a forum first, then enter a path such as /t/topic-name/123.")
+            return String(localized: "Open a forum first, then enter a path such as /about.")
         }
         return hasForum
-            ? String(localized: "Enter a web address such as meta.discourse.org or a full https:// link. Paths such as /t/topic-name/123 open on the current forum.")
+            ? String(localized: "Enter a web address such as meta.discourse.org or a full https:// link. A path such as /about opens on the current forum.")
             : String(localized: "Enter a web address such as meta.discourse.org or a full https:// link.")
     }
 }

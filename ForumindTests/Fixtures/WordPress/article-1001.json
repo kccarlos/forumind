@@ -1,0 +1,17 @@
+{
+  "id": 1001,
+  "date_gmt": "2026-05-14T16:00:00",
+  "modified_gmt": "2026-10-25T11:50:59",
+  "link": "https://example.com/2026/05/sample-cards-and-notes/",
+  "title": { "rendered": "(Update) Sample Cards &#038; Notes &#8211; Part 1" },
+  "content": {
+    "rendered": "<p>Opening post: the card is offering <strong>10x</strong> &#038; more&#8230;</p><ul><li>United</li><li>Dunkin</li></ul>",
+    "protected": false
+  },
+  "author": 7,
+  "_embedded": {
+    "author": [
+      { "id": 7, "name": "alice", "url": "", "link": "https://example.com/author/alice/" }
+    ]
+  }
+}

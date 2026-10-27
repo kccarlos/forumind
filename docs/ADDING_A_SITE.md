@@ -1,14 +1,54 @@
 # Adding a site
 
-Forumind reads Discourse today. Everything that knows a platform lives in
-`Forumind/Sites/` behind the `SiteAdapter` protocol, so supporting another
-platform (for example a WordPress comment section or Reddit, both only
-possible future platforms) means adding one folder there and two list entries,
-not changing the app. This page is the checklist. For how the pieces fit
-together see [ARCHITECTURE.md](ARCHITECTURE.md).
+Forumind reads Discourse and WordPress. Everything that knows a platform lives
+in `Forumind/Sites/` behind the `SiteAdapter` protocol, so supporting another
+platform means adding one folder there and two list entries, not changing the
+app. This page is the checklist. For how the pieces fit together see
+[ARCHITECTURE.md](ARCHITECTURE.md).
 
-Read `Forumind/Sites/Discourse/` as the worked example and
-`ForumindTests/Sites/FakeSiteAdapter.swift` as the smallest one.
+Read `Forumind/Sites/Discourse/` as the first worked example,
+`Forumind/Sites/WordPress/` as the second (a platform with no topic filters,
+page bridge or sign-in page, whose "topic" is a post and whose "posts" are its
+comments), and `ForumindTests/Sites/FakeSiteAdapter.swift` as the smallest.
+
+### WordPress as a second adapter
+
+What differs from Discourse, and the rule each difference follows:
+
+- **A topic is a post (or page); post #1 is the article.** Comments follow,
+  oldest first, numbered in that order. A comment's anchor is its comment id
+  (`comment-<id>`), not its number, so a post number is page arithmetic
+  (100 comments to a request) rather than a URL.
+- **The page names its own id.** Permalinks are slugs, so the recognizer reads
+  the REST root link (`rel="https://api.w.org/"`), the shortlink
+  (`/?p=ID`) and the body class (`postid-ID`) from the probe facts, and
+  `WordPressLinks` builds the canonical `/?p=ID` address. Before the site is
+  known, `looseTopicID` accepts `?p=` only on the site root or `index.php`;
+  other sites use `?p=` for paging and must not become "maybe a forum".
+- **Counts come from response headers.** `X-WP-Total` and `X-WP-TotalPages`
+  tell the reader how many comment pages exist. Transport hands the adapter
+  `ForumHTTPResponse { data, headers }`; both the `URLSession` path and the
+  in-page `fetch()` path return headers (in-page: `Object.fromEntries`). A
+  site or proxy that strips them is probed page by page up to a cap.
+- **A page past the last answers 400 or `200 []`.** Both are an empty page, not
+  a failure; any other error on a later page fails the read. Closed comments
+  (401/403/404) are a post without comments, and a comment search that is
+  closed is the `COMMENTS_UNAVAILABLE` observation, after which the run goes on.
+- **No bridge navigation.** With no `pageBridge`, the app never scripts a
+  WordPress page: opening a post loads its URL, and moderation applies to read
+  text only. `loginURL` and `session` are nil, and `searchPageURL` is the
+  site's own `?s=` page.
+- **Own tools.** `search_comments` is a WordPress tool beside `search_forum`
+  and `list_latest`; a Discourse run that asks for it gets the usual refusal
+  that lists its own tools. Apple Intelligence's guided tool list is a literal
+  enum in `AppleIntelligenceClient.swift` and a test keeps it equal to
+  `SiteRegistry.standard.allAgentToolNames`.
+- **Its own discussion and voice profiles.** `DiscussionProfile` says what the
+  material is (an article and reader comments), so prompts stay neutral and
+  only that profile names the platform.
+- **Content blocker.** The adapter's `firstPartyPathPatterns` (`/wp-json/`,
+  `wp-login.php`, `wp-admin/admin-ajax.php`) join Discourse's; the union is a
+  golden in `SiteGoldenTests`.
 
 ## The rules
 
@@ -156,7 +196,10 @@ Two entries, and nothing else:
 2. Add a line to `SiteRegistry.adapterFactories`
    (`Sites/SiteRegistry.swift`): `[.yourKind: { YourAdapter() }]`.
 
-`SiteRegistry.standard` is derived from the first list through the second. A
+`SiteRegistry.standard` is derived from the first list through the second
+(Discourse first, then WordPress). Adding a recognizer changes what the share
+extension's probe collects: run `scripts/generate-share-probe.sh` to refresh
+`ForumindShare/PageFactsProbe.js` (a test fails when it is stale). A
 listed kind without a factory stops the app at first use and fails the contract
 tests, so a platform cannot be half added. After adding files run
 `env -u DEVELOPMENT_TEAM ruby scripts/generate_project.rb` and

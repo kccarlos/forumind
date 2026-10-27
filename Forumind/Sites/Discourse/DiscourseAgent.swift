@@ -10,6 +10,14 @@ enum DiscourseAgent {
         languageHint: "Discourse search matches words, so a Chinese question about an English forum is searched with English words."
     )
 
+    /// What its material is in the summary, chunk and chat prompts.
+    static let discussion = DiscussionProfile(
+        openingHeading: "Original post",
+        material: "a Discourse forum discussion",
+        blocks: "#1 is the opening post from the original author; later numbers are community replies.",
+        signals: "Posts may show likes; a topic may have an accepted answer."
+    )
+
     static let profile = AgentSiteProfile(
         siteDescription: "a Discourse forum",
         siteNoun: "forum",

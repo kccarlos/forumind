@@ -361,7 +361,7 @@ struct AddForumSheet: View {
                     } else if isAdding {
                         Text("Checking the forum…")
                     } else {
-                        Text("Paste any page of a Discourse forum, or type its address.")
+                        Text("Paste any page of a supported site, or type its address.")
                     }
                 }
 

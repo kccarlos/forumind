@@ -501,7 +501,7 @@ struct DigestCardView: View {
             result.append(Link(id: "top", title: String(localized: "Top post", comment: "Digest card link: opens the topic at its most liked reply"),
                                systemImage: "heart", url: app.url(for: card, atPost: top)))
         } else if let url = app.topPostsURL(for: card) {
-            result.append(Link(id: "top", title: String(localized: "Top posts", comment: "Digest card link: opens the topic's most liked posts (Discourse's summary view)"),
+            result.append(Link(id: "top", title: String(localized: "Top posts", comment: "Digest card link: opens the topic's most liked posts (a site's own summary view, where it has one)"),
                                systemImage: "heart", url: url))
         }
         return result

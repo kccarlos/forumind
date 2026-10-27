@@ -84,6 +84,9 @@ enum AgentSources {
         var number: Int
         var title: String
         var url: URL
+        /// Its topic when the run knows it (the link's own, else the run's
+        /// `knownLinks`); a platform's slug link carries none.
+        var topicID: String?
         /// The cited post; nil when the source is the whole topic.
         var postNumber: Int?
         var cited: Bool
@@ -105,6 +108,19 @@ enum AgentSources {
         }
 
         func callAsFunction(_ url: URL) -> SiteLink? { parse(url) }
+    }
+
+    /// A page address in its one spelling for `AgentRun.knownLinks`: the
+    /// adapter's topic page, scheme and host lowercased, no fragment, no
+    /// trailing slash.
+    static func knownKey(_ url: URL, links: any SiteLinks) -> String {
+        let page = links.topicPageURL(url)
+        guard var components = URLComponents(url: page, resolvingAgainstBaseURL: false) else { return page.absoluteString }
+        components.scheme = components.scheme?.lowercased()
+        components.host = components.host?.lowercased()
+        components.fragment = nil
+        while components.path.count > 1, components.path.hasSuffix("/") { components.path.removeLast() }
+        return components.string ?? page.absoluteString
     }
 
     private static let linkPattern = try? NSRegularExpression(
@@ -144,6 +160,7 @@ enum AgentSources {
                 number: sources.count + 1,
                 title: title,
                 url: url,
+                topicID: parse(url)?.topicID,
                 postNumber: parse(url)?.postNumber,
                 cited: true
             ))
@@ -152,7 +169,7 @@ enum AgentSources {
             guard let topicKey = step.topicKey, let session = sessions[topicKey] else { continue }
             let topic = topicIdentity(of: session.url, parse: parse)
             guard !sources.contains(where: { topicIdentity(of: $0.url, parse: parse) == topic }) else { continue }
-            sources.append(Source(number: sources.count + 1, title: session.title, url: session.url, cited: false))
+            sources.append(Source(number: sources.count + 1, title: session.title, url: session.url, topicID: session.topicID, cited: false))
         }
         return sources
     }

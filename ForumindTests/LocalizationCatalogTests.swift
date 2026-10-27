@@ -222,14 +222,14 @@ final class LocalizationCatalogTests: XCTestCase {
     func testAnswersFollowTheAppLanguage() {
         // English: unchanged behavior (summaries follow the discussion,
         // chat follows the question).
-        XCTAssertTrue(PromptBuilder.summarySystem(custom: "", appLanguage: "en").contains("same language as the discussion"))
-        XCTAssertTrue(PromptBuilder.chatSystem(custom: "", source: "s", summary: "", appLanguage: "en")
+        XCTAssertTrue(PromptBuilder.summarySystem(custom: "", discussion: DiscourseAdapter().discussion, appLanguage: "en").contains("same language as the discussion"))
+        XCTAssertTrue(PromptBuilder.chatSystem(custom: "", source: "s", summary: "", discussion: DiscourseAdapter().discussion, appLanguage: "en")
             .contains("same language as the user's question"))
         // Chinese app: answers default to the app's language; prompts stay English.
-        let hans = PromptBuilder.summarySystem(custom: "", appLanguage: "zh-Hans")
+        let hans = PromptBuilder.summarySystem(custom: "", discussion: DiscourseAdapter().discussion, appLanguage: "zh-Hans")
         XCTAssertTrue(hans.contains("Respond in Simplified Chinese"))
         XCTAssertTrue(hans.contains("Discourse forum discussion"))
-        XCTAssertTrue(PromptBuilder.chatSystem(custom: "", source: "s", summary: "", appLanguage: "zh-Hant")
+        XCTAssertTrue(PromptBuilder.chatSystem(custom: "", source: "s", summary: "", discussion: DiscourseAdapter().discussion, appLanguage: "zh-Hant")
             .contains("Respond in Traditional Chinese"))
         XCTAssertTrue(PromptBuilder.questionLanguageInstruction(appLanguage: "zh-Hant")
             .contains("unless the user writes in another language"))

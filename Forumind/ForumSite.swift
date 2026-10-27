@@ -158,6 +158,14 @@ enum ForumSite {
         return components.url
     }
 
+    /// `url` without its query and fragment.
+    static func withoutQueryAndFragment(_ url: URL) -> URL {
+        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        components?.query = nil
+        components?.fragment = nil
+        return components?.url ?? url
+    }
+
     // MARK: Cookies
 
     /// RFC 6265 domain match: a cookie for `example.com` (or `.example.com`)

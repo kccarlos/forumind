@@ -74,14 +74,17 @@ struct SuggestedForum: Identifiable, Equatable {
 
 enum ForumDirectoryError: LocalizedError, Equatable {
     case invalidAddress
-    case notDiscourse(String)
+    case notSupported(String)
 
     var errorDescription: String? {
         switch self {
         case .invalidAddress:
             String(localized: "Enter a forum address such as meta.discourse.org.", comment: "Add forum error; keep the example address as is")
-        case .notDiscourse(let host):
-            String(localized: "\(host) doesn’t look like a Discourse forum.", comment: "Add forum error; the placeholder is a web address such as forum.example.com")
+        case .notSupported(let host):
+            String(
+                localized: "\(host) doesn’t look like a supported site. Forumind works with \(SiteRecognizers.platformNames()).",
+                comment: "Add forum error; the first placeholder is a web address such as forum.example.com, the second the supported platforms such as Discourse and WordPress"
+            )
         }
     }
 }
@@ -89,7 +92,7 @@ enum ForumDirectoryError: LocalizedError, Equatable {
 /// Add forum: detecting the platform of a typed address and its outcome.
 /// `detecting` is entered once per address (a repeated tap joins it);
 /// `failed` is the network's fault and may be retried; `unsupported` is
-/// shown as `ForumDirectoryError.notDiscourse` in P0.
+/// shown as `ForumDirectoryError.notSupported`.
 enum AddForumPhase: Equatable {
     case idle
     case detecting(address: String)

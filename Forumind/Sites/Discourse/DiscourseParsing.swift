@@ -261,45 +261,11 @@ enum DiscourseHTML {
         for (pattern, template) in replacements {
             text = text.replacingOccurrences(of: pattern, with: template, options: .regularExpression)
         }
-        text = decodeEntities(text)
+        text = HTMLText.decodeEntities(text)
         // Trailing spaces go and blank-line runs collapse; leading spaces
         // stay (code indentation).
         text = text.replacingOccurrences(of: #"(?m)[ \t]+$"#, with: "", options: .regularExpression)
         text = text.replacingOccurrences(of: #"\n{3,}"#, with: "\n\n", options: .regularExpression)
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private static let namedEntities: [String: String] = [
-        "amp": "&", "lt": "<", "gt": ">", "quot": "\"", "apos": "'", "nbsp": " ",
-        "hellip": "…", "mdash": "—", "ndash": "–", "lsquo": "‘", "rsquo": "’",
-        "ldquo": "“", "rdquo": "”"
-    ]
-
-    nonisolated static func decodeEntities(_ text: String) -> String {
-        guard text.contains("&"),
-              let regex = try? NSRegularExpression(pattern: "&(#[0-9]+|#[xX][0-9A-Fa-f]+|[A-Za-z]+);")
-        else {
-            return text
-        }
-        let nsText = text as NSString
-        var result = ""
-        var cursor = 0
-        for match in regex.matches(in: text, range: NSRange(location: 0, length: nsText.length)) {
-            let name = nsText.substring(with: match.range(at: 1))
-            let decoded: String?
-            if name.hasPrefix("#x") || name.hasPrefix("#X") {
-                decoded = UInt32(name.dropFirst(2), radix: 16).flatMap(Unicode.Scalar.init).map { String(Character($0)) }
-            } else if name.hasPrefix("#") {
-                decoded = UInt32(name.dropFirst()).flatMap(Unicode.Scalar.init).map { String(Character($0)) }
-            } else {
-                decoded = namedEntities[name]
-            }
-            guard let decoded else { continue }
-            result += nsText.substring(with: NSRange(location: cursor, length: match.range.location - cursor))
-            result += decoded
-            cursor = match.range.location + match.range.length
-        }
-        result += nsText.substring(from: cursor)
-        return result
     }
 }

@@ -404,7 +404,7 @@ struct PhoneTitleCapsule: View {
                         Image(systemName: "exclamationmark.circle")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(DCTheme.warning)
-                            .accessibilityLabel("Not a Discourse forum")
+                            .accessibilityLabel("Not a supported site")
                             .accessibilityIdentifier("pageStatusNotForum")
                     }
                     Text(subtitle)

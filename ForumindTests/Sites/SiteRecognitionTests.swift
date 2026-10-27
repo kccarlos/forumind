@@ -29,7 +29,8 @@ final class SiteRecognitionTests: XCTestCase {
         let (adapter, match) = try XCTUnwrap(SiteRegistry.standard.recognize(facts: facts, url: facts.url))
         XCTAssertEqual(adapter.kind, .discourse)
         XCTAssertEqual(match, SitePageMatch(
-            siteURL: "https://forum.example.com/forum", basePath: "/forum", forumName: "Example Forum"
+            siteURL: "https://forum.example.com/forum", basePath: "/forum", forumName: "Example Forum",
+            kind: .discourse, platformName: "Discourse", topicID: "42"
         ))
         let session = try XCTUnwrap(adapter.capabilities.session).session(from: facts)
         XCTAssertTrue(session.authenticated)
@@ -163,6 +164,31 @@ final class SiteRecognitionTests: XCTestCase {
         XCTAssertEqual(registry.looseTopicID(in: fakeURL), "7")
     }
 
+    func testAMatchCarriesTheTopicIdAndTheContextUsesIt() {
+        let registry = SiteRegistry(adapters: [DiscourseAdapter(), FakeSiteAdapter()])
+        // An id that exists only in the facts: the URL has none.
+        let slug = URL(string: "https://fake.example.com/2026/some-slug/")!
+        let withID = PageFacts(url: slug, meta: ["generator": "FakeCMS", "fake-topic": "9"])
+        let (_, match) = registry.recognize(facts: withID, url: slug)!
+        XCTAssertEqual(match.topicID, "9")
+        XCTAssertEqual(match.kind, FakeSiteAdapter.kind)
+        XCTAssertEqual(match.platformName, "FakeCMS")
+        let context = PageContext.make(url: slug, title: "Slug", facts: withID, knownForum: nil, registry: registry)
+        XCTAssertEqual(context.state, .topic)
+        XCTAssertEqual(context.topic?.topicID, "9")
+        XCTAssertEqual(context.topic?.topicKey, "fake.example.com/t/9")
+        // Without it the page is the forum's home, and a URL-only reading finds nothing either.
+        let bare = PageFacts(url: slug, meta: ["generator": "FakeCMS"])
+        XCTAssertNil(registry.recognize(facts: bare, url: slug)?.match.topicID)
+        XCTAssertEqual(PageContext.make(url: slug, title: "Slug", facts: bare, knownForum: nil, registry: registry).state, .forumHome)
+        // Discourse fills the match from the URL.
+        let topicURL = URL(string: "https://meta.example.org/t/hello/55/3")!
+        let discourse = registry.recognize(facts: .discourse(topicURL), url: topicURL)!.match
+        XCTAssertEqual(discourse.topicID, "55")
+        XCTAssertEqual(discourse.platformName, "Discourse")
+        XCTAssertNil(registry.recognize(facts: .discourse(URL(string: "https://meta.example.org/latest")!), url: URL(string: "https://meta.example.org/latest")!)?.match.topicID)
+    }
+
     func testAKnownForumOfAnUnregisteredKindIsNotAForumHere() {
         let url = URL(string: "https://ghost.example.com/topic/7")!
         let ghost = KnownForumSite(siteURL: "https://ghost.example.com", name: "Ghost", iconURL: nil, kind: SiteKind("ghost"))
@@ -210,11 +236,12 @@ final class SiteRecognitionTests: XCTestCase {
         let registry = SiteRegistry(adapters: [DiscourseAdapter(), FakeSiteAdapter()])
         let keys = registry.factKeys
         // The union, in registry order, without repeats.
-        XCTAssertEqual(keys.meta, ["og:title", "generator", "discourse-base-uri", "og:site_name", "fake-site"])
+        XCTAssertEqual(keys.meta, ["og:title", "generator", "discourse-base-uri", "og:site_name", "fake-site", "fake-topic"])
         XCTAssertEqual(keys.selectors, DiscourseRecognizer.currentUserSelectors)
         XCTAssertEqual(Set(keys.elements.keys), ["data-discourse-setup", "data-preloaded"])
         var standardKeys = PageFactKeys.common
         standardKeys.formUnion(DiscourseRecognizer().factKeys)
+        standardKeys.formUnion(WordPressRecognizer().factKeys)
         XCTAssertEqual(SiteRegistry.standard.factKeys, standardKeys)
 
         let script = registry.probeExpression

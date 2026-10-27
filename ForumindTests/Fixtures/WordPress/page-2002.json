@@ -1,0 +1,9 @@
+{
+  "id": 2002,
+  "date_gmt": "2026-01-02T08:30:00",
+  "modified_gmt": "2026-02-03T09:10:00",
+  "link": "https://example.com/about/",
+  "title": { "rendered": "About" },
+  "content": { "rendered": "<p>About this blog.</p>", "protected": false },
+  "author": 7
+}

@@ -200,7 +200,7 @@ struct SettingsForumsPage: View {
         } header: {
             Text("Add a forum")
         } footer: {
-            Text("Any Discourse forum, including subfolder installs like example.com/forum. You can also paste a link to one of its pages.")
+            Text("\(SiteRecognizers.platformNames()) sites, including subfolder installs like example.com/forum. You can also paste a link to one of their pages.")
         }
     }
 
