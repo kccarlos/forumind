@@ -293,7 +293,7 @@ final class VoiceSessionTests: XCTestCase {
 
         session.receive(frame(#"{"goAway":{"timeLeft":"50s"}}"#))
         session.tick()
-        await settle()
+        try await waitForTransports(2)
         XCTAssertEqual(transports.count, 2)
         XCTAssertTrue(transports[0].closed, "Close before resume: AI Studio allows one connection")
         XCTAssertEqual(transports[1].messages.first, .setup(model: "models/gemini-3.8-live", handle: "h-1"))
@@ -310,7 +310,7 @@ final class VoiceSessionTests: XCTestCase {
         XCTAssertEqual(transports.count, 1)
         clock.advance(60)
         session.tick()
-        await settle()
+        try await waitForTransports(2)
         XCTAssertEqual(transports.count, 2)
         XCTAssertEqual(transports[1].messages.first, .setup(model: "models/gemini-3.8-live", handle: nil), "A fresh session")
         XCTAssertTrue(transports[0].closed)
@@ -329,7 +329,7 @@ final class VoiceSessionTests: XCTestCase {
         let model = "projects/p/locations/us-central1/publishers/google/models/gemini-3.8-live"
         session.receive(frame(#"{"sessionResumptionUpdate":{"newHandle":"v-0","resumable":true}}"#))
         transports[0].drop()
-        await settle()
+        try await waitForTransports(2)
         XCTAssertEqual(transports[1].messages.first, .setup(model: model, handle: "v-0"))
         session.receive(frame(#"{"setupComplete":{}}"#))
         XCTAssertEqual(session.connectionGeneration, 1)
@@ -338,7 +338,7 @@ final class VoiceSessionTests: XCTestCase {
         session.receive(frame(#"{"sessionResumptionUpdate":{"newHandle":"v-1","resumable":true}}"#))
         XCTAssertNil(session.resumptionHandle)
         transports[1].drop()
-        await settle()
+        try await waitForTransports(3)
         XCTAssertEqual(transports[2].messages.first, .setup(model: model, handle: nil), "Fresh, seeded with the context")
         // No 54-minute refresh on Vertex.
         session.receive(frame(#"{"setupComplete":{}}"#))
@@ -352,14 +352,14 @@ final class VoiceSessionTests: XCTestCase {
         let session = try await started()
         session.receive(frame(#"{"sessionResumptionUpdate":{"newHandle":"h-1","resumable":true}}"#))
         transports[0].drop(LiveClose(code: 1008, reason: "Requested entity was not found."))
-        await settle()
+        try await waitForTransports(2)
         XCTAssertEqual(transports[1].messages.first, .setup(model: "models/gemini-3.8-live", handle: nil))
         session.receive(frame(#"{"setupComplete":{}}"#))
 
         let refused = makeSession()
         await refused.start()
         transports.last?.drop(LiveClose(code: 1008, reason: "API keys are not supported by this API."))
-        await settle()
+        try await waitUntil { refused.state == .failed(.refused("API keys are not supported by this API.")) }
         XCTAssertEqual(refused.state, .failed(.refused("API keys are not supported by this API.")))
     }
 
@@ -379,7 +379,7 @@ final class VoiceSessionTests: XCTestCase {
         XCTAssertEqual(transports.count, 1)
         clock.advance(1.1)
         session.tick()
-        await settle()
+        try await waitForTransports(2)
         XCTAssertEqual(transports.count, 2)
         XCTAssertEqual(transports[1].messages.first, .setup(model: "models/gemini-3.8-live", handle: "h-1"))
     }
@@ -692,6 +692,15 @@ final class VoiceSessionTests: XCTestCase {
     /// Lets the session's tasks run (tool handlers, context reads).
     private func settle() async {
         for _ in 0..<30 { await Task.yield() }
+    }
+
+    /// Waits for the session to open its `count`th connection. A reconnect
+    /// runs on tasks woken by the old stream ending, so how many yields it
+    /// takes depends on the machine; indexing `transports` after a fixed
+    /// number of yields crashed on a slow CI runner.
+    private func waitForTransports(_ count: Int) async throws {
+        try await waitUntil { self.transports.count >= count }
+        _ = try XCTUnwrap(transports.count >= count ? true : nil, "No connection \(count)")
     }
 
     private func waitUntil(timeout: TimeInterval = 5, _ condition: () -> Bool) async throws {
