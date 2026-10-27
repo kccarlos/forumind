@@ -73,13 +73,13 @@ final class ContentBlockerRulesTests: XCTestCase {
         }
         let site = "https://forum.example.com/community"
         let urls = [
-            ForumSite.topicJSONURL(siteURL: site, topicID: "123"),
-            ForumSite.rawPageURL(siteURL: site, topicID: "123", page: 2),
-            ForumSite.searchURL(siteURL: site, query: "cards"),
-            ForumSite.latestURL(siteURL: site, json: true),
-            ForumSite.basicInfoURL(siteURL: site),
-            ForumSite.aboutURL(siteURL: site),
-            ForumSite.loginURL(siteURL: site),
+            DiscourseRoutes.topicJSONURL(siteURL: site, topicID: "123"),
+            DiscourseRoutes.rawPageURL(siteURL: site, topicID: "123", page: 2),
+            DiscourseRoutes.searchURL(siteURL: site, query: "cards"),
+            DiscourseRoutes.latestURL(siteURL: site, json: true),
+            DiscourseRoutes.basicInfoURL(siteURL: site),
+            DiscourseRoutes.aboutURL(siteURL: site),
+            DiscourseRoutes.loginURL(siteURL: site),
             URL(string: "https://meta.discourse.org/session/csrf"),
             URL(string: "https://meta.discourse.org/auth/google_oauth2/callback?code=1"),
             URL(string: "https://meta.discourse.org/u/sam.json"),

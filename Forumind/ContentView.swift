@@ -473,11 +473,16 @@ struct LoadingLine: View {
 
 struct LoginReadinessView: View {
     @Environment(\.dismiss) private var dismiss
-    @ObservedObject var browser: ForumBrowserModel
+    let app: AppModel
+    @ObservedObject private var browser: ForumBrowserModel
 
-    private var loginURL: URL? {
-        browser.homeSiteURL.flatMap { ForumSite.loginURL(siteURL: $0) }
+    init(app: AppModel) {
+        self.app = app
+        _browser = ObservedObject(wrappedValue: app.browser)
     }
+
+    /// Nil on a site without a sign-in page: the entries below are then hidden.
+    private var loginURL: URL? { app.loginURL }
 
     private var forumHost: String {
         browser.homeSiteURL.map { ForumSite.host(of: $0) } ?? String(localized: "the forum")
@@ -509,16 +514,15 @@ struct LoginReadinessView: View {
                     .foregroundStyle(.secondary)
                 }
 
-                Section {
-                    Button {
-                        browser.loadLogin()
-                        dismiss()
-                    } label: {
-                        Label("Open forum sign in", systemImage: "person.badge.key")
-                    }
-                    .disabled(loginURL == nil)
+                if let loginURL {
+                    Section {
+                        Button {
+                            app.loadLogin()
+                            dismiss()
+                        } label: {
+                            Label("Open forum sign in", systemImage: "person.badge.key")
+                        }
 
-                    if let loginURL {
                         Link(destination: loginURL) {
                             Label("Open sign in in Safari", systemImage: "safari")
                         }

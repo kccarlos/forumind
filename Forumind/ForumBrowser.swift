@@ -4,14 +4,15 @@ import SwiftUI
 import WebKit
 
 /// The embedded browser. Any http(s) page can be opened (so shared links
-/// always open); after each navigation an in-page probe decides whether the
-/// page is a Discourse forum and publishes `pageContext`.
+/// always open); after each navigation an in-page probe collects the page's
+/// facts, the registry's recognizers decide whether the page is a forum of a
+/// supported platform, and the browser publishes `pageContext`.
 ///
 /// API used by the UI:
-/// - `pageContext` — current page (url, isDiscourse, siteURL, forumName,
+/// - `pageContext` — current page (url, site, siteURL, forumName,
 ///   iconURL, topic?, state: loading/notForum/maybe/forumHome/topic).
-/// - `homeSiteURL` — the current forum (last Discourse forum shown).
-/// - `load(_:)`, `open(address:)`, `loadHome()` (false with no forum),
+/// - `homeSiteURL` — the current forum (last forum shown).
+/// - `load(_:)`, `open(address:)`, `loadHome(adapter:)` (false with no forum),
 ///   `loadLogin()`, back/forward/reload/stop.
 /// - `contentBlocker` — built-in ad/tracker blocking (ContentBlocker.swift);
 ///   its lists follow each main-frame navigation.
@@ -21,120 +22,89 @@ import WebKit
 @MainActor
 final class ForumBrowserModel: NSObject, ObservableObject {
     private static let routeMessageName = "dcRouteChanged"
-    /// Serialized into both the route observer and the post-load probe: the
-    /// tags Discourse renders server-side.
-    private static let probeFunction = """
-    () => {
-      const metaContent = selector => {
-        const content = document.querySelector(selector)?.getAttribute("content");
-        return typeof content === "string" ? content.trim() : "";
-      };
-      const generator = metaContent('meta[name="generator"]');
-      const baseUriMeta = document.querySelector('meta[name="discourse-base-uri"]');
-      const setup = document.getElementById("data-discourse-setup");
-      const icon = document.querySelector(
-        'link[rel="apple-touch-icon"], link[rel="apple-touch-icon-precomposed"]'
-      ) || document.querySelector('link[rel~="icon"]');
-      return {
-        url: window.location.href,
-        isDiscourse: /\\bDiscourse\\b/i.test(generator) || Boolean(baseUriMeta) || Boolean(setup),
-        basePath: setup?.dataset?.baseUri || baseUriMeta?.getAttribute("content") || "",
-        forumName: metaContent('meta[property="og:site_name"]'),
-        iconURL: icon?.href || ""
-      };
-    }
-    """
-    private static let routeObserverScript = """
-    (() => {
-      if (window.__dcRouteObserverInstalled) return;
-      window.__dcRouteObserverInstalled = true;
+    /// The route observer, with the registry's probe inside it. It posts the
+    /// document's facts once (after the head is parsed), and again only when an
+    /// `html`/`body` class changes (signed-in state lives in the classes); every
+    /// other message carries just the route, and Swift keeps the document's facts.
+    nonisolated static func routeObserverScript(probeExpression: String) -> String {
+        """
+        (() => {
+          if (window.__dcRouteObserverInstalled) return;
+          window.__dcRouteObserverInstalled = true;
 
-      const probe = \(probeFunction);
-      let notificationTimer;
-      const isAuthenticated = () => {
-        const root = document.documentElement;
-        const body = document.body;
-        return Boolean(
-          root?.classList?.contains("logged-in") ||
-          body?.classList?.contains("logged-in") ||
-          document.querySelector(".current-user, [data-current-user]")
-        );
-      };
-      // Discourse preloads the signed-in user as a JSON string inside the
-      // page's preloaded data; read once per document.
-      let username;
-      const currentUsername = () => {
-        if (username !== undefined) return username;
-        username = "";
-        try {
-          const preloaded = JSON.parse(document.getElementById("data-preloaded")?.dataset?.preloaded || "{}");
-          const user = typeof preloaded.currentUser === "string" ? JSON.parse(preloaded.currentUser) : preloaded.currentUser;
-          if (typeof user?.username === "string") username = user.username;
-        } catch (error) {}
-        return username;
-      };
-      const publishRoute = () => {
-        const authenticated = isAuthenticated();
-        window.webkit?.messageHandlers?.dcRouteChanged?.postMessage({
-          url: window.location.href,
-          title: document.title || "",
-          authenticated: authenticated,
-          username: authenticated && document.readyState !== "loading" ? currentUsername() : "",
-          // The head is not parsed yet while loading; probing then would
-          // report every page as "not Discourse".
-          probe: document.readyState === "loading" ? null : probe()
-        });
-      };
-      const scheduleRoutePublish = () => {
-        window.clearTimeout(notificationTimer);
-        notificationTimer = window.setTimeout(publishRoute, 0);
-      };
+          const probe = \(probeExpression);
+          let notificationTimer;
+          let factsPosted = false;
+          const publishRoute = () => {
+            // The head is not parsed yet while loading; probing then would
+            // report every page as "not a forum".
+            const sendFacts = document.readyState !== "loading" && !factsPosted;
+            if (sendFacts) factsPosted = true;
+            window.webkit?.messageHandlers?.dcRouteChanged?.postMessage({
+              url: window.location.href,
+              title: document.title || "",
+              probe: sendFacts ? probe() : null
+            });
+          };
+          const scheduleRoutePublish = () => {
+            window.clearTimeout(notificationTimer);
+            notificationTimer = window.setTimeout(publishRoute, 0);
+          };
 
-      for (const methodName of ["pushState", "replaceState"]) {
-        const original = window.history[methodName];
-        window.history[methodName] = function(...argumentsList) {
-          const result = original.apply(this, argumentsList);
-          scheduleRoutePublish();
-          return result;
-        };
-      }
+          for (const methodName of ["pushState", "replaceState"]) {
+            const original = window.history[methodName];
+            window.history[methodName] = function(...argumentsList) {
+              const result = original.apply(this, argumentsList);
+              scheduleRoutePublish();
+              return result;
+            };
+          }
 
-      window.addEventListener("popstate", scheduleRoutePublish);
-      window.addEventListener("hashchange", scheduleRoutePublish);
-      window.addEventListener("pageshow", scheduleRoutePublish);
-
-      const observeTitle = () => {
-        if (!document.head) return;
-        new MutationObserver(scheduleRoutePublish).observe(document.head, {
-          childList: true,
-          subtree: true,
-          characterData: true
-        });
-      };
-      const observeAuthentication = () => {
-        const targets = [document.documentElement, document.body]
-          .filter(Boolean);
-        const observer = new MutationObserver(scheduleRoutePublish);
-        for (const target of targets) {
-          observer.observe(target, {
-            attributes: true,
-            attributeFilter: ["class"]
+          window.addEventListener("popstate", scheduleRoutePublish);
+          window.addEventListener("hashchange", scheduleRoutePublish);
+          // A page restored from the back-forward cache keeps this script but
+          // the app dropped its facts when the navigation committed.
+          window.addEventListener("pageshow", event => {
+            if (event.persisted) factsPosted = false;
+            scheduleRoutePublish();
           });
-        }
-      };
-      if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", () => {
-          observeTitle();
-          observeAuthentication();
+
+          const observeTitle = () => {
+            if (!document.head) return;
+            new MutationObserver(scheduleRoutePublish).observe(document.head, {
+              childList: true,
+              subtree: true,
+              characterData: true
+            });
+          };
+          const observeAuthentication = () => {
+            const targets = [document.documentElement, document.body]
+              .filter(Boolean);
+            const observer = new MutationObserver(() => {
+              factsPosted = false;
+              scheduleRoutePublish();
+            });
+            for (const target of targets) {
+              observer.observe(target, {
+                attributes: true,
+                attributeFilter: ["class"]
+              });
+            }
+          };
+          if (document.readyState === "loading") {
+            document.addEventListener("DOMContentLoaded", () => {
+              observeTitle();
+              observeAuthentication();
+              scheduleRoutePublish();
+            }, { once: true });
+          } else {
+            observeTitle();
+            observeAuthentication();
+          }
           scheduleRoutePublish();
-        }, { once: true });
-      } else {
-        observeTitle();
-        observeAuthentication();
-      }
-      scheduleRoutePublish();
-    })();
-    """
+        })();
+        """
+    }
 
     static let defaultPageTitle = "Forumind"
 
@@ -207,7 +177,7 @@ final class ForumBrowserModel: NSObject, ObservableObject {
     /// screen, highlights, the topic's facts): cheap, and often while scrolling.
     var onPagePositionChanged: ((PageContext) -> Void)?
     /// The topic's facts when AppModel has them (post count, accepted answer).
-    var topicFactsLookup: ((ForumTopic) -> ForumTopicFacts?)?
+    var topicFactsLookup: ((ForumTopic) -> TopicFacts?)?
     /// The bridge's latest scroll report (visible and highlighted posts).
     private var lastBridgeReport: BrowseBridgeReport?
     private let browseMessageHandler = BrowseMessageHandler()
@@ -217,10 +187,16 @@ final class ForumBrowserModel: NSObject, ObservableObject {
     var pendingJump: PostJump?
     /// The page height the app's result cards cover at the bottom.
     var coveredBottomInset: CGFloat = 0
-    /// Directory lookup: pages on a known forum count as Discourse before the
+    /// Directory lookup: pages on a known forum count as that platform before the
     /// probe reports.
     var knownForumLookup: ((URL) -> KnownForumSite?)?
-    private var lastProbe: PageProbe?
+    /// The platforms that recognize pages and read their signed-in state.
+    let sites: SiteRegistry
+    /// The probe the registry's recognizers declare (see `PageFactsProbe`).
+    private let probeExpression: String
+    /// The facts of the document on screen: posted once per document, kept
+    /// across its routes, dropped when a navigation commits.
+    private var lastFacts: PageFacts?
     private let routeMessageHandler = ForumRouteMessageHandler()
     private var scrollObservation: NSKeyValueObservation?
     private var progressObservation: NSKeyValueObservation?
@@ -233,37 +209,42 @@ final class ForumBrowserModel: NSObject, ObservableObject {
     private static let chromeToggleTravel: CGFloat = 36
 
     /// `contentRules` nil: the shared library (see `ContentBlocker.init`).
-    init(contentRules: ContentRuleLibrary? = nil) {
+    init(contentRules: ContentRuleLibrary? = nil, sites: SiteRegistry = .standard) {
         let contentRules = contentRules ?? .shared
+        let probeExpression = sites.probeExpression
+        self.sites = sites
+        self.probeExpression = probeExpression
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default()
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
         configuration.preferences.isElementFullscreenEnabled = true
         configuration.userContentController.addUserScript(
             WKUserScript(
-                source: Self.routeObserverScript,
+                source: Self.routeObserverScript(probeExpression: probeExpression),
                 injectionTime: .atDocumentStart,
                 forMainFrameOnly: true
             )
         )
-        // Hides blocked and filtered posts; the rules arrive per page
-        // (`applyModerationToPage`).
-        configuration.userContentController.addUserScript(
-            WKUserScript(
-                source: ModerationScript.installer,
-                injectionTime: .atDocumentStart,
-                forMainFrameOnly: true
+        // The in-page scripts of every registered site: the first hides blocked
+        // and filtered posts (the rules arrive per page, `applyModerationToPage`);
+        // the second scrolls to, highlights and reads posts, in its own content world.
+        for bridge in sites.adapters.compactMap(\.capabilities.pageBridge) {
+            configuration.userContentController.addUserScript(
+                WKUserScript(
+                    source: bridge.moderationInstaller,
+                    injectionTime: .atDocumentStart,
+                    forMainFrameOnly: true
+                )
             )
-        )
-        // Scrolls to, highlights and reads posts, in its own content world.
-        configuration.userContentController.addUserScript(
-            WKUserScript(
-                source: BrowseScript.installer,
-                injectionTime: .atDocumentStart,
-                forMainFrameOnly: true,
-                in: BrowseScript.world
+            configuration.userContentController.addUserScript(
+                WKUserScript(
+                    source: bridge.bridgeInstaller,
+                    injectionTime: .atDocumentStart,
+                    forMainFrameOnly: true,
+                    in: BrowseScript.world
+                )
             )
-        )
+        }
 
         webView = WKWebView(frame: .zero, configuration: configuration)
         contentBlocker = ContentBlocker(
@@ -344,21 +325,12 @@ final class ForumBrowserModel: NSObject, ObservableObject {
         }
     }
 
-    /// Loads the current forum's /latest. Returns false (and does nothing)
-    /// when there is no current forum; the UI then shows the Forums home.
+    /// Loads the current forum's home, as `adapter` (the forum's) addresses it.
+    /// Returns false (and does nothing) when there is no current forum or
+    /// adapter; the UI then shows the Forums home.
     @discardableResult
-    func loadHome() -> Bool {
-        guard let homeSiteURL, let url = ForumSite.latestURL(siteURL: homeSiteURL) else {
-            return false
-        }
-        load(url)
-        return true
-    }
-
-    /// Loads the current forum's sign-in page; false with no current forum.
-    @discardableResult
-    func loadLogin() -> Bool {
-        guard let homeSiteURL, let url = ForumSite.loginURL(siteURL: homeSiteURL) else {
+    func loadHome(adapter: (any SiteAdapter)?) -> Bool {
+        guard let homeSiteURL, let url = adapter?.links.homeURL(siteURL: homeSiteURL) else {
             return false
         }
         load(url)
@@ -390,6 +362,18 @@ final class ForumBrowserModel: NSObject, ObservableObject {
         }
         deferredLoad = nil
         webView.load(URLRequest(url: url))
+    }
+
+    /// Suspends while a navigation is in flight (queued, provisional or loading),
+    /// at most `timeout`. A page still loading has no document to scroll yet, and
+    /// a second `load` issued over it can be folded into the first one: WebKit
+    /// then commits the first document under the second's address (observed on a
+    /// topic opened at a post right after launch), so the page never lands.
+    func waitUntilSettled(timeout: Duration = .seconds(15)) async {
+        let deadline = ContinuousClock.now + timeout
+        while deferredLoad != nil || webView.isLoading, ContinuousClock.now < deadline, !Task.isCancelled {
+            try? await Task.sleep(for: .milliseconds(50))
+        }
     }
 
     /// Opens an address typed into the bar. Returns false when it does not
@@ -639,8 +623,6 @@ final class ForumBrowserModel: NSObject, ObservableObject {
     fileprivate func handleRouteMessage(
         urlString: String,
         title: String,
-        authenticated: Bool,
-        username: String = "",
         probe: [String: Any]?
     ) {
         guard let url = URL(string: urlString), Self.isBrowsableURL(url),
@@ -648,10 +630,17 @@ final class ForumBrowserModel: NSObject, ObservableObject {
         else {
             return
         }
-        if let probe { lastProbe = Self.pageProbe(from: probe, fallbackURL: url) }
-        isAuthenticated = authenticated
-        let name = authenticated && !username.isEmpty ? String(username.prefix(60)) : nil
-        if signedInUsername != name { signedInUsername = name }
+        if let probe {
+            // Facts a previous document posted just before it was replaced can
+            // arrive after didCommit cleared them: only the shown page's own
+            // address may set them.
+            guard Self.isSamePage(url, webView.url, registry: sites) else { return }
+            lastFacts = PageFacts(probe: probe, fallbackURL: url)
+        } else if lastFacts != nil {
+            // Another route of the same document: its facts still hold.
+            lastFacts?.url = url
+            lastFacts?.title = title
+        }
         updateNavigationState(url: url, title: title)
     }
 
@@ -665,6 +654,19 @@ final class ForumBrowserModel: NSObject, ObservableObject {
             return false
         }
         return reported == page
+    }
+
+    /// Same origin and the same page: the same path, or the same topic (query
+    /// and fragment ignored). A forum rewrites its own address while the reader
+    /// scrolls (`/t/slug/1` to `/t/slug/1/42`); the document is still the shown one.
+    nonisolated static func isSamePage(_ reported: URL, _ shown: URL?, registry: SiteRegistry) -> Bool {
+        guard let shown, let reportedOrigin = webOrigin(of: reported), reportedOrigin == webOrigin(of: shown) else {
+            return false
+        }
+        func path(_ url: URL) -> String { url.path.isEmpty ? "/" : url.path }
+        if path(reported) == path(shown) { return true }
+        guard let topic = registry.looseTopicID(in: reported) else { return false }
+        return topic == registry.looseTopicID(in: shown)
     }
 
     /// `scheme://host[:port]` of an http(s) URL, default port omitted.
@@ -685,31 +687,19 @@ final class ForumBrowserModel: NSObject, ObservableObject {
         guard let url = webView.url, Self.isBrowsableURL(url) else { return }
         do {
             let value = try await webView.callAsyncJavaScript(
-                "return (\(Self.probeFunction))();",
+                "return (\(probeExpression))();",
                 arguments: [:],
                 in: nil,
                 contentWorld: .defaultClient
             )
             if let result = value as? [String: Any] {
-                lastProbe = Self.pageProbe(from: result, fallbackURL: url)
+                lastFacts = PageFacts(probe: result, fallbackURL: url)
             }
         } catch {
             // No document to inspect (error page, download): not a forum.
-            lastProbe = PageProbe(url: url, isDiscourse: false)
+            lastFacts = PageFacts(url: url)
         }
         updateNavigationState()
-    }
-
-    nonisolated static func pageProbe(from result: [String: Any], fallbackURL: URL) -> PageProbe {
-        let url = (result["url"] as? String).flatMap(URL.init(string:)) ?? fallbackURL
-        let icon = (result["iconURL"] as? String).flatMap(URL.init(string:))
-        return PageProbe(
-            url: url,
-            isDiscourse: result["isDiscourse"] as? Bool ?? false,
-            basePath: result["basePath"] as? String ?? "",
-            forumName: result["forumName"] as? String ?? "",
-            iconURL: icon.flatMap { $0.scheme == "https" || $0.scheme == "http" ? $0 : nil }
-        )
     }
 
     /// Recomputes the page context (e.g. after the forum directory changed).
@@ -783,17 +773,36 @@ final class ForumBrowserModel: NSObject, ObservableObject {
         let made = PageContext.make(
             url: resolvedURL,
             title: resolvedTitle,
-            probe: lastProbe,
-            knownForum: resolvedURL.flatMap { knownForumLookup?($0) }
+            facts: lastFacts,
+            knownForum: resolvedURL.flatMap { knownForumLookup?($0) },
+            registry: sites
         )
-        let context = made.merging(report: lastBridgeReport, facts: made.topic.flatMap { topicFactsLookup?($0) })
+        let context = made.merging(
+            report: lastBridgeReport, facts: made.topic.flatMap { topicFactsLookup?($0) }, registry: sites
+        )
+        applySession(of: made)
         if let siteURL = context.siteURL, homeSiteURL != siteURL {
             homeSiteURL = siteURL
         }
         publish(context)
     }
 
+    /// Signed-in state and username, read from the document's facts by the
+    /// page's own platform (nothing on a page that is not a forum).
+    private func applySession(of context: PageContext) {
+        let reader = context.site.flatMap(sites.adapter(for:))?.capabilities.session
+        let session = lastFacts.flatMap { reader?.session(from: $0) }
+        let authenticated = session?.authenticated ?? false
+        if isAuthenticated != authenticated { isAuthenticated = authenticated }
+        let name = authenticated ? session?.username.flatMap { String($0.prefix(60)).nonEmpty } : nil
+        if signedInUsername != name { signedInUsername = name }
+    }
+
     #if DEBUG
+    /// Tests: sees every script about to go into the page (bridge calls and
+    /// moderation), before the web view is asked.
+    var scriptSpy: ((String) -> Void)?
+
     /// Tests: the page context the web view would have reported, set without
     /// the callbacks (the test then calls them as it needs).
     func setPageContext(_ context: PageContext) {
@@ -806,6 +815,8 @@ final class ForumBrowserModel: NSObject, ObservableObject {
     private func publish(_ context: PageContext) {
         guard context != pageContext else { return }
         let siteChanged = context.siteURL != pageContext.siteURL
+        // The bridge belongs to the recognized site: a page that turns out to be one needs the rules too.
+        let kindChanged = context.site != pageContext.site
         let topicChanged = context.topic?.topicKey != pageContext.topic?.topicKey
             || context.state != pageContext.state
         let positionOnly = context.sameDocument(as: pageContext)
@@ -815,7 +826,7 @@ final class ForumBrowserModel: NSObject, ObservableObject {
         } else {
             onPageContextChanged?(context)
         }
-        if siteChanged { applyModerationToPage() }
+        if siteChanged || kindChanged { applyModerationToPage() }
         if topicChanged { applyPendingHighlight() }
     }
 
@@ -823,12 +834,16 @@ final class ForumBrowserModel: NSObject, ObservableObject {
     func handleBridgeReport(_ report: BrowseBridgeReport) {
         guard let url = webView.url, Self.isRouteMessage(from: report.url, forPageAt: url) else { return }
         lastBridgeReport = report
-        publish(pageContext.merging(report: report, facts: pageContext.topic.flatMap { topicFactsLookup?($0) }))
+        publish(pageContext.merging(
+            report: report, facts: pageContext.topic.flatMap { topicFactsLookup?($0) }, registry: sites
+        ))
     }
 
     /// AppModel has new facts for the page's topic.
     func refreshTopicFacts() {
-        publish(pageContext.merging(report: lastBridgeReport, facts: pageContext.topic.flatMap { topicFactsLookup?($0) }))
+        publish(pageContext.merging(
+            report: lastBridgeReport, facts: pageContext.topic.flatMap { topicFactsLookup?($0) }, registry: sites
+        ))
     }
 
     /// Blocked users, filtered words and the developer's list (AppModel
@@ -840,15 +855,30 @@ final class ForumBrowserModel: NSObject, ObservableObject {
         }
     }
 
+    /// The page's own site's DOM scripts; nil on a page that is not a forum
+    /// or whose site has none. Every script call into the page needs it.
+    var pageBridge: PageBridgeProfile? {
+        pageContext.site.flatMap(sites.adapter(for:))?.capabilities.pageBridge
+    }
+
     func applyModerationToPage() {
-        guard webView.url.map(Self.isBrowsableURL) == true else { return }
+        guard pageBridge != nil else { return }
         let config = ModerationScript.config(rules: moderationRules, siteURL: pageContext.siteURL)
-        webView.evaluateJavaScript(ModerationScript.source(config: config), completionHandler: nil)
+        let script = ModerationScript.source(config: config)
+        #if DEBUG
+        scriptSpy?(script)
+        #endif
+        guard webView.url.map(Self.isBrowsableURL) == true else { return }
+        webView.evaluateJavaScript(script, completionHandler: nil)
     }
 
     /// Posts on screen now (not hidden), newest layout first; for reporting.
     func visiblePosts() async -> [VisiblePost] {
+        guard pageBridge != nil else { return [] }
         let script = "window.__forumindModeration ? JSON.stringify(window.__forumindModeration.posts()) : '[]'"
+        #if DEBUG
+        scriptSpy?(script)
+        #endif
         guard let json = try? await webView.evaluateJavaScript(script) as? String,
               let data = json.data(using: .utf8),
               let posts = try? JSONDecoder().decode([VisiblePost].self, from: data)
@@ -886,16 +916,12 @@ private final class ForumRouteMessageHandler: NSObject, WKScriptMessageHandler {
             return
         }
         let title = body["title"] as? String ?? ""
-        let authenticated = body["authenticated"] as? Bool ?? false
-        let username = body["username"] as? String ?? ""
         let probe = body["probe"] as? [String: Any]
         nonisolated(unsafe) let sendableProbe = probe
         Task { @MainActor [weak browser] in
             browser?.handleRouteMessage(
                 urlString: urlString,
                 title: title,
-                authenticated: authenticated,
-                username: username,
                 probe: sendableProbe
             )
         }
@@ -946,6 +972,8 @@ extension ForumBrowserModel: WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         Task { @MainActor in
+            // A new document: the facts of the last one no longer apply.
+            self.lastFacts = nil
             // The committed page (after redirects) decides the lists.
             self.contentBlocker.prepare(forTopURL: webView.url)
             self.updateNavigationState()

@@ -269,6 +269,7 @@ Also available as a
 - [Development](docs/DEVELOPMENT.md): setup, signing, tests, DEBUG launch
   arguments
 - [Architecture](docs/ARCHITECTURE.md): how the app is put together
+- [Adding a site](docs/ADDING_A_SITE.md): the adapter protocol and checklist for a new platform
 - [CI/CD](docs/CI.md): GitHub Actions, TestFlight, releases
 - [Ad blocking](docs/AD_BLOCKING.md): how the filter lists are converted and
   loaded

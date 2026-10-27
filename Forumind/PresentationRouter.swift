@@ -569,7 +569,7 @@ struct RouterHost: ViewModifier {
         case .expanded(let route):
             ExpandedPanel(app: app, route: route)
         case .loginInfo:
-            LoginReadinessView(browser: app.browser)
+            LoginReadinessView(app: app)
         case .report(let topic):
             ReportSheet(app: app, topic: topic, forumName: app.reportForumName(for: topic))
         case .reportAIOutput(let target):

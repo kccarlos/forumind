@@ -842,7 +842,7 @@ private struct DigestStrip: View {
         ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(alignment: .top, spacing: DCTheme.spacingM) {
                 ForEach(cards) { card in
-                    Button { onOpen(card.url, card) } label: { cardView(card) }
+                    Button { onOpen(app.url(for: card), card) } label: { cardView(card) }
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("homeDigestCard-\(card.topicID)")
                         .transition(.opacity.combined(with: .offset(y: 8)))

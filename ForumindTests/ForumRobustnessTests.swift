@@ -127,9 +127,9 @@ final class ForumRobustnessTests: XCTestCase {
         let next = try await fetch(service)
         XCTAssertEqual(next.rawPages.count, 3, "the next read goes ahead")
 
-        service.resourceLoaderTimeout = .milliseconds(50)
+        let impatient = self.service(pacer: pacer, resourceLoaderTimeout: .milliseconds(50))
         FlakyForumStub.reset(posts: 250)
-        let direct = try await fetch(service, loader: { _ in await stall.wait() })
+        let direct = try await fetch(impatient, loader: { _ in await stall.wait() })
         XCTAssertEqual(direct.rawPages.count, 3)
         XCTAssertEqual(FlakyForumStub.count(of: "/t/7.json"), 1, "went out directly after the timeout")
     }
@@ -147,10 +147,14 @@ final class ForumRobustnessTests: XCTestCase {
         service(pacer: ForumRequestPacer(clock: clock))
     }
 
-    private func service(pacer: ForumRequestPacer) -> ForumService {
+    private func service(pacer: ForumRequestPacer, resourceLoaderTimeout: Duration = .seconds(75)) -> ForumService {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [FlakyForumStub.self]
-        return ForumService(session: URLSession(configuration: configuration), pacer: pacer)
+        return ForumService(
+            session: URLSession(configuration: configuration),
+            pacer: pacer,
+            resourceLoaderTimeout: resourceLoaderTimeout
+        )
     }
 
     private func waitUntil(timeout: TimeInterval = 5, _ condition: () -> Bool) async throws {
@@ -200,14 +204,13 @@ final class ForumRobustnessTests: XCTestCase {
         loader: (@MainActor (URL) async throws -> ForumResourceResponse)? = nil,
         onPage: (@Sendable (RawForumPage) async -> Void)? = nil
     ) async throws -> ForumFetchResult {
-        try await service.fetchTopic(
-            siteURL: site,
-            topicID: "7",
-            cachedPages: cachedPages,
-            knownTotalPosts: knownTotalPosts,
-            cookieHeader: nil,
-            resourceLoader: loader,
-            pace: .gentle,
+        try await DiscourseAdapter().readTopic(
+            TopicReadRequest(
+                topic: TopicRef(siteURL: site, topicID: "7"),
+                cachedPages: cachedPages,
+                knownTotalPosts: knownTotalPosts
+            ),
+            net: service.net(site, resourceLoader: loader, pace: .gentle),
             progress: { _ in },
             onPage: onPage
         )

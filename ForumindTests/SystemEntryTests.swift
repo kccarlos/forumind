@@ -97,10 +97,10 @@ final class SystemEntryTests: XCTestCase {
     func testForumQueryListsPinnedForumsFirstAndMatchesNames() async throws {
         let router = FakeSystemRouter()
         router.forums = [
-            Forum(siteURL: "https://recent.example.com", name: "Recent Café", lastVisitedAt: Date(timeIntervalSince1970: 50)),
-            Forum(siteURL: "https://second.example.com", name: "Second", isPinned: true, pinOrder: 1),
-            Forum(siteURL: "https://first.example.com", name: "First", isPinned: true, pinOrder: 0),
-            Forum(siteURL: "https://newer.example.com", name: "Newer", lastVisitedAt: Date(timeIntervalSince1970: 90))
+            Forum(siteURL: "https://recent.example.com", kind: .discourse, name: "Recent Café", lastVisitedAt: Date(timeIntervalSince1970: 50)),
+            Forum(siteURL: "https://second.example.com", kind: .discourse, name: "Second", isPinned: true, pinOrder: 1),
+            Forum(siteURL: "https://first.example.com", kind: .discourse, name: "First", isPinned: true, pinOrder: 0),
+            Forum(siteURL: "https://newer.example.com", kind: .discourse, name: "Newer", lastVisitedAt: Date(timeIntervalSince1970: 90))
         ]
         SystemEntry.attach(router)
         let query = ForumEntityQuery()
@@ -119,7 +119,7 @@ final class SystemEntryTests: XCTestCase {
     }
 
     func testWithoutTheAppTheQueryReadsTheSavedForums() async throws {
-        SystemEntry.storedForums = { [Forum(siteURL: "https://stored.example.com", name: "Stored", isPinned: true)] }
+        SystemEntry.storedForums = { [Forum(siteURL: "https://stored.example.com", kind: .discourse, name: "Stored", isPinned: true)] }
         let suggested = try await ForumEntityQuery().suggestedEntities()
         XCTAssertEqual(suggested.map(\.name), ["Stored"])
     }
@@ -135,8 +135,8 @@ final class SystemEntryTests: XCTestCase {
         try PersistentStore(fileURL: fileURL).save(AppSnapshot(
             sessions: [session, agentRead],
             forums: [
-                Forum(siteURL: "https://recent.example.com", name: "Recent", lastVisitedAt: Date()),
-                Forum(siteURL: site, name: "Pinned", isPinned: true)
+                Forum(siteURL: "https://recent.example.com", kind: .discourse, name: "Recent", lastVisitedAt: Date()),
+                Forum(siteURL: site, kind: .discourse, name: "Pinned", isPinned: true)
             ]
         ))
         StoredSnapshot.fileURLOverride = fileURL
@@ -266,7 +266,7 @@ final class SystemEntryTests: XCTestCase {
 
     private func deliverTopicPage(to app: AppModel) {
         let topic = ForumTopic(siteURL: site, topicID: "42", url: topicURL, title: "Topic")
-        let context = PageContext(url: topicURL, isDiscourse: true, siteURL: site, forumName: "Example", topic: topic, state: .topic)
+        let context = PageContext(url: topicURL, site: .discourse, siteURL: site, forumName: "Example", topic: topic, state: .topic)
         app.browser.setPageContext(context)
         app.browser.onPageContextChanged?(context)
     }

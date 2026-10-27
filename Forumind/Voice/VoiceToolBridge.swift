@@ -8,6 +8,8 @@ protocol VoiceNavigator: AnyObject {
     var pageContext: PageContext { get }
     var browseCursor: BrowseCursor { get }
     var isResearching: Bool { get }
+    /// The words and tool options of the site a session starting now is on.
+    var voiceSite: VoiceSite { get }
 
     func find(_ query: String, scope: BrowseSearchScope) async -> BrowseResult
     func openTopic(_ target: BrowseTarget, at landing: BrowseLanding, includeContent: Bool) async -> BrowseResult

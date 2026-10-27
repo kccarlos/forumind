@@ -9,6 +9,8 @@ import Foundation
 /// - `switch-provider`   switches the current mode's model to OpenAI · gpt-5-mini (placeholder key, in memory)
 /// - `delete-key`        deletes the key of the current mode's provider (in memory)
 /// - `remove-forum`      removes the open topic's forum and its data
+/// - `remove-forum-keep-data` removes the open topic's forum but keeps its sessions (reads then ask to add it again)
+/// - `add-forum:<address>` runs Add forum for the address (`addForumPhase`)
 /// - `unpin-forum`       unpins the open topic's forum
 /// - `clear-all`         clears all saved data
 /// - `reset-settings`    resets settings to defaults
@@ -47,6 +49,11 @@ extension AppModel {
             setConfiguration(configuration, for: provider)
         case "remove-forum":
             if let forum = siteURL.flatMap(forum(for:)) { removeForum(forum, deleteData: true) }
+        case "remove-forum-keep-data":
+            if let forum = siteURL.flatMap(forum(for:)) { removeForum(forum, deleteData: false) }
+        case _ where action.hasPrefix("add-forum:"):
+            let address = String(action.dropFirst("add-forum:".count))
+            Task { [weak self] in _ = try? await self?.addForum(fromAddress: address) }
         case "unpin-forum":
             if let forum = siteURL.flatMap(forum(for:)) { unpin(forum) }
         case "clear-all":

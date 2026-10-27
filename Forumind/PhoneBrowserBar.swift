@@ -289,8 +289,7 @@ struct PhoneBrowser<Page: View>: View {
         if browser.open(address: addressDraft) {
             addressFocused = false
             isEditingAddress = false
-        } else if !query.isEmpty, let siteURL = browser.homeSiteURL,
-                  let url = ForumSite.searchPageURL(siteURL: siteURL, query: query) {
+        } else if !query.isEmpty, let url = app.searchPageURL(query: query) {
             browser.load(url)
             addressFocused = false
             isEditingAddress = false
@@ -816,18 +815,23 @@ struct ForumMenuButton: View {
         Section {
             if let forum {
                 Menu {
-                    Button(action: openAccount) {
-                        if browser.isAuthenticated {
-                            Label("Open account", systemImage: "person.crop.circle")
-                        } else {
-                            Label("Sign in", systemImage: "person.badge.key")
+                    // A site without a sign-in page offers neither the entry nor its help.
+                    if browser.isAuthenticated || app.loginURL != nil {
+                        Button(action: openAccount) {
+                            if browser.isAuthenticated {
+                                Label("Open account", systemImage: "person.crop.circle")
+                            } else {
+                                Label("Sign in", systemImage: "person.badge.key")
+                            }
                         }
+                        .accessibilityIdentifier("forumMenuAccountOpen")
                     }
-                    .accessibilityIdentifier("forumMenuAccountOpen")
-                    Button(action: actions.showLoginInfo) {
-                        Label("Sign-in help", systemImage: "questionmark.circle")
+                    if app.loginURL != nil {
+                        Button(action: actions.showLoginInfo) {
+                            Label("Sign-in help", systemImage: "questionmark.circle")
+                        }
+                        .accessibilityIdentifier("forumMenuSignInHelp")
                     }
-                    .accessibilityIdentifier("forumMenuSignInHelp")
                     // Per-site settings live with the forum, not in the root menu.
                     if pageURL != nil, let blocks = SiteBlocking(app: app, url: pageURL).isBlockingHere {
                         Section {
@@ -895,7 +899,7 @@ struct ForumMenuButton: View {
 
     /// Signed in: the forum's home; otherwise its sign-in page.
     private func openAccount() {
-        let opened = browser.isAuthenticated ? browser.loadHome() : browser.loadLogin()
+        let opened = browser.isAuthenticated ? app.loadHome() : app.loadLogin()
         if !opened { actions.showForumsHome() }
     }
 }

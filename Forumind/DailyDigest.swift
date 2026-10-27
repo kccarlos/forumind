@@ -86,22 +86,6 @@ struct DigestCard: Codable, Identifiable, Equatable {
     var topicKey: String { TopicIdentity.key(siteURL: siteURL, topicID: topicID) }
     var id: String { topicKey }
 
-    var url: URL {
-        ForumSite.topicURL(siteURL: siteURL, topicID: topicID, slug: slug)
-            ?? URL(string: siteURL) ?? URL(string: "about:blank")!
-    }
-
-    func url(atPost number: Int) -> URL {
-        ForumSite.topicURL(siteURL: siteURL, topicID: topicID, slug: slug, postNumber: number) ?? url
-    }
-
-    /// `?filter=summary` (Discourse's top posts) for long topics whose most
-    /// liked reply isn't known.
-    var topPostsURL: URL? {
-        guard topPost == nil, postCount >= DigestLimits.topPostsFilterMinimum else { return nil }
-        return ForumSite.topicURL(siteURL: siteURL, topicID: topicID, slug: slug, filter: .summary)
-    }
-
     var isWatched: Bool {
         if case .newReplies = reason { return true }
         return false
@@ -176,7 +160,7 @@ struct DigestTopicFacts: Codable, Equatable {
     }
 
     /// The most liked reply (not the opening post) among the included posts.
-    static func topPost(_ facts: ForumTopicFacts) -> Int? {
+    static func topPost(_ facts: TopicFacts) -> Int? {
         facts.posts
             .filter { $0.number > 1 && ($0.likeCount ?? 0) > 0 }
             .max { ($0.likeCount ?? 0, -$0.number) < ($1.likeCount ?? 0, -$1.number) }?
@@ -253,7 +237,8 @@ enum DigestPlanner {
         baselines: [String: Int],
         trending: [(siteURL: String, topics: [ForumTopicListing])],
         facts: [String: DigestTopicFacts] = [:],
-        options: Options
+        options: Options,
+        slug: (WatchedTopic) -> String?
     ) -> [DigestCard] {
         let cap = DigestLimits.clampCards(options.maxCards)
         var cards: [DigestCard] = []
@@ -269,7 +254,7 @@ enum DigestPlanner {
                     siteURL: topic.siteURL,
                     topicID: topic.topicID,
                     title: topic.title,
-                    slug: ForumSite.topicSlug(from: topic.url),
+                    slug: slug(topic),
                     reason: .newReplies(current - base),
                     postCount: current,
                     firstNewPost: base + 1
@@ -321,19 +306,6 @@ extension DigestCard {
     var newReplies: Int {
         if case .newReplies(let count) = reason { return count }
         return 0
-    }
-}
-
-extension ForumSite {
-    /// The slug of a topic URL (`/t/slug/123` → "slug"), nil for `/t/123`.
-    static func topicSlug(from url: URL) -> String? {
-        let segments = url.path.split(separator: "/").map(String.init)
-        guard let index = segments.firstIndex(of: "t"), index + 1 < segments.count,
-              Int(segments[index + 1]) == nil
-        else {
-            return nil
-        }
-        return segments[index + 1]
     }
 }
 

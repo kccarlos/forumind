@@ -1,32 +1,22 @@
 import Foundation
 
-/// What the in-page probe reported about a document (the same signals Discourse
-/// renders server-side: meta generator, `discourse-base-uri`,
-/// `#data-discourse-setup[data-base-uri]`, `og:site_name`, touch icon/favicon).
-struct PageProbe: Equatable {
-    var url: URL
-    var isDiscourse: Bool
-    var basePath = ""
-    var forumName = ""
-    var iconURL: URL?
-}
-
 /// A forum the app already knows (from the forum directory). Pages on it are
-/// treated as Discourse before the probe reports, so topics are detected
+/// treated as its platform before the probe reports, so topics are detected
 /// immediately on load.
 struct KnownForumSite: Equatable {
     var siteURL: String
     var name: String
     var iconURL: URL?
+    var kind: SiteKind
 }
 
 /// The browser's current page as the assistant sees it. States:
 ///
 ///   loading     no page yet, or the page has not been checked yet
-///   notForum    the page is not a Discourse forum
-///   maybe       a `/t/…/{id}` URL the probe has not confirmed yet
-///   forumHome   a Discourse page that is not a topic
-///   topic       a Discourse topic
+///   notForum    the page is not a forum of a supported platform
+///   maybe       a topic-looking URL the probe has not confirmed yet
+///   forumHome   a forum page that is not a topic
+///   topic       a forum topic
 ///
 /// On a topic it also says where the reader is: the post in the URL
 /// (Discourse rewrites `/t/slug/id/N` with `replaceState` while scrolling),
@@ -44,22 +34,23 @@ struct PageContext: Equatable {
     }
 
     var url: URL?
-    var isDiscourse = false
-    /// Site URL (origin + base path) when the page is on a Discourse forum.
+    /// The platform of the page: non-nil exactly when `state` is `.forumHome` or `.topic`.
+    var site: SiteKind?
+    /// Site URL (origin + base path) when the page is on a forum.
     var siteURL: String?
     var basePath = ""
     var forumName = ""
     var iconURL: URL?
     var topic: ForumTopic?
     var state: State = .loading
-    /// The post number in the topic URL (`/t/slug/id/N`); nil at the top of
-    /// a topic Discourse hasn't rewritten yet, and off topics.
+    /// The post number in the topic URL (Discourse `/t/slug/id/N`); nil at the
+    /// top of a topic the site hasn't rewritten yet, and off topics.
     var postNumber: Int?
     /// Rendered posts in the viewport, top to bottom (not hidden ones).
     var visiblePosts: [Int] = []
     /// Posts the bridge has highlighted on the page now.
     var highlightedPosts: [Int] = []
-    /// From the topic's facts (`ForumTopicFacts`), when AppModel has them.
+    /// From the topic's facts (`TopicFacts`), when AppModel has them.
     var postsCount: Int?
     var acceptedAnswerPost: Int?
 
@@ -88,10 +79,10 @@ struct PageContext: Equatable {
 
     /// Adds the bridge's report and the topic's facts, when they are about
     /// this page's topic.
-    func merging(report: BrowseBridgeReport?, facts: ForumTopicFacts?) -> PageContext {
+    func merging(report: BrowseBridgeReport?, facts: TopicFacts?, registry: SiteRegistry) -> PageContext {
         guard state == .topic, let topic else { return self }
         var merged = self
-        if let report, ForumSite.looseTopicID(from: report.url) == topic.topicID {
+        if let report, site.flatMap(registry.adapter(for:))?.recognizer.looseTopicID(in: report.url) == topic.topicID {
             merged.visiblePosts = report.visible
             merged.highlightedPosts = report.highlighted
         }
@@ -104,53 +95,58 @@ struct PageContext: Equatable {
 
     /// Derives the page context (pure).
     /// - Parameters:
-    ///   - probe: the latest probe result; ignored unless it is for `url`.
+    ///   - facts: the latest page facts; ignored unless they are for `url`.
     ///   - knownForum: the directory forum `url` belongs to, if any.
+    ///   - registry: the platforms that can recognize the page.
     static func make(
         url: URL?,
         title: String?,
-        probe: PageProbe?,
-        knownForum: KnownForumSite?
+        facts: PageFacts?,
+        knownForum: KnownForumSite?,
+        registry: SiteRegistry
     ) -> PageContext {
         guard let url, let scheme = url.scheme?.lowercased(),
               scheme == "https" || scheme == "http"
         else {
             return PageContext(url: url, state: url == nil || url?.scheme == "about" ? .loading : .notForum)
         }
-        let matchingProbe = probe.flatMap { samePage($0.url, url) ? $0 : nil }
+        let matchingFacts = facts.flatMap { samePage($0.url, url) ? $0 : nil }
 
-        if let matchingProbe, matchingProbe.isDiscourse,
-           let siteURL = ForumSite.siteURL(fromPage: url, basePath: matchingProbe.basePath) {
-            let known = knownForum.flatMap { $0.siteURL == siteURL ? $0 : nil }
+        if let matchingFacts, let (adapter, match) = registry.recognize(facts: matchingFacts, url: url) {
+            let known = knownForum.flatMap { $0.siteURL == match.siteURL ? $0 : nil }
             let name = ForumSite.displayName(
-                siteURL: siteURL,
-                name: matchingProbe.forumName.isEmpty ? known?.name : matchingProbe.forumName
+                siteURL: match.siteURL,
+                name: match.forumName.isEmpty ? known?.name : match.forumName
             )
             return forum(
                 url: url,
                 title: title,
-                siteURL: siteURL,
+                siteURL: match.siteURL,
                 name: name,
-                iconURL: matchingProbe.iconURL ?? known?.iconURL
+                iconURL: matchingFacts.iconURL ?? known?.iconURL,
+                adapter: adapter
             )
         }
 
-        // A directory forum is trusted until the probe says otherwise for a
+        // A directory forum is trusted until the facts say otherwise for a
         // page outside it; this also covers challenge and error pages there.
-        if let knownForum, ForumSite.isSameForum(url: url, siteURL: knownForum.siteURL) {
+        // A kind this build has no adapter for is not a forum here.
+        if let knownForum, ForumSite.isSameForum(url: url, siteURL: knownForum.siteURL),
+           let adapter = registry.adapter(for: knownForum.kind) {
             return forum(
                 url: url,
                 title: title,
                 siteURL: knownForum.siteURL,
                 name: ForumSite.displayName(siteURL: knownForum.siteURL, name: knownForum.name),
-                iconURL: knownForum.iconURL
+                iconURL: knownForum.iconURL,
+                adapter: adapter
             )
         }
 
-        if matchingProbe != nil {
+        if matchingFacts != nil {
             return PageContext(url: url, state: .notForum)
         }
-        if ForumSite.looseTopicID(from: url) != nil {
+        if registry.looseTopicID(in: url) != nil {
             return PageContext(url: url, state: .maybe)
         }
         // Not checked yet: the browser probes every finished load, so this
@@ -163,20 +159,23 @@ struct PageContext: Equatable {
         title: String?,
         siteURL: String,
         name: String,
-        iconURL: URL?
+        iconURL: URL?,
+        adapter: any SiteAdapter
     ) -> PageContext {
         let basePath = ForumSite.parse(siteURL: siteURL)?.basePath ?? ""
-        let topic = ForumTopic.parse(url: url, title: title, basePath: basePath, forumName: name)
+        let topic = ForumTopic.parse(
+            url: url, title: title, basePath: basePath, forumName: name, recognizer: adapter.recognizer
+        )
         return PageContext(
             url: url,
-            isDiscourse: true,
+            site: adapter.kind,
             siteURL: siteURL,
             basePath: basePath,
             forumName: name,
             iconURL: iconURL,
             topic: topic,
             state: topic == nil ? .forumHome : .topic,
-            postNumber: topic == nil ? nil : ForumSite.postNumber(from: url)
+            postNumber: topic == nil ? nil : adapter.recognizer.postNumber(in: url)
         )
     }
 

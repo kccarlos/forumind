@@ -122,7 +122,7 @@ extension AppModel {
     /// The walkthrough's forum suggestions: with a Chinese app language the
     /// Chinese-language forums come first.
     nonisolated static func onboardingSuggestions(chineseFirst: Bool = appLanguageIsChinese) -> [SuggestedForum] {
-        chineseFirst ? ForumDirectory.suggestedChinese + suggestedForums : suggestedForums
+        chineseFirst ? SiteRegistry.standard.adapters.flatMap(\.suggestedForums.chinese) + suggestedForums : suggestedForums
     }
 }
 

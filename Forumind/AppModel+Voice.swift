@@ -56,6 +56,11 @@ extension AppModel: VoiceNavigator {
         return BrowseText.oneLine("Step \(run.steps.count), \(step.tool)\(detail)\(outcome)", limit: 200)
     }
 
+    /// The page's site, else the current forum's, else the registry's fallback.
+    var voiceSite: VoiceSite {
+        sites.voiceSite(for: pageContext.site ?? currentForum?.kind)
+    }
+
     func voiceTopicBrief() async -> VoiceTopicBrief? {
         guard let ref = currentTopicRef else { return nil }
         let overview = await topicOverview(siteURL: ref.siteURL, topicID: ref.topicID)

@@ -38,7 +38,7 @@
 				<integer>1</integer>
 			</dict>
 			<key>NSExtensionJavaScriptPreprocessingFile</key>
-			<string>DiscourseProbe</string>
+			<string>PageFactsProbe</string>
 		</dict>
 		<key>NSExtensionPointIdentifier</key>
 		<string>com.apple.share-services</string>

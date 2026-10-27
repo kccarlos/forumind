@@ -705,8 +705,7 @@ actor CloudSyncEngine {
                     if var value = decode(TopicSession.self, kind: kind, units: fields),
                        Self.units(session: value, now: now) != item?.units {
                         let expected = sessionsByKey[id]
-                        value.source = expected?.source ?? ""
-                        value.rawPages = expected?.rawPages ?? []
+                        value.keepFetchedText(of: expected)
                         value.lastCheckedAt = expected?.lastCheckedAt
                         plan.changes.sessions.append(.init(id: id, expected: expected, value: value))
                     }

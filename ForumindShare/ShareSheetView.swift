@@ -193,8 +193,8 @@ private struct DetectionBadge: View {
 
     private var text: String {
         switch detection {
-        case .discourse(let forumName):
-            return String(localized: "Discourse forum detected · \(forumName)", comment: "The argument is the forum's name")
+        case .site(let match):
+            return String(localized: "Discourse forum detected · \(match.forumName)", comment: "The argument is the forum's name")
         case .notDetected:
             return String(localized: "Couldn't confirm this is a Discourse forum")
         case .unknown:
@@ -204,7 +204,7 @@ private struct DetectionBadge: View {
 
     private var symbol: String {
         switch detection {
-        case .discourse: return "checkmark.seal.fill"
+        case .site: return "checkmark.seal.fill"
         case .notDetected: return "exclamationmark.circle.fill"
         case .unknown: return "questionmark.circle.fill"
         }
@@ -212,7 +212,7 @@ private struct DetectionBadge: View {
 
     private var tint: Color {
         switch detection {
-        case .discourse: return .green
+        case .site: return .green
         case .notDetected: return .orange
         case .unknown: return .secondary
         }

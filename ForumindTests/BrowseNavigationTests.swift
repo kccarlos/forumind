@@ -56,26 +56,28 @@ final class BrowseNavigationTests: XCTestCase {
         XCTAssertNil(cursor.origin)
     }
 
+    @MainActor
     func testItemsFromHitsAndSources() throws {
-        let (hits, _) = ForumService.parseSearch(Data(DiscourseFixtures.search.utf8), siteURL: folder)
+        let app = makeApp()
+        let (hits, _) = DiscourseParsing.parseSearch(Data(DiscourseFixtures.search.utf8), siteURL: folder)
         let item = BrowseItem(hit: hits[1])
         XCTAssertEqual(item.kind, .searchHit)
         XCTAssertEqual(item.postNumber, 5)
         XCTAssertEqual(item.username, "bob")
         XCTAssertEqual(item.slug, "how-can-i-hide-the-badges-link-in-the-sidebar")
-        XCTAssertEqual(item.url?.absoluteString, folder + "/t/how-can-i-hide-the-badges-link-in-the-sidebar/240488/5")
+        XCTAssertEqual(app.url(for: item)?.absoluteString, folder + "/t/how-can-i-hide-the-badges-link-in-the-sidebar/240488/5")
         XCTAssertFalse(item.excerpt.contains("\n"))
 
         let source = AgentSources.Source(
             number: 1, title: "Fix", url: URL(string: folder + "/t/hide-badges/240488/5")!, postNumber: 5, cited: true
         )
-        let fromSource = try XCTUnwrap(BrowseItem(source: source, siteURL: folder))
+        let fromSource = try XCTUnwrap(BrowseItem(source: source, siteURL: folder, adapter: DiscourseAdapter()))
         XCTAssertEqual(fromSource.kind, .source)
         XCTAssertEqual(fromSource.topicID, "240488")
         XCTAssertEqual(fromSource.slug, "hide-badges")
-        XCTAssertEqual(fromSource.url?.absoluteString, folder + "/t/hide-badges/240488/5")
+        XCTAssertEqual(app.url(for: fromSource)?.absoluteString, folder + "/t/hide-badges/240488/5")
         // Another forum's link is not a source of this one.
-        XCTAssertNil(BrowseItem(source: source, siteURL: "https://other.example"))
+        XCTAssertNil(BrowseItem(source: source, siteURL: "https://other.example", adapter: DiscourseAdapter()))
     }
 
     // MARK: Landing URLs
@@ -84,9 +86,9 @@ final class BrowseNavigationTests: XCTestCase {
         let json = try XCTUnwrap(
             JSONSerialization.jsonObject(with: Data(DiscourseFixtures.topic.utf8)) as? [String: Any]
         )
-        let facts = ForumService.parseTopicFacts(json)
-        func plan(_ landing: BrowseLanding, facts: ForumTopicFacts? = nil, newSince: Int? = nil) -> BrowseNavigation.Plan? {
-            BrowseNavigation.plan(siteURL: folder, topicID: "42", slug: "hide", landing: landing, facts: facts, newSince: newSince)
+        let facts = DiscourseParsing.parseTopicFacts(json)
+        func plan(_ landing: BrowseLanding, facts: TopicFacts? = nil, newSince: Int? = nil) -> BrowseNavigation.Plan? {
+            BrowseNavigation.plan(adapter: DiscourseAdapter(), siteURL: folder, topicID: "42", slug: "hide", landing: landing, facts: facts, newSince: newSince)
         }
         let topic = folder + "/t/hide/42"
 
@@ -102,10 +104,10 @@ final class BrowseNavigationTests: XCTestCase {
         XCTAssertEqual(plan(.firstNew), .init(url: URL(string: topic)!, postNumber: nil))
         // No slug: the id alone, still under the base path.
         XCTAssertEqual(
-            BrowseNavigation.plan(siteURL: folder, topicID: "42", slug: nil, landing: .post(3), facts: nil)?.url.absoluteString,
+            BrowseNavigation.plan(adapter: DiscourseAdapter(), siteURL: folder, topicID: "42", slug: nil, landing: .post(3), facts: nil)?.url.absoluteString,
             folder + "/t/42/3"
         )
-        XCTAssertNil(BrowseNavigation.plan(siteURL: folder, topicID: "x", slug: nil, landing: .post(3), facts: nil))
+        XCTAssertNil(BrowseNavigation.plan(adapter: DiscourseAdapter(), siteURL: folder, topicID: "x", slug: nil, landing: .post(3), facts: nil))
     }
 
     // MARK: Page position
@@ -115,7 +117,7 @@ final class BrowseNavigationTests: XCTestCase {
             let url = URL(string: text)!
             return PageContext.make(
                 url: url, title: "Hide badges",
-                probe: PageProbe(url: url, isDiscourse: true, basePath: basePath), knownForum: nil
+                facts: .discourse(url, basePath: basePath), knownForum: nil, registry: .standard
             )
         }
         let atPost = context(folder + "/t/hide/42/17")
@@ -130,10 +132,10 @@ final class BrowseNavigationTests: XCTestCase {
 
         // The bridge's report and the facts merge only into their own topic.
         let report = BrowseBridgeReport(url: URL(string: folder + "/t/hide/42/17")!, visible: [17, 18], highlighted: [17])
-        var facts = ForumTopicFacts()
+        var facts = TopicFacts()
         facts.postsCount = 120
         facts.acceptedAnswer = .init(postNumber: 30, username: "bob")
-        let merged = atPost.merging(report: report, facts: facts)
+        let merged = atPost.merging(report: report, facts: facts, registry: .standard)
         XCTAssertEqual(merged.visiblePosts, [17, 18])
         XCTAssertEqual(merged.highlightedPosts, [17])
         XCTAssertEqual(merged.postsCount, 120)
@@ -141,8 +143,8 @@ final class BrowseNavigationTests: XCTestCase {
         XCTAssertTrue(merged.sameDocument(as: atPost), "Position fields don't make a new page")
         XCTAssertFalse(merged.sameDocument(as: context(folder + "/t/hide/42/18")))
         let other = BrowseBridgeReport(url: URL(string: folder + "/t/other/43")!, visible: [1], highlighted: [])
-        XCTAssertEqual(atPost.merging(report: other, facts: nil).visiblePosts, [])
-        XCTAssertEqual(context(folder + "/latest").merging(report: report, facts: facts), context(folder + "/latest"))
+        XCTAssertEqual(atPost.merging(report: other, facts: nil, registry: .standard).visiblePosts, [])
+        XCTAssertEqual(context(folder + "/latest").merging(report: report, facts: facts, registry: .standard), context(folder + "/latest"))
         var unrendered = PageContext()
         unrendered.visiblePosts = [4, 5]
         XCTAssertEqual(unrendered.currentPost, 4)
@@ -202,7 +204,7 @@ final class BrowseNavigationTests: XCTestCase {
             return (200, DiscourseFixtures.search)
         }
         let app = makeApp()
-        app.recordVisit(siteURL: site, name: "Example", iconURL: nil)
+        app.recordVisit(siteURL: site, kind: .discourse, name: "Example", iconURL: nil)
         app.browser.moderationRules = ModerationRules(blockedUsers: [site: ["carol"]])
 
         let result = await app.find("badges")
@@ -356,7 +358,7 @@ final class BrowseNavigationTests: XCTestCase {
         let url = URL(string: text)!
         return PageContext.make(
             url: url, title: "How can I hide the Badges link in the sidebar?",
-            probe: PageProbe(url: url, isDiscourse: true), knownForum: nil
+            facts: .discourse(url), knownForum: nil, registry: .standard
         )
     }
 
@@ -367,12 +369,17 @@ final class BrowseNavigationTests: XCTestCase {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [PostLevelURLStub.self]
         let session = URLSession(configuration: configuration)
+        let store = PersistentStore(
+            fileURL: FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString, isDirectory: true)
+                .appendingPathComponent("state.json")
+        )
+        var seeded = AppSnapshot()
+        seeded.ensureForum(site)
+        seeded.ensureForum(folder)
+        try? store.save(seeded)
         let app = AppModel(
-            store: PersistentStore(
-                fileURL: FileManager.default.temporaryDirectory
-                    .appendingPathComponent(UUID().uuidString, isDirectory: true)
-                    .appendingPathComponent("state.json")
-            ),
+            store: store,
             forumService: ForumService(session: session, pacer: ForumRequestPacer(clock: InstantPacingClock())),
             aiService: AIService(session: session),
             planner: planner

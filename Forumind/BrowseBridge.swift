@@ -3,7 +3,9 @@ import SwiftUI
 import WebKit
 
 /// The browser bridge (`window.__forumindBrowse`): moves and marks posts on a
-/// Discourse topic page for the navigation layer (AppModel+Navigation.swift).
+/// topic page for the navigation layer (AppModel+Navigation.swift). The
+/// script is the site's (`PageBridgeProfile.bridgeInstaller`; Discourse's is
+/// `DiscourseDOM`); this is the Swift side of its interface.
 ///
 /// It runs as a third user script, main frame only, in its own content
 /// world, so page scripts can neither call it nor fake its messages. It uses
@@ -33,201 +35,6 @@ enum BrowseScript {
     static let messageName = "forumindBrowse"
     /// Longest a bridge call may take; a busy or hung page answers nil.
     static let timeout: Duration = .seconds(2)
-
-    static let installer = """
-    (() => {
-      if (window.__forumindBrowse) return;
-      const hiddenAttr = 'data-forumind-hidden';
-      const mark = 'forumind-highlight';
-      const state = { numbers: [], topic: null, bottomInset: 0, flash: null };
-      const flashMark = 'forumind-flash';
-      function topicID() {
-        const match = location.pathname.match(/\\/t\\/(?:[^/]+\\/)?(\\d+)/);
-        return match ? match[1] : null;
-      }
-      function ensureStyle() {
-        if (document.getElementById('forumind-browse-style')) return;
-        const style = document.createElement('style');
-        style.id = 'forumind-browse-style';
-        // Brand blue, as a bar and a light tint: readable on light and dark
-        // Discourse themes alike.
-        style.textContent = [
-          'article.' + mark + ' { box-shadow: inset 4px 0 0 #3A5BE0 !important;',
-          '  background-color: rgba(58, 91, 224, 0.10) !important; border-radius: 6px;',
-          '  transition: background-color 0.3s ease, box-shadow 0.3s ease; }',
-          '@media (prefers-color-scheme: dark) { article.' + mark + ' {',
-          '  box-shadow: inset 4px 0 0 #7B93FF !important;',
-          '  background-color: rgba(123, 147, 255, 0.16) !important; } }'
-        ].join('\\n');
-        (document.head || document.documentElement).appendChild(style);
-      }
-      // Stroke in 0.2 s, hold 1.5 s, fade 0.6 s (2.3 s in all).
-      function ensureFlashStyle() {
-        if (document.getElementById('forumind-flash-style')) return;
-        const style = document.createElement('style');
-        style.id = 'forumind-flash-style';
-        style.textContent = [
-          'article.' + flashMark + ' { outline-style: solid; outline-width: var(--forumind-flash-width, 2px);',
-          '  outline-offset: calc(-1 * var(--forumind-flash-width, 2px)); outline-color: transparent;',
-          '  animation: forumind-flash 2.3s linear forwards; }',
-          '@keyframes forumind-flash { 0% { outline-color: transparent; }',
-          '  8.7% { outline-color: var(--forumind-flash-color); }',
-          '  73.9% { outline-color: var(--forumind-flash-color); }',
-          '  100% { outline-color: transparent; } }'
-        ].join('\\n');
-        (document.head || document.documentElement).appendChild(style);
-      }
-      function applyFlash() {
-        const flash = state.flash;
-        if (!flash || flash.done) return;
-        const article = shownPost(flash.number);
-        if (!article) return;
-        flash.done = true;
-        ensureFlashStyle();
-        const dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-        article.style.setProperty('--forumind-flash-color', dark ? flash.dark : flash.light);
-        article.style.setProperty('--forumind-flash-width', flash.width + 'px');
-        article.classList.remove(flashMark);
-        void article.offsetWidth;
-        article.classList.add(flashMark);
-        setTimeout(() => article.classList.remove(flashMark), 2400);
-      }
-      const numberOf = article => parseInt(article.id.slice(5), 10);
-      const isHidden = article => (article.closest('[data-post-number]') || article).hasAttribute(hiddenAttr);
-      function authorOf(article) {
-        const author = article.querySelector('a[data-user-card]');
-        return author ? (author.dataset.userCard || '') : '';
-      }
-      function textOf(article) {
-        const cooked = article.querySelector('.cooked');
-        return cooked ? cooked.innerText.replace(/[ \\t]+\\n/g, '\\n').replace(/\\n{3,}/g, '\\n\\n').trim() : '';
-      }
-      // A rendered, shown post: Discourse leaves cloaked placeholders
-      // without a body for posts far off screen.
-      function shownPost(number) {
-        const article = document.getElementById('post_' + number);
-        if (!article || isHidden(article)) return null;
-        return article;
-      }
-      // Discourse's fixed header covers the top of the viewport.
-      function headerBottom() {
-        const header = document.querySelector('.d-header-wrap') || document.querySelector('.d-header');
-        if (!header) return 0;
-        const rect = header.getBoundingClientRect();
-        return rect.top <= 1 ? Math.max(0, rect.bottom) : 0;
-      }
-      function highlighted() {
-        return Array.from(document.querySelectorAll('article.' + mark))
-          .filter(article => !isHidden(article))
-          .map(numberOf)
-          .filter(number => number > 0);
-      }
-      function visible() {
-        const top = headerBottom();
-        const bottom = window.innerHeight - state.bottomInset;
-        const posts = [];
-        document.querySelectorAll('article[id^="post_"]').forEach(article => {
-          if (isHidden(article)) return;
-          const rect = article.getBoundingClientRect();
-          if (rect.height === 0 || rect.bottom <= top || rect.top >= bottom) return;
-          const number = numberOf(article);
-          const username = authorOf(article);
-          if (!(number > 0) || !username) return;
-          posts.push({ number, username, excerpt: textOf(article).replace(/\\s+/g, ' ').slice(0, 160) });
-        });
-        return posts;
-      }
-      function apply() {
-        // Highlights belong to one topic; an in-page route to another drops them.
-        if (state.topic && state.topic !== topicID()) {
-          state.numbers = [];
-          state.topic = null;
-        }
-        const wanted = new Set(state.numbers);
-        document.querySelectorAll('article.' + mark).forEach(article => {
-          if (!wanted.has(numberOf(article)) || isHidden(article)) article.classList.remove(mark);
-        });
-        if (wanted.size > 0) ensureStyle();
-        wanted.forEach(number => {
-          const article = shownPost(number);
-          // Only when missing: re-adding would queue a mutation every frame.
-          if (article && !article.classList.contains(mark)) article.classList.add(mark);
-        });
-        applyFlash();
-        reportSoon();
-      }
-      let scheduled = false;
-      function schedule() {
-        if (scheduled) return;
-        scheduled = true;
-        requestAnimationFrame(() => { scheduled = false; apply(); });
-      }
-      let reportTimer;
-      let lastReport = '';
-      function reportSoon() {
-        clearTimeout(reportTimer);
-        reportTimer = setTimeout(report, 250);
-      }
-      function report() {
-        if (!topicID()) return;
-        const body = { url: location.href, visible: visible().map(post => post.number), highlighted: highlighted() };
-        const key = JSON.stringify(body);
-        if (key === lastReport) return;
-        lastReport = key;
-        window.webkit?.messageHandlers?.forumindBrowse?.postMessage(body);
-      }
-      function start() {
-        // Class changes too: Discourse re-renders a post's element in place.
-        new MutationObserver(schedule).observe(document.documentElement, {
-          childList: true, subtree: true, attributes: true, attributeFilter: ['class']
-        });
-        window.addEventListener('scroll', reportSoon, { passive: true });
-        window.addEventListener('resize', reportSoon, { passive: true });
-        schedule();
-      }
-      window.__forumindBrowse = {
-        scrollToPost(number, smooth) {
-          const article = document.getElementById('post_' + number);
-          if (!article) return 'missing';
-          if (isHidden(article)) return 'hidden';
-          const rect = article.getBoundingClientRect();
-          if (rect.height === 0) return 'missing';
-          const top = window.scrollY + rect.top - headerBottom() - 8;
-          window.scrollTo({ top: Math.max(0, top), behavior: smooth ? 'smooth' : 'auto' });
-          reportSoon();
-          return 'shown';
-        },
-        highlight(numbers, flash) {
-          state.numbers = (numbers || []).filter(number => number > 0);
-          state.topic = topicID();
-          if (flash && flash.number > 0) state.flash = { ...flash, done: false };
-          apply();
-          return highlighted();
-        },
-        clearHighlight() {
-          state.numbers = [];
-          state.topic = null;
-          apply();
-          return [];
-        },
-        visible,
-        postText(number) {
-          const article = shownPost(number);
-          if (!article) return null;
-          const text = textOf(article);
-          const username = authorOf(article);
-          return text && username ? { number, username, text } : null;
-        },
-        setInsets(bottom) {
-          state.bottomInset = Math.max(0, bottom || 0);
-          reportSoon();
-          return true;
-        }
-      };
-      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
-      else start();
-    })();
-    """
 }
 
 /// A rendered post's plain text, from the bridge or from `/posts.json`.
@@ -362,8 +169,12 @@ extension ForumBrowserModel {
     /// when the page is not a topic, the bridge is missing, the call fails or
     /// it takes longer than `BrowseScript.timeout`.
     private func callBridge(_ body: String, arguments: [String: Any] = [:]) async -> String? {
-        guard pageContext.state == .topic, webView.url.map(Self.isBrowsableURL) == true else { return nil }
+        guard pageBridge != nil, pageContext.state == .topic else { return nil }
         let script = "const b = window.__forumindBrowse; if (!b) return null; \(body)"
+        #if DEBUG
+        scriptSpy?(script)
+        #endif
+        guard webView.url.map(Self.isBrowsableURL) == true else { return nil }
         return await withCheckedContinuation { continuation in
             let once = ResumeOnce(continuation)
             webView.callAsyncJavaScript(script, arguments: arguments, in: nil, in: BrowseScript.world) { result in

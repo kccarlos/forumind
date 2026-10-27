@@ -34,7 +34,7 @@ final class PodcastTests: XCTestCase {
         XCTAssertEqual(chapter.title, "Layer shifts again")
         XCTAssertEqual(chapter.turns.map(\.speaker), [.a, .b, .a])
         XCTAssertEqual(chapter.postNumber, 40, "a cited post the card links to")
-        XCTAssertEqual(chapter.topicURL?.absoluteString, "\(site)/t/topic-7/7/40")
+        XCTAssertEqual(makeHarness().app.url(for: chapter)?.absoluteString, "\(site)/t/topic-7/7/40")
 
         // A post the card doesn't link to keeps the default (the first new reply).
         let other = try PodcastScriptParser.chapter(
@@ -112,7 +112,7 @@ final class PodcastTests: XCTestCase {
         XCTAssertEqual(chapters.map(\.id), ["intro", done.topicKey, trending.topicKey, "outro"])
         XCTAssertEqual(chapters[1].postNumber, 5, "a watched topic opens at its first new reply")
         XCTAssertEqual(chapters[2].postNumber, 9, "a trending topic at its accepted answer")
-        XCTAssertNil(chapters[0].topicURL)
+        XCTAssertNil(makeHarness().app.url(for: chapters[0]))
         // The intro and outro are fixed lines (no AI) with the hosts' names.
         XCTAssertTrue(chapters[0].isScripted && chapters[3].isScripted)
         XCTAssertFalse(chapters[1].isScripted)
@@ -792,6 +792,10 @@ final class PodcastTests: XCTestCase {
         let folder = temporaryFolder()
         let store = PersistentStore(fileURL: folder.appendingPathComponent("state.json"), keys: InMemoryProviderKeyStore())
         let ai = PodcastAIStub()
+        // Links resolve their adapter from the forum record a real session has.
+        var seeded = AppSnapshot()
+        seeded.ensureForum(site)
+        try? store.save(seeded)
         let app = AppModel(
             store: store,
             aiService: ai,

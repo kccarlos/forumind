@@ -23,7 +23,7 @@ final class SpotlightTests: XCTestCase {
     }
 
     func testEntriesAreTheListedForumsTopicsSummariesFirst() {
-        let forums = [Forum(siteURL: site, name: "Example Forum")]
+        let forums = [Forum(siteURL: site, kind: .discourse, name: "Example Forum")]
         let old = session("1", title: "Old read", accessed: 100)
         let recent = session("2", title: "Recent read", accessed: 300)
         let summarized = session("3", title: "Summarized", summary: "## Gist\n- The **fix** is in [post 4](https://forum.example.com/t/x/3/4).", accessed: 50)
@@ -239,7 +239,7 @@ final class SpotlightTests: XCTestCase {
         let store = PersistentStore(fileURL: fileURL)
         try? store.save(AppSnapshot(
             sessions: sessions,
-            forums: forums ?? [Forum(siteURL: site, name: "Example Forum"), Forum(siteURL: otherSite, name: "Other")]
+            forums: forums ?? [Forum(siteURL: site, kind: .discourse, name: "Example Forum"), Forum(siteURL: otherSite, kind: .discourse, name: "Other")]
         ))
         let app = AppModel(store: store, spotlightIndex: index, topicActivityDonor: FakeTopicActivityDonor())
         app.settingsSaveDelay = .zero

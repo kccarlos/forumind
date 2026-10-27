@@ -106,15 +106,17 @@ final class ForumPacingTests: XCTestCase {
         cachedPages: [RawForumPage] = [],
         knownTotalPosts: Int? = nil
     ) async throws -> ForumFetchResult {
-        try await service.fetchTopic(
-            siteURL: site ?? self.site,
-            topicID: "7",
-            cachedPages: cachedPages,
-            knownTotalPosts: knownTotalPosts,
-            cookieHeader: nil,
-            resourceLoader: { url in try await log.loader(url) },
-            pace: pace
-        ) { _ in }
+        let site = site ?? self.site
+        return try await DiscourseAdapter().readTopic(
+            TopicReadRequest(
+                topic: TopicRef(siteURL: site, topicID: "7"),
+                cachedPages: cachedPages,
+                knownTotalPosts: knownTotalPosts
+            ),
+            net: service.net(site, resourceLoader: { url in try await log.loader(url) }, pace: pace),
+            progress: { _ in },
+            onPage: nil
+        )
     }
 
     // MARK: Presets
@@ -303,11 +305,15 @@ final class ForumPacingTests: XCTestCase {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [PacingURLStub.self]
         let service = ForumService(session: URLSession(configuration: configuration), pacer: ForumRequestPacer(clock: clock))
-        let result = try await service.fetchTopic(
-            siteURL: site, topicID: "7", cachedPages: [], knownTotalPosts: nil, cookieHeader: nil, pace: .gentle
-        ) { _ in }
-        _ = try await service.search(siteURL: site, query: "pacing", cookieHeader: nil, pace: .gentle)
-        _ = try await service.latestTopics(siteURL: site, cookieHeader: nil, pace: .gentle)
+        let net = service.net(site, pace: .gentle)
+        let result = try await DiscourseAdapter().readTopic(
+            TopicReadRequest(topic: TopicRef(siteURL: site, topicID: "7"), cachedPages: [], knownTotalPosts: nil),
+            net: net,
+            progress: { _ in },
+            onPage: nil
+        )
+        _ = try await DiscourseAPI(net: net).search(query: "pacing")
+        _ = try await DiscourseAPI(net: net).latestTopics()
 
         XCTAssertEqual(result.rawPages.count, 3)
         XCTAssertEqual(PacingURLStub.times, [0, 1, 2, 3, 4, 5])
@@ -430,7 +436,9 @@ final class ForumPacingTests: XCTestCase {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         let store = PersistentStore(fileURL: directory.appendingPathComponent("state.json"), keys: InMemoryProviderKeyStore())
-        if let snapshot { try? store.save(snapshot) }
+        var seeded = snapshot ?? AppSnapshot()
+        seeded.ensureForum(site)
+        try? store.save(seeded)
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [PacingURLStub.self]
         let app = AppModel(

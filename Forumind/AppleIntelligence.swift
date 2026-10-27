@@ -425,9 +425,6 @@ struct AppleIntelligenceActionDraft: Equatable {
     var tool: String
     var arguments: [Argument]
 
-    /// Tool names offered to guided generation (`@Guide(.anyOf(...))`).
-    static let toolNames = AgentPrompt.tools.map(\.name)
-
     func agentAction() throws -> AgentAction {
         let tool = tool.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !tool.isEmpty else { throw AgentActionParseError.missingTool }

@@ -51,7 +51,7 @@ final class OnboardingTests: XCTestCase {
         XCTAssertEqual(chinese.count, AppModel.suggestedForums.count + 2)
         let english = AppModel.onboardingSuggestions(chineseFirst: false)
         XCTAssertEqual(english, AppModel.suggestedForums)
-        XCTAssertTrue(ForumDirectory.suggestedChinese.allSatisfy { ForumSite.normalizeSiteURL($0.siteURL) == $0.siteURL })
+        XCTAssertTrue(SiteRegistry.standard.adapters.flatMap(\.suggestedForums.chinese).allSatisfy { ForumSite.normalizeSiteURL($0.siteURL) == $0.siteURL })
     }
 
     func testConsentIsAskedOnlyForThirdPartyProviders() {

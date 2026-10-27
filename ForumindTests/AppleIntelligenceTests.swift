@@ -515,7 +515,6 @@ final class AppleIntelligenceTests: XCTestCase {
             AgentAction(thought: "Search first", tool: "search_forum", arguments: ["query": "annual fee"])
         )
         XCTAssertThrowsError(try AppleIntelligenceActionDraft(thought: "", tool: " ", arguments: []).agentAction())
-        XCTAssertEqual(AppleIntelligenceActionDraft.toolNames, AgentPrompt.tools.map(\.name))
 
         #if canImport(FoundationModels)
         if #available(iOS 26.0, *) {
@@ -530,9 +529,22 @@ final class AppleIntelligenceTests: XCTestCase {
             )
             // The guide's tool list matches the agent's tools.
             let schema = String(describing: AppleIntelligenceGeneratedAction.generationSchema)
-            for name in AgentPrompt.tools.map(\.name) {
+            for name in SiteRegistry.standard.allAgentToolNames {
                 XCTAssertTrue(schema.contains(name), "schema is missing \(name)")
             }
+            // The macro-bound literal `@Guide(.anyOf…)` is a copy of the registry's names: pin it.
+            let encoded = try JSONEncoder().encode(AppleIntelligenceGeneratedAction.generationSchema)
+            let json = try JSONSerialization.jsonObject(with: encoded)
+            func stringLists(in value: Any) -> [[String]] {
+                if let list = value as? [String] { return [list] }
+                if let list = value as? [Any] { return list.flatMap(stringLists) }
+                if let object = value as? [String: Any] { return object.values.flatMap(stringLists) }
+                return []
+            }
+            XCTAssertTrue(
+                stringLists(in: json).contains(SiteRegistry.standard.allAgentToolNames),
+                "AppleIntelligenceGeneratedAction.tool's @Guide list differs from allAgentToolNames: \(schema)"
+            )
         }
         #endif
     }
@@ -623,6 +635,7 @@ final class AppleIntelligenceTests: XCTestCase {
     func testLiveGuidedAgentAction() async throws {
         _ = try liveBackend()
         let system = AgentPrompt.system(
+            profile: DiscourseAgent.profile,
             forumName: "Example Forum",
             siteURL: "https://forum.example.com",
             maxSteps: 5,
@@ -635,7 +648,7 @@ final class AppleIntelligenceTests: XCTestCase {
             configuration: configuration,
             provider: .appleIntelligence
         )
-        XCTAssertTrue(AgentPrompt.tools.map(\.name).contains(action.tool), action.tool)
+        XCTAssertTrue(SiteRegistry.standard.allAgentToolNames.contains(action.tool), action.tool)
     }
 
     // MARK: Helpers

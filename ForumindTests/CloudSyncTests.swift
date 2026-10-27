@@ -144,14 +144,14 @@ final class CloudSyncTests: XCTestCase {
             sessions: [session("1", summary: "Summary one", chat: ["Q", "A"]), session("2", summary: "Summary two")],
             agentRuns: [run(goal: "Goal A")],
             watchedTopics: [watched("1", posts: 12)],
-            forums: [Forum(siteURL: site, name: "Example", isPinned: true, pinOrder: 0)]
+            forums: [Forum(siteURL: site, kind: .discourse, name: "Example", isPinned: true, pinOrder: 0)]
         ))
         a.app.settings.systemPrompt = "Be brief."
         a.app.flushPendingSaves()
         let b = try makeDevice(AppSnapshot(
             sessions: [session("3", summary: "Summary three")],
             agentRuns: [run(goal: "Goal B", minutesAgo: 5)],
-            forums: [Forum(siteURL: other, name: "Other")]
+            forums: [Forum(siteURL: other, kind: .discourse, name: "Other")]
         ))
 
         await sync(a, b, a, b)
@@ -607,7 +607,7 @@ final class CloudSyncTests: XCTestCase {
     /// edit made elsewhere after it wins, however late the next pass runs.
     func testDeletionLogSurvivesARelaunch() async throws {
         let base = SyncCoding.stamp(Date())
-        let a = try makeDevice(AppSnapshot(forums: [Forum(siteURL: site, name: "Example"), Forum(siteURL: other, name: "Other")]))
+        let a = try makeDevice(AppSnapshot(forums: [Forum(siteURL: site, kind: .discourse, name: "Example"), Forum(siteURL: other, kind: .discourse, name: "Other")]))
         let b = try makeDevice()
         a.sync.clock = { base }
         b.sync.clock = { base }
@@ -683,7 +683,7 @@ final class CloudSyncTests: XCTestCase {
         let a = try makeDevice(AppSnapshot(
             agentRuns: [goal],
             watchedTopics: [watched("1", posts: 3)],
-            forums: [Forum(siteURL: site, name: "Example"), Forum(siteURL: other, name: "Other")]
+            forums: [Forum(siteURL: site, kind: .discourse, name: "Example"), Forum(siteURL: other, kind: .discourse, name: "Other")]
         ))
         let b = try makeDevice()
         await sync(a, b)
@@ -714,7 +714,7 @@ final class CloudSyncTests: XCTestCase {
     }
 
     func testTombstonesAreDeletedFromTheServerAfterSixtyDays() async throws {
-        let a = try makeDevice(AppSnapshot(forums: [Forum(siteURL: site, name: "Example")]))
+        let a = try makeDevice(AppSnapshot(forums: [Forum(siteURL: site, kind: .discourse, name: "Example")]))
         await sync(a)
         a.app.removeForum(a.app.forums[0], deleteData: false)
         await sync(a)
@@ -732,7 +732,7 @@ final class CloudSyncTests: XCTestCase {
     func testDeviceAwayLongerThanTombstonesLiveDoesNotResurrectDeletes() async throws {
         let third = "https://third.example.net"
         let a = try makeDevice(AppSnapshot(forums: [
-            Forum(siteURL: site, name: "Example"), Forum(siteURL: other, name: "Other"), Forum(siteURL: third, name: "Third")
+            Forum(siteURL: site, kind: .discourse, name: "Example"), Forum(siteURL: other, kind: .discourse, name: "Other"), Forum(siteURL: third, kind: .discourse, name: "Third")
         ]))
         let b = try makeDevice()
         await sync(a, b)
@@ -766,7 +766,7 @@ final class CloudSyncTests: XCTestCase {
     /// A record missing from the server on a recently synced device isn't a
     /// delete (its tombstone would still be there): it is uploaded again.
     func testMissingRecordOnARecentDeviceIsUploadedAgain() async throws {
-        let a = try makeDevice(AppSnapshot(forums: [Forum(siteURL: site, name: "Example")]))
+        let a = try makeDevice(AppSnapshot(forums: [Forum(siteURL: site, kind: .discourse, name: "Example")]))
         await sync(a)
         server.removeRecord(name(.forum, site))
         await sync(a)
@@ -776,9 +776,9 @@ final class CloudSyncTests: XCTestCase {
 
     /// A record whose save failed is never taken as deleted elsewhere later.
     func testFailedSaveIsRetriedAndNeverTakenAsADelete() async throws {
-        let a = try makeDevice(AppSnapshot(forums: [Forum(siteURL: site, name: "Example")]))
+        let a = try makeDevice(AppSnapshot(forums: [Forum(siteURL: site, kind: .discourse, name: "Example")]))
         await sync(a)
-        a.app.recordVisit(siteURL: other, name: "Other", iconURL: nil)
+        a.app.recordVisit(siteURL: other, kind: .discourse, name: "Other", iconURL: nil)
         server.failsSaves = true
         await sync(a)
         guard case .error = a.sync.status else { return XCTFail("status \(a.sync.status)") }
@@ -798,8 +798,8 @@ final class CloudSyncTests: XCTestCase {
     func testJoiningKeepsRecordsUsedAfterAnOldDelete() async throws {
         let base = SyncCoding.stamp(Date()).addingTimeInterval(-3 * 24 * 60 * 60)
         let a = try makeDevice(AppSnapshot(forums: [
-            Forum(siteURL: site, name: "Example", addedAt: base.addingTimeInterval(-9000)),
-            Forum(siteURL: other, name: "Other", addedAt: base.addingTimeInterval(-9000))
+            Forum(siteURL: site, kind: .discourse, name: "Example", addedAt: base.addingTimeInterval(-9000)),
+            Forum(siteURL: other, kind: .discourse, name: "Other", addedAt: base.addingTimeInterval(-9000))
         ]))
         a.sync.clock = { base }
         await sync(a)
@@ -808,8 +808,8 @@ final class CloudSyncTests: XCTestCase {
         await sync(a)
 
         let b = try makeDevice(AppSnapshot(forums: [
-            Forum(siteURL: site, name: "Example", addedAt: base.addingTimeInterval(-7200), lastVisitedAt: base.addingTimeInterval(3600)),
-            Forum(siteURL: other, name: "Other", addedAt: base.addingTimeInterval(-7200), lastVisitedAt: base.addingTimeInterval(-3600))
+            Forum(siteURL: site, kind: .discourse, name: "Example", addedAt: base.addingTimeInterval(-7200), lastVisitedAt: base.addingTimeInterval(3600)),
+            Forum(siteURL: other, kind: .discourse, name: "Other", addedAt: base.addingTimeInterval(-7200), lastVisitedAt: base.addingTimeInterval(-3600))
         ]))
         await sync(b, a)
         XCTAssertNotNil(b.app.forum(for: site), "visited after the delete: kept")
@@ -823,7 +823,7 @@ final class CloudSyncTests: XCTestCase {
     /// A device whose clock runs a day ahead doesn't keep winning: an edit
     /// made after seeing its change beats it.
     func testClockAheadDoesNotBeatLaterEdits() async throws {
-        let a = try makeDevice(AppSnapshot(forums: [Forum(siteURL: site, name: "Example")]))
+        let a = try makeDevice(AppSnapshot(forums: [Forum(siteURL: site, kind: .discourse, name: "Example")]))
         let b = try makeDevice()
         await sync(a, b)
         a.sync.clock = { Date().addingTimeInterval(24 * 60 * 60) }
@@ -842,12 +842,12 @@ final class CloudSyncTests: XCTestCase {
     /// like an empty zone, so nothing is sent, and once online it adopts the
     /// cloud's settings instead of overwriting them with its defaults.
     func testOfflineJoinSendsNothingAndDoesNotClobberTheCloud() async throws {
-        let a = try makeDevice(AppSnapshot(forums: [Forum(siteURL: site, name: "Example")]))
+        let a = try makeDevice(AppSnapshot(forums: [Forum(siteURL: site, kind: .discourse, name: "Example")]))
         a.app.settings.systemPrompt = "Customized"
         a.app.flushPendingSaves()
         await sync(a)
 
-        let b = try makeDevice(AppSnapshot(forums: [Forum(siteURL: other, name: "Other")]))
+        let b = try makeDevice(AppSnapshot(forums: [Forum(siteURL: other, kind: .discourse, name: "Other")]))
         b.transport.failsFetches = true
         let offline = await writes { await sync(b, b) }
         XCTAssertEqual(offline, 0)
@@ -866,7 +866,7 @@ final class CloudSyncTests: XCTestCase {
     func testFailedRelistingDeletesNothing() async throws {
         let third = "https://third.example.net"
         let a = try makeDevice(AppSnapshot(forums: [
-            Forum(siteURL: site, name: "Example"), Forum(siteURL: other, name: "Other"), Forum(siteURL: third, name: "Third")
+            Forum(siteURL: site, kind: .discourse, name: "Example"), Forum(siteURL: other, kind: .discourse, name: "Other"), Forum(siteURL: third, kind: .discourse, name: "Third")
         ]))
         let b = try makeDevice()
         await sync(a, b)
@@ -898,9 +898,9 @@ final class CloudSyncTests: XCTestCase {
     func testPurgedZoneIsRecreatedAndReuploadedWithoutDuplicates() async throws {
         let a = try makeDevice(AppSnapshot(
             sessions: [session("1", summary: "S")],
-            forums: [Forum(siteURL: site, name: "Example")]
+            forums: [Forum(siteURL: site, kind: .discourse, name: "Example")]
         ))
-        let b = try makeDevice(AppSnapshot(forums: [Forum(siteURL: other, name: "Other")]))
+        let b = try makeDevice(AppSnapshot(forums: [Forum(siteURL: other, kind: .discourse, name: "Other")]))
         await sync(a, b, a)
         let count = server.records().count
         XCTAssertEqual(count, 4) // settings, session, two forums
@@ -922,7 +922,7 @@ final class CloudSyncTests: XCTestCase {
     }
 
     func testEncryptedDataResetReuploads() async throws {
-        let a = try makeDevice(AppSnapshot(forums: [Forum(siteURL: site, name: "Example")]))
+        let a = try makeDevice(AppSnapshot(forums: [Forum(siteURL: site, kind: .discourse, name: "Example")]))
         await sync(a)
         server.deleteZone(reason: .encryptedDataReset)
         await sync(a)
@@ -932,7 +932,7 @@ final class CloudSyncTests: XCTestCase {
 
     func testDeleteCloudDataRemovesTheZoneKeepsLocalDataAndStopsOtherDevices() async throws {
         let a = try makeDevice(AppSnapshot(sessions: [session("1", summary: "S")]))
-        let b = try makeDevice(AppSnapshot(forums: [Forum(siteURL: other, name: "Other")]))
+        let b = try makeDevice(AppSnapshot(forums: [Forum(siteURL: other, kind: .discourse, name: "Other")]))
         await sync(a, b, a)
 
         try await a.sync.deleteCloudData()
@@ -985,7 +985,7 @@ final class CloudSyncTests: XCTestCase {
     func testAccountSwitchUploadsToTheNewAccountWithoutDuplicates() async throws {
         let a = try makeDevice(AppSnapshot(
             sessions: [session("1", summary: "S")],
-            forums: [Forum(siteURL: site, name: "Example")]
+            forums: [Forum(siteURL: site, kind: .discourse, name: "Example")]
         ))
         await sync(a)
         let firstAccount = server.records("user-1")
@@ -1008,7 +1008,7 @@ final class CloudSyncTests: XCTestCase {
     }
 
     func testNoAccountThenSignInStartsSyncing() async throws {
-        let a = try makeDevice(AppSnapshot(forums: [Forum(siteURL: site, name: "Example")]), user: nil)
+        let a = try makeDevice(AppSnapshot(forums: [Forum(siteURL: site, kind: .discourse, name: "Example")]), user: nil)
         await sync(a)
         XCTAssertEqual(a.sync.status, .noAccount)
         XCTAssertTrue(server.records().isEmpty)
@@ -1075,7 +1075,7 @@ final class CloudSyncTests: XCTestCase {
 
     func testRecordNamesAreASCIIHashesAndIDsStayEncrypted() async throws {
         let unicodeSite = "https://форум.example.com"
-        let a = try makeDevice(AppSnapshot(forums: [Forum(siteURL: unicodeSite, name: "Unicode")]))
+        let a = try makeDevice(AppSnapshot(forums: [Forum(siteURL: unicodeSite, kind: .discourse, name: "Unicode")]))
         await sync(a)
         for (recordName, record) in server.records() {
             XCTAssertTrue(recordName.allSatisfy { $0.isASCII && ($0.isHexDigit || $0.isLetter) }, recordName)
@@ -1198,6 +1198,61 @@ final class CloudSyncTests: XCTestCase {
         let old = SyncRecord(kind: .watched, id: "w", fields: ["title": .string("A")], stamps: ["title": t1])
         XCTAssertTrue(SyncMerge.merge(old, z).isTombstone)
         XCTAssertTrue(SyncMerge.merge(z, old).isTombstone)
+    }
+
+    // MARK: Forum kind
+
+    /// The kind is a unit of the forum record: it syncs, and a build that does
+    /// not know it keeps the forum untouched.
+    func testForumKindSyncsAndAnUnknownKindIsKept() async throws {
+        let a = try makeDevice(AppSnapshot(forums: [
+            Forum(siteURL: site, kind: .discourse, name: "Example"),
+            Forum(siteURL: other, kind: SiteKind("ghost"), name: "Other")
+        ]))
+        let b = try makeDevice()
+        await sync(a, b, a, b)
+        XCTAssertEqual(b.app.forum(for: site)?.kind, .discourse)
+        XCTAssertEqual(b.app.forum(for: other)?.kind, SiteKind("ghost"))
+        XCTAssertTrue(try serverPlaintexts()[name(.forum, other)]?.contains("\"ghost\"") ?? false)
+
+        // A rename elsewhere merges without losing the kind.
+        b.app.recordVisit(siteURL: other, kind: SiteKind("ghost"), name: "Renamed", iconURL: nil)
+        await sync(b, a, b, a)
+        XCTAssertEqual(a.app.forum(for: other)?.name, "Renamed")
+        XCTAssertEqual(a.app.forum(for: other)?.kind, SiteKind("ghost"))
+        XCTAssertEqual(server.records().count, 3)
+    }
+
+    /// A record written before kinds existed (an older app on another device)
+    /// is still a forum: Discourse, not skipped and not deleted.
+    func testRemoteForumRecordWithoutKindDecodesAsDiscourse() async throws {
+        let t = Date(timeIntervalSince1970: floor(Date().timeIntervalSince1970 - 3600))
+        let old = SyncRecord(
+            kind: .forum, id: site,
+            fields: ["siteURL": .string(site), "name": .string("Old record"), "isPinned": .bool(true), "pinOrder": .int(0)],
+            stamps: ["siteURL": t, "name": t, "isPinned": t, "pinOrder": t]
+        )
+        server.inject(try CloudRecord(old, systemFields: nil))
+        let b = try makeDevice()
+        await sync(b, b)
+
+        let forum = try XCTUnwrap(b.app.forum(for: site))
+        XCTAssertEqual(forum.kind, .discourse)
+        XCTAssertEqual(forum.name, "Old record")
+        XCTAssertTrue(forum.isPinned)
+        let stored = try XCTUnwrap(server.records()[name(.forum, site)])
+        XCTAssertNil(stored.deletedAt, "no tombstone")
+        XCTAssertEqual(b.sync.status, .upToDate)
+    }
+
+    func testMergeKeepsTheKindUnitWhenOneSideHasNone() {
+        let t1 = Date(timeIntervalSince1970: 1_000), t2 = Date(timeIntervalSince1970: 2_000)
+        let withKind = SyncRecord(kind: .forum, id: site, fields: ["name": .string("A"), "kind": .string("discourse")], stamps: ["name": t1, "kind": t1])
+        let withoutKind = SyncRecord(kind: .forum, id: site, fields: ["name": .string("B")], stamps: ["name": t2])
+        for merged in [SyncMerge.merge(withKind, withoutKind), SyncMerge.merge(withoutKind, withKind)] {
+            XCTAssertEqual(merged.fields?["kind"], .string("discourse"))
+            XCTAssertEqual(merged.fields?["name"], .string("B"))
+        }
     }
 
     func testPayloadCodecRoundTrips() throws {

@@ -152,6 +152,9 @@ final class VoiceSession: ObservableObject {
     private let audio: VoiceAudioIO
     let tools: VoiceToolBridge
     private weak var navigator: VoiceNavigator?
+    /// The site the session's words and tool options came from, fixed when a
+    /// fresh Gemini session connects (a resume keeps it).
+    private var site: VoiceSite?
     private let clock: VoiceClock
     private let usage: VoiceUsageStore?
     /// Runs the tick loop and the audio; tests drive `tick()` themselves.
@@ -379,6 +382,10 @@ final class VoiceSession: ObservableObject {
     /// The setup for a connection (the whole of it again when resuming).
     func setup(handle: String?) -> GeminiLive.Setup {
         let page = navigator?.pageContext
+        // A fresh session reads the site it starts on; a resumed one is the same session.
+        let site = handle == nil ? nil : self.site
+        let fixed = site ?? navigator?.voiceSite ?? SiteRegistry.standard.voiceFallback
+        self.site = fixed
         return GeminiLive.Setup(
             endpoint: configuration.endpoint,
             model: configuration.model,
@@ -386,9 +393,10 @@ final class VoiceSession: ObservableObject {
             instructions: VoiceInstructions.system(
                 answerLength: configuration.settings.answerLength,
                 eyesFree: eyesFree,
-                forumName: page?.forumName
+                forumName: page?.forumName,
+                site: fixed.profile
             ),
-            functions: VoiceTool.geminiDeclarations,
+            functions: VoiceTool.geminiDeclarations(for: fixed),
             vocabulary: Self.vocabulary(page: page),
             resumptionHandle: handle
         )

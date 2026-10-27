@@ -61,6 +61,10 @@ jobs:
       - name: Compare committed project with generator output
         # Fails on drift; the log shows a UUID-free diff of what changed.
         run: scripts/ci/check-project-drift.sh
+      - name: Site layering (only Forumind/Sites/ knows a platform)
+        # Fails on a new platform-specific hit outside Sites/ and on a stale
+        # entry in scripts/ci/site-layering-allowlist.txt.
+        run: scripts/ci/check-site-layering.sh
 
   build-test:
     name: Build & unit tests

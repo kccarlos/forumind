@@ -1,0 +1,13 @@
+{
+  "url": "https://www.example.org/blog/a-post",
+  "title": "A post - Example Blog",
+  "meta": {
+    "generator": "Static Site Builder 1.0"
+  },
+  "links": {},
+  "elements": {},
+  "matches": [],
+  "htmlClass": "",
+  "bodyClass": "article",
+  "iconURL": "https://www.example.org/favicon.ico"
+}

@@ -303,7 +303,7 @@ final class CoreTests: XCTestCase {
             RawForumPage(page: 2, content: "two")
         ]
         XCTAssertEqual(
-            CachePlan.make(
+            DiscoursePagePlan.make(
                 cachedPages: pages,
                 knownTotalPosts: 200,
                 currentTotalPosts: 200,
@@ -312,7 +312,7 @@ final class CoreTests: XCTestCase {
             .unchanged
         )
         XCTAssertEqual(
-            CachePlan.make(
+            DiscoursePagePlan.make(
                 cachedPages: pages,
                 knownTotalPosts: 150,
                 currentTotalPosts: 201,
@@ -324,7 +324,7 @@ final class CoreTests: XCTestCase {
             )
         )
         XCTAssertEqual(
-            CachePlan.make(
+            DiscoursePagePlan.make(
                 cachedPages: pages,
                 knownTotalPosts: 200,
                 currentTotalPosts: 150,
@@ -334,12 +334,12 @@ final class CoreTests: XCTestCase {
         )
         // A read cut short (same count): only the missing pages.
         XCTAssertEqual(
-            CachePlan.make(cachedPages: pages, knownTotalPosts: 250, currentTotalPosts: 250, totalPages: 3),
+            DiscoursePagePlan.make(cachedPages: pages, knownTotalPosts: 250, currentTotalPosts: 250, totalPages: 3),
             .fetch(reusablePages: pages, pageNumbers: [3])
         )
         // No pages at all (dropped, or a session from another device): all of them.
         XCTAssertEqual(
-            CachePlan.make(cachedPages: [], knownTotalPosts: 250, currentTotalPosts: 260, totalPages: 3),
+            DiscoursePagePlan.make(cachedPages: [], knownTotalPosts: 250, currentTotalPosts: 260, totalPages: 3),
             .fetch(reusablePages: [], pageNumbers: [1, 2, 3])
         )
         // Pages carry the count they were read at: page 2 was the growing
@@ -349,11 +349,11 @@ final class CoreTests: XCTestCase {
             RawForumPage(page: 2, content: "two", topicPostCount: 150)
         ]
         XCTAssertEqual(
-            CachePlan.make(cachedPages: counted, knownTotalPosts: 260, currentTotalPosts: 260, totalPages: 3),
+            DiscoursePagePlan.make(cachedPages: counted, knownTotalPosts: 260, currentTotalPosts: 260, totalPages: 3),
             .fetch(reusablePages: [counted[0]], pageNumbers: [2, 3])
         )
         XCTAssertEqual(
-            CachePlan.make(cachedPages: counted, knownTotalPosts: 260, currentTotalPosts: 150, totalPages: 2),
+            DiscoursePagePlan.make(cachedPages: counted, knownTotalPosts: 260, currentTotalPosts: 150, totalPages: 2),
             .unchanged
         )
     }
@@ -490,13 +490,16 @@ final class CoreTests: XCTestCase {
             return Self.response(request, status: 200, body: "raw-page-\(page ?? "?")")
         }
         let service = ForumService(session: session, pacer: ForumRequestPacer(clock: InstantPacingClock()))
-        let result = try await service.fetchTopic(
-            siteURL: "https://forum.example.com",
-            topicID: "517303",
-            cachedPages: [],
-            knownTotalPosts: nil,
-            cookieHeader: "_forum_session=test"
-        ) { _ in }
+        let result = try await DiscourseAdapter().readTopic(
+            TopicReadRequest(
+                topic: TopicRef(siteURL: "https://forum.example.com", topicID: "517303"),
+                cachedPages: [],
+                knownTotalPosts: nil
+            ),
+            net: service.net("https://forum.example.com", cookieHeader: "_forum_session=test"),
+            progress: { _ in },
+            onPage: nil
+        )
 
         XCTAssertEqual(result.totalPosts, 101)
         XCTAssertEqual(result.rawPages.map(\.page), [1, 2])
@@ -718,18 +721,19 @@ final class CoreTests: XCTestCase {
 
     func testAgentSystemPromptListsToolsAndBudget() {
         let prompt = AgentPrompt.system(
+            profile: DiscourseAgent.profile,
             forumName: "Discourse Meta",
             siteURL: "https://meta.discourse.org",
             maxSteps: 7,
             maxTopicReads: 3,
             customInstructions: "Be terse."
         )
-        for tool in AgentPrompt.tools {
+        for tool in AgentPrompt.tools(for: DiscourseAgent.profile) {
             XCTAssertTrue(prompt.contains(tool.name), "Prompt is missing \(tool.name)")
         }
         XCTAssertTrue(prompt.contains("at most 7 tool calls and 3 topic reads"))
         XCTAssertTrue(prompt.contains("Be terse."))
-        XCTAssertFalse(AgentPrompt.tools.contains { $0.requiresApproval })
+        XCTAssertFalse(AgentPrompt.tools(for: DiscourseAgent.profile).contains { $0.requiresApproval })
         // Templated on the run's forum; no single-forum or fixed-language assumptions.
         XCTAssertTrue(prompt.contains("research agent for Discourse Meta (https://meta.discourse.org)"))
         XCTAssertTrue(prompt.contains("same language as the user's question"))
@@ -743,7 +747,7 @@ final class CoreTests: XCTestCase {
                     "posts_count":88,"last_posted_at":"2026-09-12T10:00:00.000Z"},
                    {"id":7,"fancy_title":"No blurb topic","posts_count":3}]}
         """
-        let listings = ForumService.parseSearchResults(
+        let listings = DiscourseParsing.parseSearchResults(
             Data(search.utf8),
             siteURL: "https://forum.example.com"
         )
@@ -757,7 +761,7 @@ final class CoreTests: XCTestCase {
         let latest = """
         {"topic_list":{"topics":[{"id":1,"title":"A","slug":"a","posts_count":2,"bumped_at":"2026-09-13T01:00:00Z"}]}}
         """
-        let recent = ForumService.parseTopicList(Data(latest.utf8), siteURL: "https://example.com/forum")
+        let recent = DiscourseParsing.parseTopicList(Data(latest.utf8), siteURL: "https://example.com/forum")
         XCTAssertEqual(recent.count, 1)
         XCTAssertEqual(recent[0].url.absoluteString, "https://example.com/forum/t/a/1")
         XCTAssertEqual(recent[0].lastPostedAt, "2026-09-13T01:00:00Z")
@@ -801,6 +805,9 @@ final class CoreTests: XCTestCase {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         let store = PersistentStore(fileURL: directory.appendingPathComponent("state.json"))
+        var seeded = AppSnapshot()
+        seeded.ensureForum("https://forum.example.com")
+        try store.save(seeded)
         let session = stubbedSession { request in
             let path = request.url?.path ?? ""
             if path == "/search.json" {

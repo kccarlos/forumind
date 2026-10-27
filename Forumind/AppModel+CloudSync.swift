@@ -45,8 +45,7 @@ extension AppModel {
             }
             if var value = change.value {
                 // The fetched topic text is a local cache; keep this device's.
-                value.source = newSessions[change.id]?.source ?? ""
-                value.rawPages = newSessions[change.id]?.rawPages ?? []
+                value.keepFetchedText(of: newSessions[change.id])
                 value.lastCheckedAt = newSessions[change.id]?.lastCheckedAt
                 newSessions[change.id] = value
             } else if hasActiveWork(topicKey: change.id) {

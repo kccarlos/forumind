@@ -118,7 +118,7 @@ enum PromptBuilder {
             )
             if end < remaining.endIndex,
                let boundary = remaining[..<end].range(
-                of: "\n\n\n",
+                of: RawTopicFormat.blockSeparator,
                 options: .backwards
                )?.upperBound,
                remaining.distance(from: boundary, to: end) < limit / 3 {

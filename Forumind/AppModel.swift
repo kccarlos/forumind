@@ -18,7 +18,7 @@ import UserNotifications
 // - `pin(_:)` / `unpin(_:)` / `togglePin(_:)` / `movePinned(fromOffsets:toOffset:)`
 // - `removeForum(_:deleteData:)`    optionally deletes its summaries/chats/runs/watches
 // - `openForum(_:)`                 loads its /latest in the browser
-// - `recordVisit(siteURL:name:iconURL:)` called automatically for detected Discourse pages
+// - `recordVisit(siteURL:kind:name:iconURL:)` called automatically for detected forum pages
 //
 // Page and assistant:
 // - `pageContext`                   browser page state (.loading/.notForum/.maybe/.forumHome/.topic)
@@ -82,7 +82,8 @@ struct AgentRunOutcome: Equatable {
 enum AgentError: LocalizedError {
     case missingArgument(String)
     case topicBudgetExhausted(Int)
-    case unknownTool(String)
+    /// The tool asked for and the names this run offers.
+    case unknownTool(String, available: [String])
     case runNotFound
     case queueFull
 
@@ -93,8 +94,8 @@ enum AgentError: LocalizedError {
             String(localized: "Missing argument \"\(name)\".", comment: "Ask the forum step error; the placeholder is a technical argument name such as query or topic_id")
         case .topicBudgetExhausted(let limit):
             String(localized: "The topic-read budget (\(limit)) is used up; answer with what you have.", comment: "Ask the forum step error; the number is the maximum topic reads per run")
-        case .unknownTool(let name):
-            String(localized: "Unknown tool \"\(name)\". Available: \(Self.toolNames)", comment: "Ask the forum step error; placeholders are technical tool names")
+        case .unknownTool(let name, let available):
+            String(localized: "Unknown tool \"\(name)\". Available: \(available.joined(separator: ", "))", comment: "Ask the forum step error; placeholders are technical tool names")
         case .runNotFound:
             String(localized: "The agent run no longer exists.")
         case .queueFull:
@@ -109,13 +110,12 @@ enum AgentError: LocalizedError {
         case .missingArgument(let name): "Missing argument \"\(name)\"."
         case .topicBudgetExhausted(let limit):
             "The topic-read budget (\(limit)) is used up; answer with what you have."
-        case .unknownTool(let name): "Unknown tool \"\(name)\". Available: \(Self.toolNames)"
+        case .unknownTool(let name, let available):
+            "Unknown tool \"\(name)\". Available: \(available.joined(separator: ", "))"
         case .runNotFound: "The agent run no longer exists."
         case .queueFull: "The task queue is full."
         }
     }
-
-    private static var toolNames: String { AgentPrompt.tools.map(\.name).joined(separator: ", ") }
 }
 
 /// Outcome of a provider test or model load.
@@ -193,6 +193,10 @@ final class AppModel: ObservableObject {
     }
     /// The forum of the current page, or the last forum shown.
     @Published private(set) var currentSiteURL: String?
+    /// Where Add forum is: detecting the platform of an address, then the
+    /// outcome. One detection per address at a time.
+    @Published private(set) var addForumPhase = AddForumPhase.idle
+    private var addForumTask: (key: AddForumRequest, task: Task<Forum, Error>)?
     /// Forum the next agent run targets; nil means `currentForum`.
     @Published var agentSiteURL: String?
     /// Bumped when a hand-off (shared link, Siri, Spotlight) wants the
@@ -231,9 +235,9 @@ final class AppModel: ObservableObject {
 
     nonisolated static var suggestedForums: [SuggestedForum] {
         #if DEBUG
-        if ForumDirectory.usesSampleSuggestions { return ForumDirectory.sampleSuggested }
+        if ForumDirectory.usesSampleSuggestions { return SiteRegistry.standard.adapters.flatMap(\.suggestedForums.sample) }
         #endif
-        return ForumDirectory.suggested
+        return SiteRegistry.standard.adapters.flatMap(\.suggestedForums.general)
     }
 
     let browser: ForumBrowserModel
@@ -249,6 +253,8 @@ final class AppModel: ObservableObject {
     private let store: PersistentStore
     // Also used by the feature slices in other files (AppModel+Digest.swift).
     let forumService: ForumService
+    /// Every platform this build reads; tests inject their own.
+    let sites: SiteRegistry
     let aiService: AIService
     private let planner: AgentPlanner
     let notifier: WatchNotifier
@@ -347,6 +353,7 @@ final class AppModel: ObservableObject {
     init(
         store: PersistentStore = PersistentStore(),
         forumService: ForumService = ForumService(),
+        sites: SiteRegistry = .standard,
         aiService: AIService = AIService(),
         browser: ForumBrowserModel? = nil,
         planner: AgentPlanner? = nil,
@@ -368,8 +375,9 @@ final class AppModel: ObservableObject {
         self.keyStore = store.keys
         self.cloudSync = cloudSync ?? CloudSyncController.makeDefault(for: store)
         self.forumService = forumService
+        self.sites = sites
         self.aiService = aiService
-        self.browser = browser ?? ForumBrowserModel()
+        self.browser = browser ?? ForumBrowserModel(sites: sites)
         self.planner = planner ?? PromptAgentPlanner(aiService: aiService)
         self.notifier = notifier
 
@@ -439,7 +447,7 @@ final class AppModel: ObservableObject {
 
         self.browser.knownForumLookup = { [weak self] url in
             guard let forum = self?.directory.forum(containing: url) else { return nil }
-            return KnownForumSite(siteURL: forum.siteURL, name: forum.name, iconURL: forum.iconURL)
+            return KnownForumSite(siteURL: forum.siteURL, name: forum.name, iconURL: forum.iconURL, kind: forum.kind)
         }
         self.browser.onPageContextChanged = { [weak self] context in
             self?.handlePageContext(context)
@@ -460,7 +468,7 @@ final class AppModel: ObservableObject {
         // (DEBUG samples load only their own page: a restored forum's load
         // failing late would replace it with the Forums home.)
         if self.browser.webView.url == nil, !Self.loadsOnlySamplePage {
-            self.browser.loadHome()
+            self.loadHome()
         }
         openURLObserver = NotificationCenter.default.addObserver(
             forName: WatchNotifier.openURLNotification,
@@ -624,7 +632,7 @@ final class AppModel: ObservableObject {
             : PendingShare(
                 url: url,
                 action: kind,
-                topicID: ForumSite.looseTopicID(from: url),
+                topicID: sites.looseTopicID(in: url),
                 autoRun: autoRun
             )
         panelRoute = .topic
@@ -659,8 +667,8 @@ final class AppModel: ObservableObject {
                 suppressedAutoAddSiteURL = nil
             }
         }
-        if context.isDiscourse, let siteURL = context.siteURL, siteURL != suppressedAutoAddSiteURL {
-            recordVisit(siteURL: siteURL, name: context.forumName, iconURL: context.iconURL)
+        if let kind = context.site, let siteURL = context.siteURL, siteURL != suppressedAutoAddSiteURL {
+            recordVisit(siteURL: siteURL, kind: kind, name: context.forumName, iconURL: context.iconURL)
         }
         select(topic: context.topic)
         completePendingShare(with: context)
@@ -678,6 +686,14 @@ final class AppModel: ObservableObject {
         seededPageContext = nil
         #endif
         pageUpdates.send(context)
+    }
+
+    /// How a link on `siteURL` is read: the site's adapter, with the forum's base
+    /// path. Nothing parses when the site has no adapter.
+    func linkParser(siteURL: String) -> AgentSources.Parse {
+        let links = adapter(for: siteURL)?.links
+        let basePath = ForumSite.parse(siteURL: siteURL)?.basePath ?? ""
+        return AgentSources.Parse(basePath: basePath) { links?.parse($0, basePath: basePath) }
     }
 
     /// The forum a URL is on: a directory forum, else the page's forum.
@@ -855,6 +871,31 @@ final class AppModel: ObservableObject {
         directory.forum(siteURL: siteURL)
     }
 
+    /// The adapter that reads `siteURL`. Lookup order: (1) a host the registry
+    /// claims (one site whatever the path); (2) the directory forum's kind;
+    /// (3) the open page's detected site when its site URL matches (a forum
+    /// removed while its page is still open, `suppressedAutoAddSiteURL`).
+    /// Nil means unsupported, and the registry is not asked for a guess: callers
+    /// fail with `AssistantError.noForum`, never crash or delete anything.
+    func adapter(for siteURL: String) -> (any SiteAdapter)? {
+        if let host = URL(string: siteURL)?.host, let claimed = sites.claimedSite(forHost: host) { return claimed.adapter }
+        if let forum = forum(for: siteURL) { return sites.adapter(for: forum.kind) }
+        let normalized = ForumSite.normalizeSiteURL(siteURL) ?? siteURL
+        if pageContext.siteURL == normalized, let kind = pageContext.site { return sites.adapter(for: kind) }
+        return nil
+    }
+
+    /// The transport for one job on `siteURL`: the forum's cookies, the pace the
+    /// job started with and (unless `inPage` is false) the in-page loader.
+    func network(for siteURL: String, pace: ForumRequestPace, inPage: Bool = true) async -> SiteNetwork {
+        let cookieHeader = await browser.cookieHeader(forSite: siteURL)
+        var context = SiteRequestContext(cookieHeader: cookieHeader, pace: pace)
+        if inPage, let loader = webViewResourceLoader {
+            context.resourceLoader = { url in try await loader(url) }
+        }
+        return SiteNetwork(service: forumService, siteURL: siteURL, context: context)
+    }
+
     /// The current forum: the last Discourse forum shown (or opened by the
     /// app), resolved from `currentSiteURL` so its name, icon and pin state
     /// always come from the directory.
@@ -887,7 +928,7 @@ final class AppModel: ObservableObject {
 
     /// Adds (or refreshes) a forum and marks it visited; called for every
     /// detected Discourse page, so visited forums show up as recent.
-    func recordVisit(siteURL: String, name: String?, iconURL: URL?) {
+    func recordVisit(siteURL: String, kind: SiteKind, name: String?, iconURL: URL?) {
         var directory = self.directory
         let previous = directory.forum(siteURL: siteURL)
         let now = Date()
@@ -895,6 +936,7 @@ final class AppModel: ObservableObject {
         let isFreshVisit = previous?.lastVisitedAt.map { now.timeIntervalSince($0) > 60 } ?? true
         guard let forum = directory.upsert(
             siteURL: siteURL,
+            kind: kind,
             name: name,
             iconURL: iconURL,
             visitedAt: isFreshVisit ? now : nil
@@ -908,31 +950,70 @@ final class AppModel: ObservableObject {
     }
 
     /// Validates an address (URL or host, optionally a page on the forum) by
-    /// fetching `/site/basic-info.json` (fallback `/about.json`), then adds the
-    /// forum with its name and icon. Existing forums are refreshed.
+    /// asking each registered adapter, in order, for the site's info (Discourse:
+    /// `/site/basic-info.json`, fallback `/about.json`), then adds the forum with
+    /// its kind, name and icon. Existing forums are refreshed. A repeated call
+    /// for the address being detected joins that detection (`addForumPhase`).
     @discardableResult
     func addForum(fromAddress address: String, pin: Bool = false) async throws -> Forum {
-        let candidates = ForumDirectory.candidateSiteURLs(fromAddress: address)
-        guard let first = candidates.first else { throw ForumDirectoryError.invalidAddress }
-        for siteURL in candidates {
-            if let host = ForumSite.parse(siteURL: siteURL).flatMap({ URLComponents(string: $0.origin)?.host }) {
-                let cookies = await browser.cookieHeader(forHost: host)
-                guard let info = try? await forumService.fetchSiteInfo(
-                    siteURL: siteURL,
-                    cookieHeader: cookies,
-                    pace: settings.forumRequestPace
-                ) else {
+        let key = AddForumRequest(address: address, pin: pin)
+        if case .detecting = addForumPhase, let running = addForumTask, running.key == key {
+            return try await running.task.value
+        }
+        let task = Task { [weak self] () throws -> Forum in
+            guard let self else { throw CancellationError() }
+            return try await self.detectForum(key)
+        }
+        addForumTask = (key, task)
+        addForumPhase = .detecting(address: address)
+        defer {
+            if addForumTask?.key == key {
+                addForumTask = nil
+                // Cancelled before it found an answer: not detecting any more.
+                if case .detecting = addForumPhase { addForumPhase = .idle }
+            }
+        }
+        return try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            task.cancel()
+        }
+    }
+
+    /// Ends the detection `key` started with `phase`, unless a newer one replaced it.
+    private func finishAddForum(_ key: AddForumRequest, _ phase: AddForumPhase) {
+        if addForumTask?.key == key { addForumPhase = phase }
+    }
+
+    private func detectForum(_ key: AddForumRequest) async throws -> Forum {
+        let address = key.address
+        var firstCandidate: String?
+        var lastFailure: NetworkFailure?
+        for adapter in sites.adapters {
+            for siteURL in adapter.siteURLCandidates(fromAddress: address) {
+                firstCandidate = firstCandidate ?? siteURL
+                guard ForumSite.parse(siteURL: siteURL).flatMap({ URLComponents(string: $0.origin)?.host }) != nil else {
+                    continue
+                }
+                let net = await network(for: siteURL, pace: settings.forumRequestPace, inPage: false)
+                let info: ForumSiteInfo
+                do {
+                    info = try await adapter.siteInfo(siteURL: siteURL, net: net)
+                } catch {
+                    lastFailure = NetworkFailure.classify(error)
                     continue
                 }
                 var directory = self.directory
                 guard var forum = directory.upsert(
                     siteURL: siteURL,
+                    kind: adapter.kind,
                     name: info.name,
-                    iconURL: info.iconURL
+                    iconURL: info.iconURL,
+                    overwritingKind: true
                 ) else {
                     continue
                 }
-                if pin {
+                if key.pin {
                     directory.setPinned(true, siteURL: forum.siteURL)
                     forum = directory.forum(siteURL: forum.siteURL) ?? forum
                 }
@@ -940,10 +1021,16 @@ final class AppModel: ObservableObject {
                 self.directory = directory
                 save()
                 browser.refreshPageContext()
+                finishAddForum(key, .recognized(kind: adapter.kind, siteURL: forum.siteURL))
                 return forum
             }
         }
-        throw ForumDirectoryError.notDiscourse(ForumSite.host(of: first))
+        guard let firstCandidate else {
+            finishAddForum(key, .idle)
+            throw ForumDirectoryError.invalidAddress
+        }
+        finishAddForum(key, lastFailure.map { .failed($0) } ?? .unsupported)
+        throw ForumDirectoryError.notDiscourse(ForumSite.host(of: firstCandidate))
     }
 
     /// Fetches a forum's name and icon in the background. Only the name and
@@ -951,24 +1038,21 @@ final class AppModel: ObservableObject {
     /// state is whatever the user set while the request ran.
     func refreshForumInfo(siteURL: String) {
         guard let normalized = ForumSite.normalizeSiteURL(siteURL),
-              let host = ForumSite.parse(siteURL: normalized).flatMap({ URLComponents(string: $0.origin)?.host })
+              let forum = forum(for: normalized),
+              let adapter = adapter(for: normalized)
         else {
             return
         }
         Task { [weak self] in
             guard let self else { return }
-            let cookies = await self.browser.cookieHeader(forHost: host)
-            guard let info = try? await self.forumService.fetchSiteInfo(
-                siteURL: normalized,
-                cookieHeader: cookies,
-                pace: self.settings.forumRequestPace
-            ),
+            let net = await self.network(for: normalized, pace: self.settings.forumRequestPace, inPage: false)
+            guard let info = try? await adapter.siteInfo(siteURL: normalized, net: net),
                   self.forum(for: normalized) != nil
             else {
                 return
             }
             var directory = self.directory
-            directory.upsert(siteURL: normalized, name: info.name, iconURL: info.iconURL)
+            directory.upsert(siteURL: normalized, kind: forum.kind, name: info.name, iconURL: info.iconURL)
             guard directory.forums != self.forums else { return }
             self.directory = directory
             self.save()
@@ -976,10 +1060,12 @@ final class AppModel: ObservableObject {
     }
 
     func pin(_ forum: Forum) {
+        // A placeholder (`forumInfo`, kind .unknown) is not a forum the app can keep.
+        guard forum.kind != .unknown || directory.forum(siteURL: forum.siteURL) != nil else { return }
         if suppressedAutoAddSiteURL == forum.siteURL { suppressedAutoAddSiteURL = nil }
         var directory = self.directory
         if directory.forum(siteURL: forum.siteURL) == nil {
-            directory.upsert(siteURL: forum.siteURL, name: forum.name, iconURL: forum.iconURL)
+            directory.upsert(siteURL: forum.siteURL, kind: forum.kind, name: forum.name, iconURL: forum.iconURL)
         }
         directory.setPinned(true, siteURL: forum.siteURL)
         self.directory = directory
@@ -1014,7 +1100,9 @@ final class AppModel: ObservableObject {
     /// watched topics.
     ///
     /// Work already running for the forum keeps running unless its data is
-    /// deleted. The agent's forum falls back to the page's forum, and a page
+    /// deleted: a job resolved its adapter when it started and finishes with
+    /// it (its pages and results are kept). Work still queued fails with
+    /// `noForum` when the data is kept. The agent's forum falls back to the page's forum, and a page
     /// of the removed forum that is still open does not add it back.
     func removeForum(_ forum: Forum, deleteData: Bool) {
         let siteURL = forum.siteURL
@@ -1033,6 +1121,7 @@ final class AppModel: ObservableObject {
         var directory = self.directory
         directory.remove(siteURL: siteURL)
         self.directory = directory
+        if !deleteData { failQueuedWork(siteURL: siteURL, error: AssistantError.noForum) }
         if currentSiteURL == siteURL {
             currentSiteURL = (pageContext.siteURL.flatMap { self.directory.forum(siteURL: $0) }
                 ?? Self.startForum(in: forums))?.siteURL
@@ -1045,18 +1134,43 @@ final class AppModel: ObservableObject {
         browser.refreshPageContext()
     }
 
+    /// Work still waiting for its turn on a forum that was just removed never
+    /// starts: it ends in the explicit failed state (no spinner) and the person
+    /// is asked to add the forum again. A chat answers from the stored source,
+    /// so it stays queued.
+    private func failQueuedWork(siteURL: String, error: Error) {
+        for record in activities where record.siteURL == siteURL && record.status == .queued && record.type != .chat {
+            mutateRecord(record.id) {
+                $0.status = .failed
+                $0.statusText = String(localized: "Failed", comment: "Status of AI work that failed")
+                $0.error = error.localizedDescription
+                $0.completedAt = Date()
+            }
+            if record.type == .agent {
+                mutateAgentRun(for: record) {
+                    $0.result = .failed
+                    $0.error = error.localizedDescription
+                    $0.completedAt = Date()
+                }
+            }
+            if record.origin == .user { presentError(error.localizedDescription) }
+        }
+    }
+
     /// Makes the forum current and loads its /latest.
     func openForum(_ forum: Forum) {
+        // No adapter (a placeholder, or a platform this build lacks): leave the state alone.
+        guard let adapter = sites.adapter(for: forum.kind) else { return }
         if suppressedAutoAddSiteURL == forum.siteURL { suppressedAutoAddSiteURL = nil }
         currentSiteURL = forum.siteURL
         browser.homeSiteURL = forum.siteURL
-        browser.loadHome()
+        browser.loadHome(adapter: adapter)
         panelRoute = .topic
     }
 
     /// Opens a suggested forum (added to the directory as recent on arrival).
     func openForum(_ suggested: SuggestedForum) {
-        openForum(Forum(siteURL: suggested.siteURL, name: suggested.name))
+        openForum(Forum(siteURL: suggested.siteURL, kind: suggested.kind, name: suggested.name))
     }
 
     // MARK: Agent runs
@@ -1168,7 +1282,9 @@ final class AppModel: ObservableObject {
                     status: result.workStatus,
                     answer: result == .completed ? run.answer : "",
                     sources: result == .completed
-                        ? AgentSources.extract(from: run.answer, run: run, sessions: sessions)
+                        ? AgentSources.extract(
+                            from: run.answer, run: run, sessions: sessions, parse: linkParser(siteURL: run.siteURL)
+                        )
                         : [],
                     error: run.error
                 )
@@ -1247,7 +1363,7 @@ final class AppModel: ObservableObject {
             siteURL: run.siteURL,
             topicID: Self.agentTopicPrefix + run.id.uuidString,
             title: title,
-            url: ForumSite.latestURL(siteURL: run.siteURL) ?? URL(string: run.siteURL)
+            url: adapter(for: run.siteURL)?.links.homeURL(siteURL: run.siteURL) ?? URL(string: run.siteURL)
                 ?? URL(string: "about:blank")!,
             provider: run.provider,
             model: run.model
@@ -1274,14 +1390,10 @@ final class AppModel: ObservableObject {
         Task { [weak self] in
             guard let self else { return }
             var count = self.sessions[topic.topicKey]?.totalPosts
-            if count == nil {
-                let cookies = await self.browser.cookieHeader(forSite: topic.siteURL)
-                count = try? await self.forumService.fetchOverview(
-                    siteURL: topic.siteURL,
-                    topicID: topic.topicID,
-                    cookieHeader: cookies,
-                    resourceLoader: self.webViewResourceLoader,
-                    pace: self.settings.forumRequestPace
+            if count == nil, let adapter = self.adapter(for: topic.siteURL) {
+                count = try? await adapter.overview(
+                    TopicRef(siteURL: topic.siteURL, topicID: topic.topicID),
+                    net: await self.network(for: topic.siteURL, pace: self.settings.forumRequestPace)
                 ).postCount
             }
             await self.watch(
@@ -1345,11 +1457,8 @@ final class AppModel: ObservableObject {
         isCheckingWatches = true
         defer { isCheckingWatches = false }
         lastWatchCheck = Date()
-        var cookiesBySite: [String: String?] = [:]
+        var networks: [String: SiteNetwork] = [:]
         var arrivals: [(WatchedTopic, Int)] = []
-        // The web view cannot run scripts while the app is in the background,
-        // so background checks go straight to URLSession with each forum's cookies.
-        let webViewLoader = reason == .background ? nil : webViewResourceLoader
         let pace = settings.forumRequestPace
         let clock = forumService.pacer.clock
         let started = clock.now()
@@ -1360,17 +1469,22 @@ final class AppModel: ObservableObject {
                clock.now() - started + pace.minimumInterval > Self.backgroundWatchCheckBudget {
                 break
             }
-            if cookiesBySite[watched.siteURL] == nil {
-                cookiesBySite[watched.siteURL] = .some(await browser.cookieHeader(forSite: watched.siteURL))
+            // A site without an adapter (its forum was removed) is skipped quietly.
+            guard let adapter = adapter(for: watched.siteURL) else { continue }
+            // The web view cannot run scripts while the app is in the background,
+            // so background checks go straight to URLSession with each forum's cookies.
+            let net: SiteNetwork
+            if let known = networks[watched.siteURL] {
+                net = known
+            } else {
+                net = await network(for: watched.siteURL, pace: pace, inPage: reason != .background)
+                networks[watched.siteURL] = net
             }
             let result: Result<ForumTopicOverview, Error>
             do {
-                result = .success(try await forumService.fetchOverview(
-                    siteURL: watched.siteURL,
-                    topicID: watched.topicID,
-                    cookieHeader: cookiesBySite[watched.siteURL] ?? nil,
-                    resourceLoader: webViewLoader,
-                    pace: pace
+                result = .success(try await adapter.overview(
+                    TopicRef(siteURL: watched.siteURL, topicID: watched.topicID),
+                    net: net
                 ))
             } catch {
                 // Background time ran out: this topic stays due for next time.
@@ -1877,7 +1991,7 @@ final class AppModel: ObservableObject {
             url: topic.url,
             title: topic.title
         )
-        session.source = "Sample forum source for UI verification."
+        session.seedSource("Sample forum source for UI verification.")
         session.summary = """
         # Card Strategy
 
@@ -1912,7 +2026,7 @@ final class AppModel: ObservableObject {
         currentTopic = topic
         seededPageContext = PageContext(
             url: topic.url,
-            isDiscourse: true,
+            site: .discourse,
             siteURL: topic.siteURL,
             forumName: Self.uiTestForumName,
             topic: topic,
@@ -2291,13 +2405,14 @@ final class AppModel: ObservableObject {
     }
 
     private func runPull(recordID: UUID, record: WorkRecord, context: RunSettings) async throws {
+        guard let adapter = adapter(for: record.siteURL) else { throw AssistantError.noForum }
         var session = sessions[record.topicKey] ?? TopicSession(
             siteURL: record.siteURL,
             topicID: record.topicID,
             url: record.url,
             title: record.title
         )
-        let fetch = try await fetchTopicPages(of: session, recordID: recordID, pace: context.forumRequestPace) { progress in
+        let fetch = try await fetchTopicPages(of: session, adapter: adapter, recordID: recordID, pace: context.forumRequestPace) { progress in
             await self.updateFetchProgress(recordID: recordID, progress: progress)
         }
 
@@ -2305,11 +2420,9 @@ final class AppModel: ObservableObject {
         // finishing: do not write the session back.
         try ensureLive(recordID)
         session = sessions[record.topicKey] ?? session
-        session.source = fetch.content
-        session.rawPages = fetch.rawPages
-        session.totalPosts = fetch.totalPosts
-        session.lastCheckedAt = Date()
-        session.updatedAt = Date()
+        let now = Date()
+        session.apply(fetch, at: now)
+        session.updatedAt = now
         sessions[record.topicKey] = session
         save()
     }
@@ -2318,10 +2431,7 @@ final class AppModel: ObservableObject {
     /// daily digest); a topic without one gets none.
     func storeFetchedPages(_ fetch: ForumFetchResult, topicKey: String) {
         guard var session = sessions[topicKey] else { return }
-        session.source = fetch.content
-        session.rawPages = fetch.rawPages
-        session.totalPosts = fetch.totalPosts
-        session.lastCheckedAt = Date()
+        session.apply(fetch, at: Date())
         sessions[topicKey] = session
         save()
     }
@@ -2337,13 +2447,14 @@ final class AppModel: ObservableObject {
             return
         }
         #endif
+        guard let adapter = adapter(for: record.siteURL) else { throw AssistantError.noForum }
         var session = sessions[record.topicKey] ?? TopicSession(
             siteURL: record.siteURL,
             topicID: record.topicID,
             url: record.url,
             title: record.title
         )
-        let fetch = try await fetchTopicPages(of: session, recordID: recordID, pace: context.forumRequestPace) { progress in
+        let fetch = try await fetchTopicPages(of: session, adapter: adapter, recordID: recordID, pace: context.forumRequestPace) { progress in
             await self.updateFetchProgress(recordID: recordID, progress: progress)
         }
 
@@ -2351,11 +2462,9 @@ final class AppModel: ObservableObject {
         // finishing: do not write the session back.
         try ensureLive(recordID)
         session = sessions[record.topicKey] ?? session
-        session.source = fetch.content
-        session.rawPages = fetch.rawPages
-        session.totalPosts = fetch.totalPosts
-        session.lastCheckedAt = Date()
-        session.updatedAt = Date()
+        let now = Date()
+        session.apply(fetch, at: now)
+        session.updatedAt = now
         sessions[record.topicKey] = session
         save()
 
@@ -2422,7 +2531,7 @@ final class AppModel: ObservableObject {
         var session = sessions[record.topicKey] ?? TopicSession(
             siteURL: record.siteURL, topicID: record.topicID, url: record.url, title: record.title
         )
-        if session.source.isEmpty { session.source = "Sample post and replies for \(record.title)." }
+        if session.source.isEmpty { session.seedSource("Sample post and replies for \(record.title).") }
         session.summary = text
         session.totalPosts = max(session.totalPosts ?? 0, 68)
         session.summaryPostCount = session.totalPosts
@@ -2442,19 +2551,18 @@ final class AppModel: ObservableObject {
                 String(localized: "Pull the post and responses or create a summary before chatting.")
             )
         }
+        guard let adapter = adapter(for: record.siteURL) else { throw AssistantError.noForum }
 
-        let fetch = try await fetchTopicPages(of: session, recordID: recordID, pace: context.forumRequestPace) { progress in
+        let fetch = try await fetchTopicPages(of: session, adapter: adapter, recordID: recordID, pace: context.forumRequestPace) { progress in
             await self.updateFetchProgress(recordID: recordID, progress: progress)
         }
         // Cancelled (or its forum's data deleted) while the page fetch was
         // finishing: do not write the session back.
         try ensureLive(recordID)
         session = sessions[record.topicKey] ?? session
-        session.source = fetch.content
-        session.rawPages = fetch.rawPages
-        session.totalPosts = fetch.totalPosts
-        session.lastCheckedAt = Date()
-        session.updatedAt = Date()
+        let now = Date()
+        session.apply(fetch, at: now)
+        session.updatedAt = now
         sessions[record.topicKey] = session
 
         mutateRecord(recordID) {
@@ -2521,6 +2629,8 @@ final class AppModel: ObservableObject {
         else {
             throw AgentError.runNotFound
         }
+        guard let adapter = adapter(for: run.siteURL) else { throw AssistantError.noForum }
+        let profile = adapter.agent
         run.result = nil
         run.error = ""
         storeAgentRun(run)
@@ -2533,6 +2643,7 @@ final class AppModel: ObservableObject {
         let forumName = forum(for: run.siteURL)?.displayName
             ?? ForumSite.displayName(siteURL: run.siteURL, name: nil)
         let system = AgentPrompt.system(
+            profile: profile,
             forumName: forumName,
             siteURL: run.siteURL,
             maxSteps: context.agentMaxSteps,
@@ -2595,6 +2706,7 @@ final class AppModel: ObservableObject {
             do {
                 let (outcome, observation) = try await executeAgentTool(
                     action,
+                    adapter: adapter,
                     run: &run,
                     recordID: recordID,
                     context: context,
@@ -2668,46 +2780,35 @@ final class AppModel: ObservableObject {
     /// observation handed back to the model.
     private func executeAgentTool(
         _ action: AgentAction,
+        adapter: any SiteAdapter,
         run: inout AgentRun,
         recordID: UUID,
         context: RunSettings,
         stepProgress: @escaping @Sendable (_ within: Double) -> Double
     ) async throws -> (String, String) {
         let siteURL = run.siteURL
-        let cookies = await browser.cookieHeader(forSite: siteURL)
-        let loader = webViewResourceLoader
+        let profile = adapter.agent
+        // Only the run's own tools exist for the model, whatever the app knows.
+        let available = AgentPrompt.tools(for: profile).map(\.name)
+        guard let tool = AgentToolName(rawValue: action.tool), available.contains(action.tool) else {
+            throw AgentError.unknownTool(action.tool, available: available)
+        }
 
-        switch action.tool {
-        case "search_forum":
-            guard let query = action.arguments["query"]?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !query.isEmpty
-            else {
-                throw AgentError.missingArgument("query")
-            }
-            let results = try await forumService.searchResults(
-                siteURL: siteURL,
-                query: query,
-                cookieHeader: cookies,
-                resourceLoader: loader,
-                pace: context.forumRequestPace
-            )
+        switch tool {
+        case .searchForum, .searchComments:
+            let results = try await runSiteQuery(tool, action, adapter: adapter, siteURL: siteURL, pace: context.forumRequestPace)
             return (
                 String(localized: "\(results.topics.count) topics", comment: "Ask the forum step outcome: number of topics found"),
                 AgentPrompt.format(listings: results.topics, hits: results.hits)
             )
 
-        case "list_latest":
-            let listings = try await forumService.latestTopics(
-                siteURL: siteURL,
-                cookieHeader: cookies,
-                resourceLoader: loader,
-                pace: context.forumRequestPace
-            )
+        case .listLatest:
+            let listings = try await runSiteQuery(tool, action, adapter: adapter, siteURL: siteURL, pace: context.forumRequestPace).topics
             return (String(localized: "\(listings.count) topics", comment: "Ask the forum step outcome: number of topics found"), AgentPrompt.format(listings: listings, limit: 30))
 
-        case "read_topic":
+        case .readTopic:
             let session = try await readTopicForAgent(
-                action, run: &run, recordID: recordID, context: context,
+                action, adapter: adapter, run: &run, recordID: recordID, context: context,
                 progress: { stepProgress(0.1 + 0.8 * $0) }
             )
             let bounded = PromptBuilder.boundedForumContext(
@@ -2717,10 +2818,10 @@ final class AppModel: ObservableObject {
             return (
                 String(localized: "Read \(session.totalPosts ?? 0) posts", comment: "Ask the forum step outcome: number of posts read in a topic"),
                 "Topic: \(session.title)\nURL: \(session.url.absoluteString)"
-                    + " (post N: \(ForumSite.topicPageURL(session.url).absoluteString)/N)\n\n\(bounded)"
+                    + " \(profile.postLinkHint(session.url))\n\n\(bounded)"
             )
 
-        case "summarize_topic":
+        case .summarizeTopic:
             // Bulk summarizing runs on the assistant (low-cost) model. When
             // that one isn't ready, the tool fails and the agent can read the
             // topic instead.
@@ -2732,7 +2833,7 @@ final class AppModel: ObservableObject {
             )
             try ensureLive(recordID)
             var session = try await readTopicForAgent(
-                action, run: &run, recordID: recordID, context: context,
+                action, adapter: adapter, run: &run, recordID: recordID, context: context,
                 progress: { stepProgress(0.1 + 0.3 * $0) }
             )
             mutateRecord(recordID) {
@@ -2767,7 +2868,7 @@ final class AppModel: ObservableObject {
                 "Summary of \(session.title) (\(session.url.absoluteString)):\n\n\(summary)"
             )
 
-        case "saved_summaries":
+        case .savedSummaries:
             let query = action.arguments["query"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             let saved = sessions.values
                 .filter { $0.hasSummary && $0.siteURL == siteURL }
@@ -2784,7 +2885,7 @@ final class AppModel: ObservableObject {
             }.joined(separator: "\n\n")
             return (String(localized: "\(saved.count) saved", comment: "Ask the forum step outcome: number of saved summaries found"), text)
 
-        case "watch_topic":
+        case .watchTopic:
             let topicID = try requiredTopicID(action)
             let topicKey = TopicIdentity.key(siteURL: siteURL, topicID: topicID)
             if let session = sessions[topicKey] {
@@ -2797,12 +2898,9 @@ final class AppModel: ObservableObject {
                     knownPostCount: session.totalPosts ?? 0
                 )
             } else {
-                let overview = try await forumService.fetchOverview(
-                    siteURL: siteURL,
-                    topicID: topicID,
-                    cookieHeader: cookies,
-                    resourceLoader: loader,
-                    pace: context.forumRequestPace
+                let overview = try await adapter.overview(
+                    TopicRef(siteURL: siteURL, topicID: topicID),
+                    net: await network(for: siteURL, pace: context.forumRequestPace)
                 )
                 try ensureLive(recordID)
                 await watch(
@@ -2815,9 +2913,23 @@ final class AppModel: ObservableObject {
             }
             return (String(localized: "Watching", comment: "Ask the forum step outcome: the topic was added to the watch list"), "Topic \(topicID) is now on the watch list.")
 
-        default:
-            throw AgentError.unknownTool(action.tool)
+        case .finalAnswer:
+            // The run loop ends on it before any tool runs.
+            throw AgentError.unknownTool(action.tool, available: available)
         }
+    }
+
+    /// A site tool of the agent run through the run's adapter, which turns the
+    /// arguments into its query.
+    private func runSiteQuery(
+        _ tool: AgentToolName,
+        _ action: AgentAction,
+        adapter: any SiteAdapter,
+        siteURL: String,
+        pace: ForumRequestPace
+    ) async throws -> SiteQueryResult {
+        let query = try adapter.agent.query(tool, action.arguments)
+        return try await adapter.run(query, net: await network(for: siteURL, pace: pace))
     }
 
     private func requiredTopicID(_ action: AgentAction) throws -> String {
@@ -2833,6 +2945,7 @@ final class AppModel: ObservableObject {
     /// per-run topic-read budget, and records the topic on the run.
     private func readTopicForAgent(
         _ action: AgentAction,
+        adapter: any SiteAdapter,
         run: inout AgentRun,
         recordID: UUID,
         context: RunSettings,
@@ -2851,12 +2964,9 @@ final class AppModel: ObservableObject {
         if let existing = sessions[topicKey] {
             session = existing
         } else {
-            let overview = try await forumService.fetchOverview(
-                siteURL: siteURL,
-                topicID: topicID,
-                cookieHeader: await browser.cookieHeader(forSite: siteURL),
-                resourceLoader: webViewResourceLoader,
-                pace: context.forumRequestPace
+            let overview = try await adapter.overview(
+                TopicRef(siteURL: siteURL, topicID: topicID),
+                net: await network(for: siteURL, pace: context.forumRequestPace)
             )
             session = TopicSession(
                 siteURL: siteURL,
@@ -2868,18 +2978,16 @@ final class AppModel: ObservableObject {
         mutateRecord(recordID) {
             $0.statusText = String(localized: "Reading \(session.title)…", comment: "Status; the placeholder is a forum topic's title")
         }
-        let fetch = try await fetchTopicPages(of: session, recordID: recordID, pace: context.forumRequestPace) { fetchProgress in
+        let fetch = try await fetchTopicPages(of: session, adapter: adapter, recordID: recordID, pace: context.forumRequestPace) { fetchProgress in
             await self.advanceProgress(recordID: recordID, to: progress(fetchProgress.fraction))
         }
         // Cancelled (or its forum's data deleted) while the page fetch was
         // finishing: do not write the session back.
         try ensureLive(recordID)
         session = sessions[topicKey] ?? session
-        session.source = fetch.content
-        session.rawPages = fetch.rawPages
-        session.totalPosts = fetch.totalPosts
-        session.lastCheckedAt = Date()
-        session.updatedAt = Date()
+        let now = Date()
+        session.apply(fetch, at: now)
+        session.updatedAt = now
         sessions[topicKey] = session
         if !run.topicIDs.contains(topicID) {
             run.topicIDs.append(topicID)
@@ -2892,23 +3000,24 @@ final class AppModel: ObservableObject {
     /// is killed keeps what it fetched; a later read fetches only the rest.
     private func fetchTopicPages(
         of session: TopicSession,
+        adapter siteAdapter: any SiteAdapter,
         recordID: UUID,
         pace: ForumRequestPace,
         progress: @escaping @Sendable (ForumFetchProgress) async -> Void
     ) async throws -> ForumFetchResult {
-        let cookies = await browser.cookieHeader(forSite: session.siteURL)
+        let net = await network(for: session.siteURL, pace: pace)
         let template = session
-        return try await forumService.fetchTopic(
-            siteURL: session.siteURL,
-            topicID: session.topicID,
-            cachedPages: session.rawPages,
-            knownTotalPosts: session.totalPosts,
-            cookieHeader: cookies,
-            resourceLoader: webViewResourceLoader,
-            pace: pace,
+        let result = try await siteAdapter.readTopic(
+            TopicReadRequest(
+                topic: TopicRef(siteURL: session.siteURL, topicID: session.topicID),
+                cachedPages: session.rawPages,
+                knownTotalPosts: session.totalPosts
+            ),
+            net: net,
             progress: progress,
             onPage: { page in await self.keepFetchedPage(page, recordID: recordID, into: template) }
         )
+        return result
     }
 
     /// A page a job fetched, into its topic's session (made from `template`
@@ -2917,9 +3026,7 @@ final class AppModel: ObservableObject {
     private func keepFetchedPage(_ page: RawForumPage, recordID: UUID, into template: TopicSession) {
         guard activities.contains(where: { $0.id == recordID && !$0.status.isTerminal }) else { return }
         var session = sessions[template.topicKey] ?? template
-        session.rawPages.removeAll { $0.page == page.page }
-        session.rawPages.append(page)
-        session.rawPages.sort { $0.page < $1.page }
+        session.apply(page: page)
         sessions[template.topicKey] = session
         save()
     }
@@ -2977,8 +3084,7 @@ final class AppModel: ObservableObject {
         var kept = sessions
         for key in plan.remove { kept.removeValue(forKey: key) }
         for key in plan.dropPages {
-            kept[key]?.rawPages = []
-            kept[key]?.source = ""
+            kept[key]?.dropFetchedText()
         }
         sessions = kept
         // Pruned, not deleted: other devices keep their copies.

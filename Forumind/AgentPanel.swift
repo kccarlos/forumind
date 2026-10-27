@@ -496,7 +496,7 @@ struct AgentView: View {
 
     private func answerSection(_ run: AgentRun) -> some View {
         let answer = run.initialAnswer.isEmpty ? run.answer : run.initialAnswer
-        let sources = AgentSources.extract(from: answer, run: run, sessions: app.sessions)
+        let sources = AgentSources.extract(from: answer, run: run, sessions: app.sessions, parse: app.linkParser(siteURL: run.siteURL))
         return VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
                 Image(systemName: "text.bubble.fill")
@@ -555,7 +555,7 @@ struct AgentView: View {
                 .accessibilityIdentifier("agentAnswerMenu")
             }
 
-            MarkdownView(AgentSources.annotate(answer, sources: sources))
+            MarkdownView(AgentSources.annotate(answer, sources: sources, parse: app.linkParser(siteURL: run.siteURL)))
                 .textSelection(.enabled)
                 .accessibilityIdentifier("agentAnswer")
 

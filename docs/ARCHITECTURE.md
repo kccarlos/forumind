@@ -13,7 +13,7 @@ flowchart LR
       UI["SwiftUI views<br/>ContentView, SummaryPanel,<br/>AgentPanel, HomeView, Settings"]
       Model["AppModel<br/>state, work queue, agent runner"]
       Browser["ForumBrowserModel<br/>WKWebView + content blocking"]
-      Forum["ForumService<br/>Discourse JSON / raw"]
+      Forum["ForumService + site adapters<br/>transport, pacing / Discourse JSON, raw"]
       AI["AIService<br/>providers, streaming"]
       Store["PersistentStore<br/>state.json + Keychain"]
       Sync["CloudSyncController / Engine<br/>CKSyncEngine transport"]
@@ -50,12 +50,51 @@ All app code is in `Forumind/`; files are grouped here by role.
 | File | Role |
 | --- | --- |
 | `ForumBrowser.swift` | `ForumBrowserModel` owns the `WKWebView`: navigation, the address bar, in-page probing, cookie handling, and attaching content-blocking rules. |
-| `PageContext.swift` | What the Assistant knows about the current page. After each navigation (and Discourse SPA route change) an in-page probe checks `meta[name=generator]`, `discourse-base-uri`, and `#data-discourse-setup`; the page settles into `loading`, `notForum`, `maybe`, `forumHome`, or `topic`. On a topic it also says where the reader is: the post in the URL, the posts on screen and highlighted, and (once fetched) the post count and accepted answer. |
-| `ForumSite.swift` | Forum identity. A forum is its site URL: origin plus an optional base path for subfolder installs; https only (http for localhost). A topic key is `host[/basePath]/t/{id}`, unique across forums. URL builders (including a post, `/t/slug/id/N`, and the `?filter=summary` and `?username_filters=` views) and per-host cookie filtering live here. |
-| `ForumDirectory.swift` | Pinned and recent forums, suggested forums, and "Add forum" address parsing and validation. |
+| `PageContext.swift` | What the Assistant knows about the current page. After each navigation (and single-page route change) an in-page probe collects the facts the registered recognizers declared; the registry's recognizers turn them into `PageContext.site` (a `SiteKind?`, nil for a plain page), and the page settles into `loading`, `notForum`, `maybe`, `forumHome`, or `topic`. On a topic it also says where the reader is: the post in the URL, the posts on screen and highlighted, and (once fetched) the post count and accepted answer. |
+| `ForumSite.swift` | Forum identity, independent of the platform. A forum is its site URL: origin plus an optional base path for subfolder installs; https only (http for localhost). A topic key is `host[/basePath]/t/{id}`, unique across forums (the format is generic, not a Discourse route). Per-host cookie filtering lives here; the platform's URLs live in each adapter's `links`. |
+| `ForumDirectory.swift` | Pinned and recent forums, and "Add forum" address validation through the adapter. A `Forum` stores its `kind` (`SiteKind`, synced). Suggested forums are declared by each adapter (`SiteAdapter.suggestedForums`). |
 | `HomeView.swift`, `HomeState.swift` | Home (the Today module, Continue reading, pinned forums, Watching, Recent, suggestions) and the pages pushed over it; the Today module's states and the launch rule (where the app opens). |
-| `ForumService.swift` | Discourse JSON and `/raw` endpoints for one forum per call, with incremental page caching and `Retry-After` handling. Post level: search hits with post number and author (`ForumSearchHit`), topic facts from the topic JSON already fetched (`ForumTopicFacts`: post-id stream, opening poster, accepted answer, likes), and specific posts by id (`/t/{id}/posts.json`). |
+| `ForumService.swift` | The transport only: one paced, retried GET per call (`data(_:accept:context:)`) with `Retry-After` handling, the in-page loader and the redirect guard. It knows no platform; adapters reach it through `SiteNetwork`. |
 | `ForumRequestPacing.swift` | `ForumRequestPace` (the setting) and `ForumRequestPacer`, which spaces out every forum request per host; its clock is injectable for tests. |
+
+**Forum identity and detection.** A `Forum` carries its `kind`; a job resolves
+`SiteRegistry.adapter(for:)` when it starts and fails explicitly when there is
+none. A page is recognized from facts, not from Discourse code in the browser:
+each recognizer declares the page facts it needs (`PageFactKeys`: meta tags,
+link rels, element datasets, selectors), the registry sends the union to one
+generic probe (`PageFactsProbe`), and the route observer posts `{url, title,
+facts}` once per document (again only when an `html`/`body` class changes,
+because signed-in state lives there). `SiteRecognizer.recognize(facts:url:)`
+returns a `SitePageMatch` (site URL, base path, name, topic, post), the first
+recognizer in registry order wins, and `PageContext.site` keeps the kind. A
+host a platform claims whatever the path (`claimedSiteURL(forHost:)`) is
+checked first. Before the probe reports, the URL alone gives the topic
+(`topicID(fromURL:)`, `looseTopicID(in:)`). Signed-in state and username come
+from the same facts through the adapter's `session`. The share extension uses
+the same recognizers and a probe script generated from them (see Share
+extension).
+
+**Site adapters.** Everything that knows a platform lives in `Forumind/Sites/`
+behind one protocol, `SiteAdapter`. Discourse is the only adapter today.
+Contributors adding a platform: [ADDING_A_SITE.md](ADDING_A_SITE.md).
+
+| File | Role |
+| --- | --- |
+| `Sites/Recognition/SiteKind.swift` | `SiteKind`, the stable id of a platform (a struct wrapping a string, so a new platform adds a value, not a case in every switch). Stored on `Forum` and synced. |
+| `Sites/SiteAdapter.swift` | `SiteAdapter` (a value of pure functions plus network calls through `SiteNetwork`; no state), `SiteLinks` (pure URL building and parsing), `TopicRef`, `TopicReadRequest`, `SiteQuery`/`SiteQueryResult`, `AgentToolName` and `AgentSiteProfile`. |
+| `Sites/SiteCapabilities.swift` | `SiteCapabilities`: the optional abilities, each present and working or nil (active topics, post lookup, topic filters, page bridge, login and search page URLs, session reader, first-party path patterns). |
+| `Sites/SiteRegistry.swift` | `SiteRegistry`: the adapters in this build, in recognition order. Lookup by kind, recognition, the union of declared fact keys and first-party patterns, the voice setup. `adapterFactories` pairs each kind with its adapter. |
+| `Sites/Recognition/` | What the share extension also compiles, so nothing here may use an adapter or the network: `SiteRecognizer`, `SiteRecognizers.standard` (the one list of platforms), `PageFacts`/`PageFactKeys`, `PageFactsProbe` (builds the probe script), `DiscourseRecognizer`. |
+| `Sites/SiteNetwork.swift` | `SiteNetwork` (transport plus `SiteRequestContext`, scoped to one site; a URL outside the site is refused) and the context (cookies, in-page loader, pace) gathered once per job. |
+| `Sites/Shared/` | Code every adapter may use: `RawTopicFormat` (the one shape of a topic's AI-facing text), `PostBlock`, `PagedTopicFetch` (the paced page loop), `TopicFacts`. |
+| `Sites/Discourse/` | The Discourse adapter: `DiscourseAdapter`, `DiscourseAPI` (requests), `DiscourseRoutes` (URLs), `DiscourseParsing`, `DiscoursePagePlan` (which raw pages to fetch), `DiscourseDOM` (the in-page bridge and moderation scripts), `DiscourseAgent` (tool specs, voice words), `DiscourseSuggestions`. |
+
+**Layering.** Only `Forumind/Sites/` may name a platform.
+`scripts/ci/check-site-layering.sh` fails when Swift code outside it mentions a
+Discourse type, `SiteKind.discourse` or a `/t/` route. The remaining hits are
+listed in `scripts/ci/site-layering-allowlist.txt` (sample data, UI-test seeds,
+the share sheet's badge, the generic topic-key format); the list may only
+shrink, and an entry that no longer matches fails the check too.
 
 **Forum requests.** When the web view is showing the same forum, JSON and raw
 requests run as `fetch()` inside that page, so the forum login and any
@@ -221,10 +260,21 @@ see [APPLE_INTELLIGENCE.md](APPLE_INTELLIGENCE.md).
 | `AgentEngine.swift` | Tool specs, `AgentPlanner` / `PromptAgentPlanner`, and parsing of the model's actions. |
 | `AgentPanel.swift` | The Ask the forum UI: goal, steps, answer with numbered sources, follow-ups. |
 
-The agent is read-only. Its tools are `search_forum` (Discourse search
-syntax; results list each matching post as `#N @author`), `list_latest`,
-`read_topic` (the `/raw` text starts each post with `author | date UTC | #N`),
-`summarize_topic`, `saved_summaries`, `watch_topic`, and `final_answer`. The planner asks the model for one JSON
+The agent is read-only. A run's tools are the site's own (`AgentSiteProfile.siteTools`,
+specified by the run's adapter: Discourse offers `search_forum`, whose results
+list each matching post as `#N @author`, and `list_latest`) followed by the
+app's tools, the same on every site: `read_topic` (the text starts each post
+with `author | date UTC | #N`), `summarize_topic`, `saved_summaries`,
+`watch_topic`, and `final_answer`. Names are the `AgentToolName` enum, shared
+by the model, the transcript and Apple Intelligence; adding one is an app
+change, not an adapter's. `AgentPrompt.tools(for:)` builds the list for a
+run and the prompt's words ("a Discourse forum", topic, how to cite a post)
+come from the adapter's `AgentSiteProfile`. The profile also maps a site
+tool's arguments to a typed `SiteQuery` (`search`, `latest`), which the
+adapter runs; a tool outside the run's list throws
+`AgentError.unknownTool(name, available:)`. Apple Intelligence keeps a
+literal `@Guide(.anyOf…)` list of tool names (a macro cannot read a
+registry); a test compares it with `SiteRegistry.allAgentToolNames`. The planner asks the model for one JSON
 action per turn, so it works with every provider, including ones without
 native tool calling. Each run belongs to one forum (`AgentRun.siteURL`): every
 tool call and follow-up stays on it, topic ids from the model are reduced to
@@ -235,7 +285,9 @@ user's confirmation. Topics the agent summarizes become ordinary saved
 summaries.
 
 **Sources.** The answer cites topics as `[title](url)` and single posts as
-`/t/slug/id/N` (`AgentSources`). Links to different posts of one topic are
+the topic URL plus the post number on Discourse (`AgentSources`, which
+parses links through the run's adapter, so the equivalence of two links is the
+adapter's). Links to different posts of one topic are
 separate sources; a link to the whole topic reuses that topic's first source;
 topics read but not cited follow at topic level. Tapping a post-level source
 opens the topic at that post.
@@ -274,7 +326,18 @@ sequenceDiagram
 | `AppModel+Navigation.swift` | The navigation API: open, focus, find, next/previous, read, research, and the typed paths. |
 | `ResultCards.swift` | The current list as numbered cards over the page. |
 
-This layer moves the page to a single post. The voice agent's tools (`find`,
+This layer moves the page to a single post. What it needs from a platform is a
+capability of the adapter, present or nil: `pageBridge` (the in-page bridge and
+moderation scripts, `DiscourseDOM` for Discourse), `topicFilters` (top posts,
+one author), `postLookup` (post text by number from the API), `activeTopics`,
+`loginURL`, `searchPageURL` and `session`. The app gates on the capability: with
+no `pageBridge` no script is sent to the page, with no `topicFilters` the `top`
+landing falls back to the topic and the voice agent loses its author modes,
+with no login URL the forum menu hides Sign in. Nothing gates on a platform
+flag for data the pages show (accepted answers, likes).
+
+The description below names Discourse's selectors and URLs because that is the
+adapter that exists; they live in `Sites/Discourse/`. The voice agent's tools (`find`,
 `open`, `move`, `focus`, `read`, `research`) are meant to call it, and it
 works without voice through the cards and post links.
 
@@ -366,7 +429,8 @@ follow them. Search keeps its own UI.
 | `Voice/LiveProtocol.swift` | The Gemini Live wire format (setup, client frames, server messages) and the AI Studio and Vertex AI endpoints. |
 | `Voice/LiveTransport.swift` | `LiveTransport`, and its WebSocket implementation (ordered sends, receive loop, ping, close codes). |
 | `Voice/VoiceSession.swift` | The session: states, tool-response hold, scheduling, briefings, silent notes, resumption and refresh, stalls, watchdogs, idle close, minutes used. |
-| `Voice/VoiceTools.swift` | The seven tools, defined once, with the Gemini adapter. |
+| `Voice/VoiceTools.swift` | The seven tools, defined once, with the Gemini adapter; declarations are built per site (`geminiDeclarations(for:)`). |
+| `Voice/VoiceSite.swift` | `VoiceSiteProfile` (persona, search-word hint, language hint, the adapter's `voice`) and `VoiceSite` (the profile plus the focus modes the site supports: `user`/`op` only with `topicFilters`). `SiteRegistry.voiceSite(for:)` resolves it for the page's site, else the current forum's, else a fallback. A session fixes it when it connects (Gemini Live takes its declarations once). |
 | `Voice/VoiceToolBridge.swift` | `VoiceNavigator`, the tools run on the navigation layer, research briefings, and routing in code. |
 | `Voice/VoiceContext.swift` | The silent context: topic brief, position deltas, full post text, screen references. |
 | `Voice/VoiceInstructions.swift` | The system instruction, in named parts. |
@@ -638,9 +702,9 @@ purges the cache, a chapter whose file is missing is spoken again.
 
 | File | Role |
 | --- | --- |
-| `ForumindShare/ShareViewController.swift`, `ShareSheetView.swift` | The share sheet UI: shows whether the page looks like Discourse and offers Summarize, Chat about it, Ask the forum, or Just open. |
-| `ForumindShare/SharedPage.swift` | Parses what the host app shared (URL, title, Safari preprocessing results). |
-| `ForumindShare/DiscourseProbe.js` | Safari preprocessing script that detects Discourse on the shared page. |
+| `ForumindShare/ShareViewController.swift`, `ShareSheetView.swift` | The share sheet UI: shows whether the page looks like a supported forum and offers Summarize, Chat about it, Ask the forum, or Just open. |
+| `SharedPage.swift` | Compiled into the app and the extension. Parses what the host app shared (URL, title, Safari preprocessing results) into `PageFacts` and runs the recognizers on them. |
+| `ForumindShare/PageFactsProbe.js` | Safari preprocessing script that collects the page facts. Generated by `scripts/generate-share-probe.sh` from `PageFactsProbe.expression(keys: SiteRecognizers.factKeys)`, so it cannot drift from the app's probe; a unit test fails if the shipped file differs. |
 | `IncomingLink.swift` | Compiled into both targets. `IncomingLinkRequest`, the `forumind://open?url=…&action=…` format, and the App Group `SharedInbox`. |
 
 ```mermaid
@@ -655,6 +719,11 @@ sequenceDiagram
   A->>G: drain inbox (launch / foreground)
   A->>A: open page, start chosen action once
 ```
+
+The extension compiles the same recognition sources as the app
+(`Sites/Recognition/`, no adapters), so a platform is recognized by the same
+code in both. Without Safari's preprocessing result (Chrome shares only a
+URL) the badge says the page is unconfirmed.
 
 The extension writes the request to the App Group inbox and opens the link;
 the app drains the inbox on launch and foreground and handles each request id
@@ -766,7 +835,11 @@ list are indexed in CoreSpotlight.
 `ContentBlockingPolicy`) and `AppModel+ContentBlocking.swift` compile and attach
 the bundled EasyList/EasyPrivacy rules in `ContentBlocking/`. Blocking is off
 by default, out of respect for forum owners who rely on ads; nothing is
-looked up or compiled until it's turned on. Details:
+looked up or compiled until it's turned on. The first-party exemptions (the
+requests a forum page must always make, such as the app's in-page `fetch()`
+and sign-in) are declared by each adapter
+(`SiteCapabilities.firstPartyPathPatterns`); the union over the registry feeds
+the rules. Details:
 [AD_BLOCKING.md](AD_BLOCKING.md).
 
 ### Moderation
@@ -836,5 +909,15 @@ on launch and after each job).
 | --- | --- |
 | `ForumindTests` | Unit tests: forum identity and URL building, forum request pacing (fake clock), the daily digest (card plan, prefetch cap, scheduling, resumable cards), the work queue and state transitions, incoming links, onboarding, agent sources (topic and post level), post-level browsing (the current list, landing URLs, page position and its debounce, find/read with moderation, research single-flight, result trimming), the podcast (script JSON and its speech checks, chapters from cards, the Gemini TTS request on both endpoints and responses from fixtures, retries, engine and system-voice selection, the player's timeline, chapter navigation and remembered position with fakes, Ask about this pausing and resuming, the opt-in defaults, cache cleanup), the voice agent offline (Gemini Live message fixtures, the session against a fake transport, fake audio and a manual clock, tool mapping, context notes, consent, typed input, the cost guard), the audio pipeline without hardware (sample-rate conversion, framing, the voice-activity detector on four short speech fixtures in `ForumindTests/Audio` mixed with generated noise, the jitter buffer and time-stretch replays, the time-pitch graph rendered offline, the microphone watchdog), post-level Discourse parsing (trimmed JSON fixtures in `DiscourseFixtures.swift`), content blocking (compiles every bundled chunk in WebKit), CloudKit sync against a fake transport (two simulated devices), Keychain sync, iPad layout math, String Catalog completeness (every key translated, matching format specifiers and intent placeholders, plural variations), App Intents (each intent's action through a fake router, the forum query's order, the AppModel carrying actions out), Spotlight against a fake index (items, identifiers, removal on every delete path and the switch), Siri-suggestion donations, and the reading-language decision and Markdown segmenting for translation. |
 | `ForumindUITests` | UI tests on simulators (Home, the Today page and its podcast on a fake engine, landing on a post and the result cards on a live topic, the voice consent sheet and bar on a scripted session, onboarding, settings navigation, share hand-off, iPad layouts) and smoke tests for physical devices. |
+
+The site layer has its own suites in `ForumindTests/Sites/`: `SiteContractTests`
+runs one generic suite over every adapter (Discourse and a made-up
+`FakeSiteAdapter` with every optional capability nil: registry, links round
+trip, the raw text shape, cached reads, tool queries, present capabilities),
+`SiteRecognitionTests` and `SharedPageTests` (recognizers on recorded page
+facts in `Fixtures/PageFacts`, the shipped share probe), `CapabilityGatingTests`
+and `SiteJobTests` (the app on the fake). Network-bound adapter tests use
+recorded responses served through a `URLProtocol`. `scripts/ci/check-site-layering.sh`
+is the layering guard.
 
 See [DEVELOPMENT.md](DEVELOPMENT.md) for how to run them.

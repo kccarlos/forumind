@@ -105,20 +105,11 @@ enum ContentBlockingRules {
 
     // MARK: Exceptions tail
 
-    /// First-party requests a forum page must always be able to make: the
-    /// app's in-page `fetch()` (topic JSON, `/raw`, search, latest, site
-    /// info) and Discourse sign-in. Only first-party loads are exempt, so a
-    /// page cannot use these paths to pull in a third-party ad.
-    static let firstPartyPathPatterns = [
-        #"^https?://[^?#]*\.json"#,           // /t/1.json, /latest.json, /search.json, /site/basic-info.json, /about.json…
-        #"^https?://[^?#]*/raw/[0-9]"#,
-        #"^https?://[^?#]*/session"#,          // /session, /session/csrf, other sign-in routes
-        #"^https?://[^?#]*/auth/"#,
-        #"^https?://[^?#]*/login"#,
-        #"^https?://[^?#]*/u/"#,
-        #"^https?://[^?#]*/message-bus/"#,
-        #"^https?://[^?#]*/cdn-cgi/challenge-platform/"#
-    ]
+    /// First-party requests a forum page must always be able to make, the union
+    /// of the registered sites' (`capabilities.firstPartyPathPatterns`). Only
+    /// first-party loads are exempt, so a page cannot use these paths to pull
+    /// in a third-party ad.
+    static let firstPartyPathPatterns = SiteRegistry.standard.firstPartyPathPatterns
 
     /// Sign-in, OAuth, and challenge (captcha) resources used by forum logins,
     /// allowed from any page.

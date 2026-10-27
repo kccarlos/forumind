@@ -1,11 +1,14 @@
 import Foundation
 import SwiftUI
 
-/// A Discourse forum the user added or visited. Pinned forums are ordered by
+/// A forum the user added or visited. Pinned forums are ordered by
 /// `pinOrder`; the rest are "recent", newest visit first.
 struct Forum: Codable, Identifiable, Equatable, Hashable {
     /// Normalized site URL (origin + base path), e.g. `https://example.com/forum`.
     var siteURL: String
+    /// The platform, which picks the site adapter (`AppModel.adapter(for:)`).
+    /// Stored once here and synced with the record.
+    var kind: SiteKind
     var name: String
     var iconURL: URL?
     var isPinned = false
@@ -17,11 +20,10 @@ struct Forum: Codable, Identifiable, Equatable, Hashable {
     /// `host[/basePath]` for display.
     var host: String { ForumSite.host(of: siteURL) }
     var displayName: String { ForumSite.displayName(siteURL: siteURL, name: name) }
-    /// The forum home page (`/latest`).
-    var latestURL: URL? { ForumSite.latestURL(siteURL: siteURL) }
 
     init(
         siteURL: String,
+        kind: SiteKind,
         name: String,
         iconURL: URL? = nil,
         isPinned: Bool = false,
@@ -30,6 +32,7 @@ struct Forum: Codable, Identifiable, Equatable, Hashable {
         lastVisitedAt: Date? = nil
     ) {
         self.siteURL = siteURL
+        self.kind = kind
         self.name = name
         self.iconURL = iconURL
         self.isPinned = isPinned
@@ -39,12 +42,14 @@ struct Forum: Codable, Identifiable, Equatable, Hashable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case siteURL, name, iconURL, isPinned, pinOrder, addedAt, lastVisitedAt
+        case siteURL, kind, name, iconURL, isPinned, pinOrder, addedAt, lastVisitedAt
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         siteURL = try container.decode(String.self, forKey: .siteURL)
+        // Synced-data exception (ENGINEERING_RULES): every forum saved or synced before kinds existed is Discourse. Remove once every device has run this build.
+        kind = try container.decodeIfPresent(SiteKind.self, forKey: .kind) ?? .discourse
         name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
         iconURL = try container.decodeIfPresent(URL.self, forKey: .iconURL)
         isPinned = try container.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
@@ -54,8 +59,10 @@ struct Forum: Codable, Identifiable, Equatable, Hashable {
     }
 }
 
-/// A well-known public Discourse forum offered before the user adds any.
+/// A well-known public forum offered before the user adds any.
 struct SuggestedForum: Identifiable, Equatable {
+    /// The platform it declares, which picks the adapter once it is added.
+    var kind: SiteKind
     var name: String
     var siteURL: String
     /// One line about the community.
@@ -79,72 +86,30 @@ enum ForumDirectoryError: LocalizedError, Equatable {
     }
 }
 
+/// Add forum: detecting the platform of a typed address and its outcome.
+/// `detecting` is entered once per address (a repeated tap joins it);
+/// `failed` is the network's fault and may be retried; `unsupported` is
+/// shown as `ForumDirectoryError.notDiscourse` in P0.
+enum AddForumPhase: Equatable {
+    case idle
+    case detecting(address: String)
+    case recognized(kind: SiteKind, siteURL: String)
+    case unsupported
+    case failed(NetworkFailure)
+}
+
+/// What one Add forum detection is for; the same request joins a running one.
+struct AddForumRequest: Equatable {
+    var address: String
+    var pin: Bool
+}
+
 /// The user's forums (pure; `AppModel` persists it in the snapshot).
 struct ForumDirectory: Equatable {
     var forums: [Forum] = []
 
-    /// Offered first in the walkthrough when the app language is Chinese.
-    static let suggestedChinese: [SuggestedForum] = [
-        SuggestedForum(
-            name: "美卡论坛",
-            siteURL: "https://www.uscardforum.com",
-            description: String(localized: "Credit cards, travel rewards and personal finance in the US, in Chinese.", comment: "Description of a suggested forum")
-        ),
-        SuggestedForum(
-            name: "LINUX DO",
-            siteURL: "https://linux.do",
-            description: String(localized: "A Chinese-language community for technology, AI and open source.", comment: "Description of a suggested forum")
-        )
-    ]
-
-    static let suggested: [SuggestedForum] = [
-        SuggestedForum(
-            name: "Discourse Meta",
-            siteURL: "https://meta.discourse.org",
-            description: String(localized: "Discourse’s own community for features, support, and plugins.", comment: "Description of a suggested forum")
-        ),
-        SuggestedForum(
-            name: "OpenAI Developer Community",
-            siteURL: "https://community.openai.com",
-            description: String(localized: "Developers discussing the OpenAI API, models, and tools.", comment: "Description of a suggested forum")
-        ),
-        SuggestedForum(
-            name: "Cursor Community Forum",
-            siteURL: "https://forum.cursor.com",
-            description: String(localized: "Help, bug reports, and tips for the Cursor code editor.", comment: "Description of a suggested forum")
-        ),
-        SuggestedForum(
-            name: "Discussions on Python.org",
-            siteURL: "https://discuss.python.org",
-            description: String(localized: "Python language ideas, packaging, and help.", comment: "Description of a suggested forum")
-        ),
-        SuggestedForum(
-            name: "Home Assistant Community",
-            siteURL: "https://community.home-assistant.io",
-            description: String(localized: "Home automation setups, integrations, and troubleshooting.", comment: "Description of a suggested forum")
-        )
-    ]
-
     #if DEBUG
-    /// Offered instead of `suggested` with `-dc-sample` / `-dc-seed-forums`,
-    /// so screenshots show fictional communities (reserved example domains).
-    /// Names in the app's language (SampleContent.swift).
-    static var sampleSuggested: [SuggestedForum] {
-        let text = SampleContent.current
-        return [
-            SuggestedForum(
-                name: text.boardGames.name,
-                siteURL: text.boardGames.siteURL,
-                description: text.boardGamesDescription
-            ),
-            SuggestedForum(
-                name: text.gardeners.name,
-                siteURL: text.gardeners.siteURL,
-                description: text.gardenersDescription
-            )
-        ]
-    }
-
+    /// The DEBUG sample suggestions replace the real ones (`SuggestedForums.sample`).
     static var usesSampleSuggestions: Bool {
         let arguments = ProcessInfo.processInfo.arguments
         return arguments.contains("-dc-sample") || arguments.contains("-dc-seed-forums")
@@ -174,17 +139,27 @@ struct ForumDirectory: Equatable {
             .max { $0.siteURL.count < $1.siteURL.count }
     }
 
-    /// Adds the forum (unpinned) or refreshes its name/icon. Returns it.
+    /// Adds the forum (unpinned) or refreshes its name/icon. Returns it. A stored
+    /// forum keeps its kind: a different `kind` is a bug (DEBUG assert) unless
+    /// the caller validated the site just now (`overwritingKind`, Add forum).
     @discardableResult
     mutating func upsert(
         siteURL: String,
+        kind: SiteKind,
         name: String?,
         iconURL: URL?,
-        visitedAt: Date? = nil
+        visitedAt: Date? = nil,
+        overwritingKind: Bool = false
     ) -> Forum? {
-        guard let normalized = ForumSite.normalizeSiteURL(siteURL) else { return nil }
+        // `.unknown` is a display placeholder (`AppModel.forumInfo`); it is never stored or synced.
+        guard kind != .unknown, let normalized = ForumSite.normalizeSiteURL(siteURL) else { return nil }
         let trimmedName = name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if let index = forums.firstIndex(where: { $0.siteURL == normalized }) {
+            if overwritingKind || forums[index].kind == .unknown {
+                forums[index].kind = kind
+            } else {
+                assert(forums[index].kind == kind, "\(normalized) is \(forums[index].kind), not \(kind)")
+            }
             if !trimmedName.isEmpty { forums[index].name = trimmedName }
             if let iconURL { forums[index].iconURL = iconURL }
             if let visitedAt { forums[index].lastVisitedAt = visitedAt }
@@ -192,6 +167,7 @@ struct ForumDirectory: Equatable {
         }
         let forum = Forum(
             siteURL: normalized,
+            kind: kind,
             name: ForumSite.displayName(siteURL: normalized, name: trimmedName),
             iconURL: iconURL,
             addedAt: visitedAt ?? Date(),
@@ -234,42 +210,16 @@ struct ForumDirectory: Equatable {
             }
         }
     }
+}
 
-    /// Candidate site URLs for an address typed in "Add forum": a full URL or
-    /// a bare host, optionally with a page path. A path is cut before known
-    /// Discourse routes (`/t/`, `/latest`, `/c/`, …) to find a subfolder base
-    /// path; the bare origin is always tried last.
-    static func candidateSiteURLs(fromAddress address: String) -> [String] {
-        var text = address.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !text.contains(where: \.isWhitespace) else { return [] }
-        if text.range(of: "^[A-Za-z][A-Za-z0-9+.-]*://", options: .regularExpression) == nil {
-            let host = text.split(separator: "/").first.map(String.init) ?? text
-            let isLocal = host.hasPrefix("localhost") || host.hasPrefix("127.0.0.1")
-            guard host.contains(".") || isLocal else { return [] }
-            text = (isLocal ? "http://" : "https://") + text
-        }
-        guard let url = URL(string: text),
-              let origin = ForumSite.origin(of: url)
-        else {
-            return []
-        }
-        let routes: Set<String> = [
-            "t", "latest", "top", "new", "unread", "categories", "c", "tag", "tags",
-            "u", "users", "search", "login", "session", "about", "g", "groups", "posts",
-            "raw", "badges", "faq", "guidelines", "tos", "privacy", "my"
-        ]
-        let segments = url.path.split(separator: "/").map(String.init)
-        var baseSegments: [String] = []
-        for segment in segments {
-            if routes.contains(segment) || segment.hasSuffix(".json") { break }
-            baseSegments.append(segment)
-        }
-        var candidates: [String] = []
-        if !baseSegments.isEmpty {
-            let basePath = ForumSite.normalizeBasePath("/" + baseSegments.joined(separator: "/"))
-            if !basePath.isEmpty { candidates.append(origin.origin + basePath) }
-        }
-        candidates.append(origin.origin)
-        return candidates
-    }
+/// A site's well-known public forums (`SiteAdapter.suggestedForums`).
+struct SuggestedForums {
+    var general: [SuggestedForum]
+    /// Offered first in the walkthrough when the app language is Chinese.
+    var chinese: [SuggestedForum]
+    #if DEBUG
+    /// Fictional communities on reserved example domains, offered instead with
+    /// `-dc-sample` / `-dc-seed-forums` (names in the app's language, SampleContent.swift).
+    var sample: [SuggestedForum] = []
+    #endif
 }

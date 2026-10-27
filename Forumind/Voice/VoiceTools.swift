@@ -64,14 +64,15 @@ enum VoiceTool: String, CaseIterable {
         }
     }
 
-    var description: String {
+    /// The prompt text of the tool for a session on `site`.
+    func description(for site: VoiceSite) -> String {
         switch self {
         case .find:
             return """
             Search the forum the user is on, or only the open topic, and show the hits on screen as numbered cards, best first. \
             Call it when the user asks to find, look for or search something, or asks whether anyone wrote about something. \
-            Pass a few distinctive words in the forum's language (the topic brief says which): Discourse matches words, so search \
-            an English forum in English even when the user speaks another language. Scope "topic" searches inside the open topic \
+            Pass a few distinctive words in the forum's language (the topic brief says which): \(site.profile.findHint) \
+            Scope "topic" searches inside the open topic \
             ("where did someone mention the firmware version"). The result lists the hits by number with title, author and a line. \
             If one hit clearly fits, call open with its card number right away, without asking. If several could fit, say the \
             titles of the top two or three and let the user pick; they are on the cards. If nothing matched, say so and offer \
@@ -96,11 +97,17 @@ enum VoiceTool: String, CaseIterable {
             what it says, without reading it out. At the end of the list, say so.
             """
         case .focus:
+            // A site that cannot narrow to an author does not mention the author modes.
+            let authors = site.offersAuthorFocus
+                ? "\"user\" with user shows only that author's posts; \"op\" only the opening poster's; " : ""
+            let examples = site.offersAuthorFocus
+                ? "\"only what the original poster said\", \"just alice's posts\", \"show me the best answers\" or \"back to everything\""
+                : "\"show me the best answers\" or \"back to everything\""
             return """
-            Narrow the open topic. mode: "user" with user shows only that author's posts; "op" only the opening poster's; \
+            Narrow the open topic. mode: \(authors)\
             "top" the most liked posts; "posts" with posts highlights those posts as a tour, starting at the first; "clear" \
             shows the whole topic again. The focused posts become the current list, so "next" moves along them. Call it for \
-            "only what the original poster said", "just alice's posts", "show me the best answers" or "back to everything". \
+            \(examples). \
             The result says how many posts there are and carries the first one's text: give the user the count and the gist.
             """
         case .read:
@@ -127,7 +134,8 @@ enum VoiceTool: String, CaseIterable {
         }
     }
 
-    var parameters: VoiceSchema? {
+    /// The parameter schema of the tool for a session on `site`.
+    func parameters(for site: VoiceSite) -> VoiceSchema? {
         switch self {
         case .find:
             return .object(properties: [
@@ -150,11 +158,14 @@ enum VoiceTool: String, CaseIterable {
                 ("post", .integer(description: "The post number, with action \"post\"."))
             ], required: ["action"])
         case .focus:
-            return .object(properties: [
-                ("mode", .string(description: "What to show.", options: ["user", "op", "top", "posts", "clear"])),
-                ("user", .string(description: "The author's username, with mode \"user\".")),
-                ("posts", .array(of: .integer(description: "A post number."), description: "Post numbers to highlight, with mode \"posts\"."))
-            ], required: ["mode"])
+            var properties: [(name: String, schema: VoiceSchema)] = [
+                ("mode", .string(description: "What to show.", options: site.focusModes))
+            ]
+            if site.offersAuthorFocus {
+                properties.append(("user", .string(description: "The author's username, with mode \"user\".")))
+            }
+            properties.append(("posts", .array(of: .integer(description: "A post number."), description: "Post numbers to highlight, with mode \"posts\".")))
+            return .object(properties: properties, required: ["mode"])
         case .read:
             return .object(properties: [
                 ("post", .integer(description: "The post number; leave out for the current post.")),
@@ -170,13 +181,14 @@ enum VoiceTool: String, CaseIterable {
         }
     }
 
-    /// Gemini Live's function declarations for every tool.
-    static var geminiDeclarations: [GeminiLive.FunctionDeclaration] {
+    /// Gemini Live's function declarations for every tool, as a session on
+    /// `site` fixes them when it connects.
+    static func geminiDeclarations(for site: VoiceSite) -> [GeminiLive.FunctionDeclaration] {
         allCases.map {
             GeminiLive.FunctionDeclaration(
                 name: $0.rawValue,
-                description: $0.description,
-                parameters: $0.parameters?.gemini,
+                description: $0.description(for: site),
+                parameters: $0.parameters(for: site)?.gemini,
                 behavior: .nonBlocking
             )
         }

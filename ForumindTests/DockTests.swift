@@ -109,7 +109,9 @@ final class AIViewIntentTests: XCTestCase {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
         let store = PersistentStore(fileURL: directory.appendingPathComponent("state.json"), keys: InMemoryProviderKeyStore())
-        try store.save(AppSnapshot(activities: records, agentRuns: runs))
+        // A run's forum is in the directory (its adapter picks the home to open).
+        let forums = runs.isEmpty ? [] : [Forum(siteURL: site, kind: .discourse, name: "Example")]
+        try store.save(AppSnapshot(activities: records, agentRuns: runs, forums: forums))
         let app = AppModel(store: store)
         app.browser.onPageContextChanged = nil
         addTeardownBlock { @MainActor in app.browser.webView.stopLoading() }

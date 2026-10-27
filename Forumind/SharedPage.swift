@@ -2,10 +2,12 @@ import Foundation
 import UniformTypeIdentifiers
 
 /// What the host app shared, resolved from the extension's input items.
+/// Compiled into the share extension (and the app, so tests reach it).
 struct SharedPage: Equatable {
     enum Detection: Equatable {
-        /// Safari's preprocessing JS found Discourse markers.
-        case discourse(forumName: String)
+        /// Safari's preprocessing JS found a supported site's markers. The
+        /// match's `forumName` is never empty (the host stands in).
+        case site(SitePageMatch)
         /// Safari's preprocessing JS ran and found none.
         case notDetected
         /// Only a URL or text arrived (Chrome, other apps): can't tell yet.
@@ -83,19 +85,28 @@ enum SharedPageLoader {
     private static func probePage(from provider: NSItemProvider) async -> SharedPage? {
         guard let item = await loadItem(from: provider, type: propertyListType),
               let dictionary = item as? NSDictionary,
-              let results = dictionary[NSExtensionJavaScriptPreprocessingResultsKey] as? [String: Any],
-              let urlString = results["url"] as? String,
+              let results = dictionary[NSExtensionJavaScriptPreprocessingResultsKey] as? [String: Any]
+        else {
+            return nil
+        }
+        return page(fromProbeResults: results)
+    }
+
+    /// The page the preprocessing script reported: its facts through the
+    /// recognizers. The property list drops null and undefined, so any key
+    /// may be missing (`PageFacts` reads that as empty).
+    static func page(fromProbeResults results: [String: Any]) -> SharedPage? {
+        guard let urlString = results["url"] as? String,
               let url = URL(string: urlString),
               IncomingLink.isWebURL(url)
         else {
             return nil
         }
-        let title = cleanTitle(results["title"] as? String)
-        let isDiscourse = (results["isDiscourse"] as? Bool) ?? false
-        var page = SharedPage(url: url, title: title, detection: .notDetected)
-        if isDiscourse {
-            let forumName = cleanTitle(results["forumName"] as? String) ?? page.host
-            page.detection = .discourse(forumName: forumName)
+        let facts = PageFacts(probe: results, fallbackURL: url)
+        var page = SharedPage(url: url, title: cleanTitle(facts.pageTitle), detection: .notDetected)
+        if var match = SiteRecognizers.recognize(facts: facts, url: url) {
+            match.forumName = cleanTitle(match.forumName) ?? page.host
+            page.detection = .site(match)
         }
         return page
     }

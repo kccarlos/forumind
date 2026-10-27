@@ -167,21 +167,102 @@ final class VoiceToolTests: XCTestCase {
     // MARK: Instructions
 
     func testInstructionsHaveEveryPartAndTheAnswerLength() {
-        let text = VoiceInstructions.system(answerLength: .short, eyesFree: false, forumName: "Prusa Forum")
+        let site = DiscourseAdapter().voice
+        let text = VoiceInstructions.system(answerLength: .short, eyesFree: false, forumName: "Prusa Forum", site: site)
         for part in [
-            VoiceInstructions.persona, VoiceInstructions.speech, VoiceInstructions.screen, VoiceInstructions.precedence,
-            VoiceInstructions.research, VoiceInstructions.grounding, VoiceInstructions.notes, VoiceInstructions.language,
+            VoiceInstructions.persona(site), VoiceInstructions.speech, VoiceInstructions.screen, VoiceInstructions.precedence,
+            VoiceInstructions.research, VoiceInstructions.grounding, VoiceInstructions.notes, VoiceInstructions.language(site),
             VoiceInstructions.eyesFreeOff
         ] {
             XCTAssertTrue(text.contains(part))
         }
         XCTAssertFalse(text.contains(VoiceInstructions.eyesFreeOn))
         XCTAssertTrue(text.hasSuffix("The user is on the forum Prusa Forum."))
-        XCTAssertTrue(VoiceInstructions.system(answerLength: .normal, eyesFree: true, forumName: nil).contains(VoiceInstructions.eyesFreeOn))
+        XCTAssertTrue(VoiceInstructions.system(answerLength: .normal, eyesFree: true, forumName: nil, site: site).contains(VoiceInstructions.eyesFreeOn))
         // Short still asks for a real answer, not one line.
         XCTAssertTrue(VoiceInstructions.answerLength(.short).contains("still an answer, not a teaser"))
         XCTAssertNotEqual(VoiceInstructions.answerLength(.normal), VoiceInstructions.answerLength(.detailed))
         XCTAssertFalse(text.contains("**"), "No Markdown in the instructions")
+    }
+
+    // MARK: Site profile (S14)
+
+    /// A site that cannot narrow to an author: the declarations drop `user`
+    /// and `op` (and the `user` argument and the sentences naming them).
+    func testASiteWithoutTopicFiltersDropsTheAuthorModes() throws {
+        let discourse = VoiceSite(adapter: DiscourseAdapter())
+        let fake = VoiceSite(adapter: FakeSiteAdapter())
+        func modes(_ site: VoiceSite) throws -> [String] {
+            guard case .object(let properties, _)? = VoiceTool.focus.parameters(for: site),
+                  case .string(_, let options)? = properties.first(where: { $0.name == "mode" })?.schema
+            else { throw XCTSkip("focus has no mode") }
+            return options ?? []
+        }
+        XCTAssertEqual(try modes(discourse), ["user", "op", "top", "posts", "clear"])
+        XCTAssertEqual(try modes(fake), ["top", "posts", "clear"])
+        guard case .object(let properties, _)? = VoiceTool.focus.parameters(for: fake) else { return XCTFail() }
+        XCTAssertEqual(properties.map(\.name), ["mode", "posts"])
+        let description = VoiceTool.focus.description(for: fake)
+        XCTAssertFalse(description.contains("\"user\""))
+        XCTAssertFalse(description.contains("\"op\""))
+        XCTAssertTrue(description.contains("\"top\" the most liked posts"))
+        XCTAssertFalse(description.contains("\n"))
+
+        // The declarations and the instructions carry the site's own words.
+        let declared = VoiceTool.geminiDeclarations(for: fake)
+        XCTAssertEqual(declared.map(\.name), VoiceTool.allCases.map(\.rawValue))
+        XCTAssertTrue(declared.first { $0.name == "find" }?.description.contains("Fake search matches whole sentences.") == true)
+        let text = VoiceInstructions.system(answerLength: .normal, eyesFree: false, forumName: nil, site: fake.profile)
+        XCTAssertTrue(text.contains("a reading companion for fake sites"))
+        XCTAssertFalse(text.contains("Discourse"))
+    }
+
+    /// The registry resolves the page's site, else the fallback: a session can start from Home.
+    func testTheSessionStartsOnTheSiteOfItsPageOrTheFallback() {
+        let registry = SiteRegistry(adapters: [DiscourseAdapter(), FakeSiteAdapter()])
+        XCTAssertEqual(registry.voiceSite(for: FakeSiteAdapter.kind).profile, FakeSiteAdapter().voice)
+        XCTAssertEqual(registry.voiceSite(for: .discourse).profile, DiscourseAdapter().voice)
+        XCTAssertEqual(registry.voiceSite(for: nil), registry.voiceFallback)
+        XCTAssertEqual(registry.voiceSite(for: SiteKind("ghost")), registry.voiceFallback)
+        // The fallback's options are the union of all adapters'.
+        XCTAssertTrue(registry.voiceFallback.offersAuthorFocus)
+        XCTAssertFalse(SiteRegistry(adapters: [FakeSiteAdapter()]).voiceFallback.offersAuthorFocus)
+    }
+
+    /// A topic whose facts name no accepted answer opens at the top and says so.
+    func testATopicWithoutAnAcceptedAnswerAnswersNoSolution() async throws {
+        let site = "https://fake.example.com"
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let store = PersistentStore(fileURL: directory.appendingPathComponent("state.json"), keys: InMemoryProviderKeyStore())
+        try store.save(AppSnapshot(forums: [Forum(siteURL: site, kind: FakeSiteAdapter.kind, name: "Fake")]))
+        let app = AppModel(store: store, forumService: ForumService(), sites: SiteRegistry(adapters: [DiscourseAdapter(), FakeSiteAdapter()]))
+        app.browser.onPageContextChanged = nil
+        let topic = ForumTopic(siteURL: site, topicID: "42", url: URL(string: "\(site)/topic/42")!, title: "Topic 42")
+        app.browser.setPageContext(PageContext(
+            url: topic.url, site: FakeSiteAdapter.kind, siteURL: site, forumName: "Fake", topic: topic, state: .topic
+        ))
+        let outcome = await VoiceToolBridge(navigator: app).handle(.init(id: "o", name: "open", args: ["at": "solution"]), eyesFree: false)
+        XCTAssertEqual(outcome.response["status"], "noSolution")
+        XCTAssertEqual(app.voiceSite.profile, FakeSiteAdapter().voice, "the page's site decides the session's words")
+    }
+
+    /// TODO(P1): once a second platform is registered, a session that starts
+    /// where no site is known must speak as a neutral persona, not as the
+    /// first adapter's (`SiteRegistry.voiceFallback`). Today it names
+    /// Discourse, so this is an expected failure; it turns into a plain
+    /// failure the day someone makes the fallback neutral without removing
+    /// the marker.
+    func testTheFallbackIsNeutralOnceTwoAdaptersAreRegistered() {
+        let twoAdapters = SiteRegistry(adapters: [DiscourseAdapter(), FakeSiteAdapter()])
+        XCTExpectFailure("TODO(P1): voiceFallback must be a neutral persona once a second adapter exists (plan 3.4)")
+        XCTAssertEqual(twoAdapters.voiceFallback.profile, .neutral)
+    }
+
+    /// Fails as soon as the build registers a second platform while the fallback still names the first.
+    func testTheStandardRegistryNeverShipsASecondPlatformWithANonNeutralFallback() {
+        guard SiteRegistry.standard.adapters.count >= 2 else { return }
+        XCTAssertEqual(SiteRegistry.standard.voiceFallback.profile, .neutral, "make voiceFallback neutral (plan 3.4)")
     }
 
     // MARK: Settings and consent
@@ -249,7 +330,7 @@ final class VoiceToolTests: XCTestCase {
             return (200, DiscourseFixtures.search)
         }
         let app = makeApp()
-        app.recordVisit(siteURL: "https://forum.example", name: "Example", iconURL: nil)
+        app.recordVisit(siteURL: "https://forum.example", kind: .discourse, name: "Example", iconURL: nil)
         let bridge = VoiceToolBridge(navigator: app)
         let outcome = await bridge.handle(.init(id: "f", name: "find", args: ["query": "badges"]), eyesFree: false)
         XCTAssertEqual(outcome.response["status"], "found")

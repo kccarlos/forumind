@@ -1,0 +1,348 @@
+{
+  "activities" : [
+    {
+      "completedAt" : "2026-09-21T14:27:30Z",
+      "createdAt" : "2026-09-21T14:27:20Z",
+      "error" : "",
+      "id" : "00000000-0000-0000-0000-0000000000E1",
+      "model" : "example-model",
+      "origin" : "user",
+      "provider" : "openrouter",
+      "question" : "",
+      "siteURL" : "https:\/\/meta.example.org",
+      "startedAt" : "2026-09-21T14:27:21Z",
+      "status" : "completed",
+      "statusText" : "Completed",
+      "title" : "First topic",
+      "topicID" : "101",
+      "type" : "summary",
+      "updatedAt" : "2026-09-21T14:27:30Z",
+      "url" : "https:\/\/meta.example.org\/t\/first-topic\/101"
+    }
+  ],
+  "agentRuns" : [
+    {
+      "answer" : "Carol asks a question.",
+      "completedAt" : "2026-09-21T14:46:43Z",
+      "createdAt" : "2026-09-21T14:46:20Z",
+      "error" : "",
+      "followUps" : [
+
+      ],
+      "goal" : "What is new about topic 202?",
+      "id" : "00000000-0000-0000-0000-0000000000B1",
+      "initialAnswer" : "Carol asks a question.",
+      "model" : "example-model",
+      "origin" : "typed",
+      "provider" : "openrouter",
+      "result" : "completed",
+      "siteURL" : "https:\/\/example.com\/forum",
+      "steps" : [
+        {
+          "arguments" : {
+            "topic_id" : "202"
+          },
+          "finishedAt" : "2026-09-21T14:46:41Z",
+          "id" : "00000000-0000-0000-0000-0000000000C1",
+          "isError" : false,
+          "outcome" : "Read 1 post",
+          "startedAt" : "2026-09-21T14:46:40Z",
+          "thought" : "Read it.",
+          "tool" : "read_topic",
+          "topicID" : "202",
+          "topicKey" : "example.com\/forum\/t\/202"
+        },
+        {
+          "arguments" : {
+            "answer" : "Carol asks a question."
+          },
+          "finishedAt" : "2026-09-21T14:46:43Z",
+          "id" : "00000000-0000-0000-0000-0000000000C2",
+          "isError" : false,
+          "outcome" : "Answered",
+          "startedAt" : "2026-09-21T14:46:42Z",
+          "thought" : "Done.",
+          "tool" : "final_answer"
+        }
+      ],
+      "topicIDs" : [
+        "202"
+      ],
+      "transcript" : [
+        {
+          "content" : "GOAL:\nWhat is new about topic 202?",
+          "createdAt" : "2026-09-21T14:46:30Z",
+          "id" : "00000000-0000-0000-0000-0000000000D1",
+          "role" : "user"
+        },
+        {
+          "content" : "{\"thought\":\"Read it.\",\"tool\":\"read_topic\",\"arguments\":{\"topic_id\":\"202\"}}",
+          "createdAt" : "2026-09-21T14:46:35Z",
+          "id" : "00000000-0000-0000-0000-0000000000D2",
+          "role" : "assistant"
+        }
+      ],
+      "updatedAt" : "2026-09-21T14:46:43Z"
+    }
+  ],
+  "forums" : [
+    {
+      "addedAt" : "2026-09-21T14:13:20Z",
+      "iconURL" : "https:\/\/meta.example.org\/icon.png",
+      "isPinned" : true,
+      "lastVisitedAt" : "2026-09-21T15:36:40Z",
+      "name" : "Meta Example",
+      "pinOrder" : 0,
+      "siteURL" : "https:\/\/meta.example.org"
+    },
+    {
+      "addedAt" : "2026-09-21T14:15:00Z",
+      "isPinned" : true,
+      "lastVisitedAt" : "2026-09-21T15:20:00Z",
+      "name" : "Example Forum",
+      "pinOrder" : 1,
+      "siteURL" : "https:\/\/example.com\/forum"
+    },
+    {
+      "addedAt" : "2026-09-21T14:16:40Z",
+      "isPinned" : false,
+      "lastVisitedAt" : "2026-09-21T15:53:20Z",
+      "name" : "Recent Place",
+      "pinOrder" : 0,
+      "siteURL" : "https:\/\/recent.example.net"
+    }
+  ],
+  "sessions" : [
+    {
+      "chatUpdatedAt" : "2026-09-21T14:28:30Z",
+      "createdAt" : "2026-09-21T14:26:40Z",
+      "history" : [
+        {
+          "content" : "Who replied?",
+          "createdAt" : "2026-09-21T14:28:20Z",
+          "id" : "00000000-0000-0000-0000-0000000000A1",
+          "role" : "user"
+        },
+        {
+          "content" : "Bob replied in #2.",
+          "createdAt" : "2026-09-21T14:28:30Z",
+          "id" : "00000000-0000-0000-0000-0000000000A2",
+          "role" : "assistant"
+        }
+      ],
+      "instructions" : "Keep it short.",
+      "kept" : true,
+      "lastCheckedAt" : "2026-09-21T14:28:50Z",
+      "model" : "example-model",
+      "openedByUserAt" : "2026-09-21T14:25:00Z",
+      "provider" : "openrouter",
+      "rawPages" : [
+        {
+          "content" : "alice | 2026-10-20 | #1\nHello there.\n\n\nbob | 2026-10-21 | #2\nWelcome.",
+          "page" : 1,
+          "topicPostCount" : 2
+        }
+      ],
+      "siteURL" : "https:\/\/meta.example.org",
+      "source" : "alice | 2026-10-20 | #1\nHello there.\n\n\nbob | 2026-10-21 | #2\nWelcome.",
+      "summary" : "## Original post\n- Alice says hello. #1\n- Bob welcomes her. #2",
+      "summaryPostCount" : 2,
+      "summaryUpdatedAt" : "2026-09-21T14:27:30Z",
+      "title" : "First topic",
+      "topicID" : "101",
+      "totalPosts" : 2,
+      "updatedAt" : "2026-09-21T14:28:40Z",
+      "url" : "https:\/\/meta.example.org\/t\/first-topic\/101"
+    },
+    {
+      "createdAt" : "2026-09-21T14:30:00Z",
+      "history" : [
+
+      ],
+      "instructions" : "",
+      "kept" : false,
+      "model" : "",
+      "rawPages" : [
+        {
+          "content" : "carol | 2026-10-22 | #1\nQuestion?",
+          "page" : 1
+        }
+      ],
+      "siteURL" : "https:\/\/example.com\/forum",
+      "source" : "carol | 2026-10-22 | #1\nQuestion?",
+      "summary" : "",
+      "title" : "Second topic",
+      "topicID" : "202",
+      "totalPosts" : 1,
+      "updatedAt" : "2026-09-21T14:30:00Z",
+      "url" : "https:\/\/example.com\/forum\/t\/second-topic\/202"
+    },
+    {
+      "createdAt" : "2026-09-21T14:31:40Z",
+      "history" : [
+
+      ],
+      "instructions" : "",
+      "kept" : false,
+      "model" : "",
+      "rawPages" : [
+
+      ],
+      "siteURL" : "https:\/\/example.com\/forum",
+      "source" : "",
+      "summary" : "A summary kept without its pages.",
+      "summaryPostCount" : 40,
+      "title" : "Third topic",
+      "topicID" : "203",
+      "updatedAt" : "2026-09-21T14:31:40Z",
+      "url" : "https:\/\/example.com\/forum\/t\/third-topic\/203"
+    }
+  ],
+  "settings" : {
+    "acceptedTermsVersion" : 0,
+    "adBlockAllowedSites" : [
+
+    ],
+    "agentMaxSteps" : 15,
+    "agentMaxTopicReads" : 8,
+    "agentModel" : {
+      "model" : "moonshotai\/kimi-k2",
+      "provider" : "openrouter"
+    },
+    "agentReadLimit" : 30000,
+    "aiConsent" : {
+
+    },
+    "assistantModel" : {
+      "model" : "moonshotai\/kimi-k2",
+      "provider" : "openrouter"
+    },
+    "blockTrackers" : false,
+    "blockedUsers" : [
+
+    ],
+    "browserBarPosition" : "automatic",
+    "configurations" : {
+      "anthropic" : {
+        "apiKey" : "",
+        "baseURL" : "https:\/\/api.anthropic.com\/v1"
+      },
+      "appleintelligence" : {
+        "apiKey" : "",
+        "baseURL" : ""
+      },
+      "deepseek" : {
+        "apiKey" : "",
+        "baseURL" : "https:\/\/api.deepseek.com\/v1"
+      },
+      "gemini" : {
+        "apiKey" : "",
+        "baseURL" : "https:\/\/generativelanguage.googleapis.com\/v1beta"
+      },
+      "groq" : {
+        "apiKey" : "",
+        "baseURL" : "https:\/\/api.groq.com\/openai\/v1"
+      },
+      "lmstudio" : {
+        "apiKey" : "",
+        "baseURL" : "http:\/\/localhost:1234\/v1"
+      },
+      "nvidia" : {
+        "apiKey" : "",
+        "baseURL" : "https:\/\/integrate.api.nvidia.com\/v1"
+      },
+      "ollama" : {
+        "apiKey" : "",
+        "baseURL" : "http:\/\/localhost:11434"
+      },
+      "openai" : {
+        "apiKey" : "",
+        "baseURL" : "https:\/\/api.openai.com\/v1"
+      },
+      "openrouter" : {
+        "apiKey" : "",
+        "baseURL" : "https:\/\/openrouter.ai\/api\/v1"
+      },
+      "vertexai" : {
+        "apiKey" : "",
+        "baseURL" : "https:\/\/aiplatform.googleapis.com\/v1"
+      },
+      "xai" : {
+        "apiKey" : "",
+        "baseURL" : "https:\/\/api.x.ai\/v1"
+      }
+    },
+    "contentBlockingEnabled" : false,
+    "dailyDigestEnabled" : false,
+    "dailyDigestIncludesTrending" : true,
+    "dailyDigestIncludesWatched" : true,
+    "dailyDigestMaxCards" : 8,
+    "dailyDigestNotifies" : false,
+    "donatesTopicActivity" : true,
+    "favoriteModels" : [
+
+    ],
+    "filteredWords" : [
+
+    ],
+    "forumContextLimit" : 30000,
+    "forumRequestPace" : "fast",
+    "hasCompletedOnboarding" : true,
+    "launchDestination" : "automatic",
+    "podcast" : {
+      "engine" : "automatic",
+      "hostA" : "",
+      "hostB" : "",
+      "minutesPerChapter" : 1,
+      "voiceA" : "Kore",
+      "voiceB" : "Puck"
+    },
+    "podcastConsent" : {
+
+    },
+    "podcastDailyEnabled" : false,
+    "readingLanguage" : "",
+    "spotlightEnabled" : true,
+    "summaryBatchLimit" : 55000,
+    "syncAPIKeys" : true,
+    "systemPrompt" : "Answer in plain language.",
+    "voice" : {
+      "answerLength" : "normal",
+      "dailyLimitMinutes" : 30,
+      "eyesFree" : "auto",
+      "groundsOnDwell" : true,
+      "groundsOnScreenReference" : true,
+      "idleTimeout" : 60,
+      "provider" : "aistudio",
+      "sessionLimitMinutes" : 15,
+      "vertexProject" : "",
+      "voiceName" : "Sulafat"
+    },
+    "voiceConsent" : {
+
+    },
+    "voiceEnabled" : false,
+    "watchAutoRefreshSummaries" : true
+  },
+  "watchedTopics" : [
+    {
+      "addedAt" : "2026-09-21T14:18:20Z",
+      "knownPostCount" : 2,
+      "lastCheckedAt" : "2026-09-21T15:45:00Z",
+      "newReplies" : 3,
+      "siteURL" : "https:\/\/meta.example.org",
+      "title" : "First topic",
+      "topicID" : "101",
+      "url" : "https:\/\/meta.example.org\/t\/first-topic\/101"
+    },
+    {
+      "addedAt" : "2026-09-21T14:20:00Z",
+      "knownPostCount" : 1,
+      "newReplies" : 0,
+      "siteURL" : "https:\/\/example.com\/forum",
+      "title" : "Second topic",
+      "topicID" : "202",
+      "url" : "https:\/\/example.com\/forum\/t\/second-topic\/202"
+    }
+  ]
+}

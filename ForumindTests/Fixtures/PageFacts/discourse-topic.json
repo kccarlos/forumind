@@ -1,0 +1,18 @@
+{
+  "url": "https://forum.example.com/forum/t/welcome-to-the-forum/42/3",
+  "title": "Welcome to the forum - Example Forum",
+  "meta": {
+    "generator": "Discourse 3.4.0.beta2 - https://github.com/discourse/discourse version abc123",
+    "discourse-base-uri": "/forum",
+    "og:site_name": "Example Forum"
+  },
+  "links": {},
+  "elements": {
+    "data-discourse-setup": { "baseUri": "/forum" },
+    "data-preloaded": { "preloaded:currentUser.username": "alice" }
+  },
+  "matches": [".current-user"],
+  "htmlClass": "desktop-view not-mobile-device text-size-normal no-touch discourse-no-touch",
+  "bodyClass": "category-general logged-in",
+  "iconURL": "https://forum.example.com/forum/uploads/default/original/1X/icon-180.png"
+}

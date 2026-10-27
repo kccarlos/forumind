@@ -139,6 +139,7 @@ final class FakeVoiceNavigator: VoiceNavigator {
     var pageContext = PageContext.empty
     var browseCursor = BrowseCursor()
     var isResearching = false
+    var voiceSite = SiteRegistry.standard.voiceFallback
     var researchProgress: String?
     private(set) var calls: [String] = []
     var results: [String: BrowseResult] = [:]
@@ -238,7 +239,8 @@ final class FakeVoiceNavigator: VoiceNavigator {
         let text = "https://forum.example/t/fan-noise/42" + (post.map { "/\($0)" } ?? "")
         let url = URL(string: text)!
         var page = PageContext.make(
-            url: url, title: "Fan noise after the update", probe: PageProbe(url: url, isDiscourse: true, forumName: "Example"), knownForum: nil
+            url: url, title: "Fan noise after the update", facts: .discourse(url, forumName: "Example"), knownForum: nil,
+            registry: .standard
         )
         page.visiblePosts = visible
         page.postsCount = 9

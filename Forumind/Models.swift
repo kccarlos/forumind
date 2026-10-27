@@ -433,8 +433,11 @@ struct RawForumPage: Codable, Equatable {
     var page: Int
     var content: String
     /// The topic's post count when the page was fetched: a page that was full
-    /// then never changes (`CachePlan`).
+    /// then never changes (`DiscoursePagePlan`).
     var topicPostCount: Int?
+    /// The posts of `content`, same order. The adapter writes both in one
+    /// call and nothing edits either afterwards: one fact, two representations.
+    var blocks: [PostBlock] = []
 
     /// Posts per raw page.
     static let size = 100
@@ -453,6 +456,8 @@ struct ChatMessage: Codable, Identifiable, Equatable {
 }
 
 struct TopicSession: Codable, Identifiable, Equatable {
+    /// The topic text of the last complete read. With `rawPages` it is written
+    /// only by the fetched-text methods in the extension below.
     /// The forum's site URL (origin + base path).
     var siteURL: String
     var topicID: String
@@ -505,7 +510,10 @@ struct TopicSession: Codable, Identifiable, Equatable {
         url = try container.decode(URL.self, forKey: .url)
         title = try container.decode(String.self, forKey: .title)
         source = try container.decodeIfPresent(String.self, forKey: .source) ?? ""
-        rawPages = try container.decodeIfPresent([RawForumPage].self, forKey: .rawPages) ?? []
+        // A device-local cache: pages saved before they carried `blocks` do
+        // not decode and are dropped, and the next read fetches them again
+        // while the summary and chat stay. Cache invalidation, not a migration.
+        rawPages = (try? container.decode([RawForumPage].self, forKey: .rawPages)) ?? []
         summary = try container.decodeIfPresent(String.self, forKey: .summary) ?? ""
         history = try container.decodeIfPresent([ChatMessage].self, forKey: .history) ?? []
         kept = try container.decodeIfPresent(Bool.self, forKey: .kept) ?? false
@@ -541,6 +549,45 @@ struct TopicSession: Codable, Identifiable, Equatable {
             return false
         }
         return totalPosts > summaryPostCount
+    }
+}
+
+/// The only writers of `source` and `rawPages` (with the blocks inside the
+/// pages). P1: derive `source` from the pages with a `completeThrough` marker.
+extension TopicSession {
+    /// A complete read: its text, its pages and the post count.
+    mutating func apply(_ fetch: ForumFetchResult, at date: Date) {
+        source = fetch.content
+        rawPages = fetch.rawPages
+        totalPosts = fetch.totalPosts
+        lastCheckedAt = date
+        #if DEBUG
+        assert(source == RawTopicFormat.join(rawPages.map(\.content)), "source must equal the pages joined")
+        #endif
+    }
+
+    /// One page of a read in progress. `source` stays the last complete read.
+    mutating func apply(page: RawForumPage) {
+        rawPages.removeAll { $0.page == page.page }
+        rawPages.append(page)
+        rawPages.sort { $0.page < $1.page }
+    }
+
+    /// Drops the fetched text to save space (the summary and chat stay).
+    mutating func dropFetchedText() {
+        rawPages = []
+        source = ""
+    }
+
+    /// A synced copy keeps this device's cache: the fetched text is not synced.
+    mutating func keepFetchedText(of local: TopicSession?) {
+        source = local?.source ?? ""
+        rawPages = local?.rawPages ?? []
+    }
+
+    /// Placeholder text with no pages (DEBUG fakes and UI-test seeds).
+    mutating func seedSource(_ text: String) {
+        source = text
     }
 }
 
@@ -637,18 +684,19 @@ struct ForumTopic: Equatable, Identifiable {
     var topicKey: String { TopicIdentity.key(siteURL: siteURL, topicID: topicID) }
     var id: String { topicKey }
 
-    /// Parses `/t/{slug}/{id}` (or `/t/{id}`) under `basePath` on any host.
-    /// URL-only: callers must know the page is on a Discourse forum (probe or
-    /// forum directory). The default title uses the forum name.
+    /// Parses a topic URL under `basePath` on any host, with the platform's
+    /// recognizer. URL-only: callers must know the page is on a forum of that
+    /// platform (probe or forum directory). The default title uses the forum name.
     static func parse(
         url: URL?,
         title: String?,
         basePath: String = "",
-        forumName: String? = nil
+        forumName: String? = nil,
+        recognizer: any SiteRecognizer
     ) -> ForumTopic? {
         guard let url,
               let siteURL = ForumSite.siteURL(fromPage: url, basePath: basePath),
-              let topicID = ForumSite.extractTopicID(from: url, basePath: basePath)
+              let topicID = recognizer.topicID(fromURL: url, basePath: basePath)
         else {
             return nil
         }
@@ -874,6 +922,8 @@ struct ForumTopicListing: Codable, Equatable, Identifiable {
     var id: Int
     var title: String
     var slug: String
+    /// The topic's page, set by the adapter that parsed it.
+    var url: URL
     var postsCount: Int
     var lastPostedAt: String?
     var excerpt: String?
@@ -883,11 +933,6 @@ struct ForumTopicListing: Codable, Equatable, Identifiable {
     var hasAcceptedAnswer: Bool?
 
     var topicID: String { String(id) }
-
-    var url: URL {
-        ForumSite.topicURL(siteURL: siteURL, topicID: topicID, slug: slug)
-            ?? URL(string: siteURL) ?? URL(string: "about:blank")!
-    }
 }
 
 /// Title and post count of a topic from `/t/{id}.json`.
@@ -896,14 +941,11 @@ struct ForumTopicOverview: Equatable {
     var topicID: String
     var title: String
     var slug: String
+    /// The topic's page, set by the adapter that parsed it.
+    var url: URL
     var postCount: Int
     /// Read from the same JSON.
-    var facts: ForumTopicFacts?
-
-    var url: URL {
-        ForumSite.topicURL(siteURL: siteURL, topicID: topicID, slug: slug)
-            ?? URL(string: siteURL) ?? URL(string: "about:blank")!
-    }
+    var facts: TopicFacts?
 }
 
 /// One Discourse search hit: a post in a topic. `/search.json` can return
@@ -913,60 +955,10 @@ struct ForumSearchHit: Equatable, Identifiable {
     var postNumber: Int
     var username: String?
     var blurb: String?
+    /// The topic opened at this post, set by the adapter that parsed it.
+    var url: URL
 
     var id: String { "\(topic.id)/\(postNumber)" }
-
-    /// The topic opened at this post.
-    var url: URL {
-        ForumSite.topicURL(siteURL: topic.siteURL, topicID: topic.topicID, slug: topic.slug, postNumber: postNumber)
-            ?? topic.url
-    }
-}
-
-/// What `/t/{id}.json` says about a topic beyond its title, without another
-/// request: size, the post-id stream, the opening poster, the accepted answer
-/// (Solved plugin) and the posts the JSON included (about the first 20).
-struct ForumTopicFacts: Equatable {
-    struct Post: Equatable {
-        var id: Int
-        var number: Int
-        var username: String
-        var likeCount: Int?
-    }
-
-    struct AcceptedAnswer: Equatable {
-        var postNumber: Int
-        var username: String?
-    }
-
-    var postsCount: Int?
-    var highestPostNumber: Int?
-    /// Every post id in topic order. Its positions are not post numbers:
-    /// deleted posts leave gaps in the numbering.
-    var stream: [Int] = []
-    var openingPoster: String?
-    var acceptedAnswer: AcceptedAnswer?
-    var posts: [Post] = []
-
-    /// The id of post `number`, when the JSON included that post.
-    func postID(forNumber number: Int) -> Int? {
-        posts.first { $0.number == number }?.id
-    }
-
-    /// The id of post `number` if known, else a guess: counted along the
-    /// stream from the nearest included post before it. Deleted posts after
-    /// that one make the guess land later, so callers check the number of
-    /// the post that comes back.
-    func likelyPostID(forNumber number: Int) -> Int? {
-        if let id = postID(forNumber: number) { return id }
-        guard number >= 1, !stream.isEmpty else { return nil }
-        let anchor = posts
-            .filter { $0.number < number }
-            .max { $0.number < $1.number }
-            .flatMap { post in stream.firstIndex(of: post.id).map { (index: $0, number: post.number) } }
-        let index = anchor.map { $0.index + number - $0.number } ?? number - 1
-        return stream[min(index, stream.count - 1)]
-    }
 }
 
 /// A post fetched by id (`/t/{id}/posts.json`), its cooked HTML as plain text.
@@ -1103,7 +1095,7 @@ struct ForumFetchResult: Equatable {
     var unchanged: Bool
     var newPosts: Int
     /// From the topic JSON fetched for the post count.
-    var facts: ForumTopicFacts?
+    var facts: TopicFacts?
 }
 
 struct ForumResourceResponse {
@@ -1111,46 +1103,6 @@ struct ForumResourceResponse {
     var statusText: String
     var retryAfter: String?
     var data: Data
-}
-
-/// Which pages of a topic to fetch. A page that was full when it was
-/// fetched never changes (replies are appended), so it is reused; the last,
-/// growing page and every missing one (a read cut short, pages dropped to
-/// save space) are fetched. Fewer posts than before (deleted replies): all
-/// pages again.
-enum CachePlan: Equatable {
-    case unchanged
-    case fetch(reusablePages: [RawForumPage], pageNumbers: [Int])
-
-    /// `knownTotalPosts`: the session's post count, for pages saved without
-    /// their own.
-    static func make(
-        cachedPages: [RawForumPage],
-        knownTotalPosts: Int?,
-        currentTotalPosts: Int,
-        totalPages: Int
-    ) -> CachePlan {
-        let allPages = Array(1...max(1, totalPages))
-        let normalized = Dictionary(
-            cachedPages.map { ($0.page, $0) },
-            uniquingKeysWith: { _, newest in newest }
-        )
-        let fetchedAt = { (page: RawForumPage) in page.topicPostCount ?? knownTotalPosts }
-        // Replies were deleted since a page was fetched: nothing lines up.
-        if normalized.values.contains(where: { (fetchedAt($0) ?? 0) > currentTotalPosts }) {
-            return .fetch(reusablePages: [], pageNumbers: allPages)
-        }
-        // Full when fetched (it never changes), or fetched at today's count.
-        let reusable = normalized.values
-            .filter { page in
-                guard page.page <= totalPages, let count = fetchedAt(page) else { return false }
-                return page.page * RawForumPage.size <= count || count == currentTotalPosts
-            }
-            .sorted { $0.page < $1.page }
-        let reused = Set(reusable.map(\.page))
-        let missing = allPages.filter { !reused.contains($0) }
-        return missing.isEmpty ? .unchanged : .fetch(reusablePages: reusable, pageNumbers: missing)
-    }
 }
 
 enum AssistantError: LocalizedError {

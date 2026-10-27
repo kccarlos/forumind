@@ -550,7 +550,7 @@ final class PodcastController: ObservableObject {
     /// starts a voice session about it; the episode resumes when the
     /// session ends. `open` opens the topic (the Today page's link path).
     func ask(about chapter: PodcastChapter, open: (URL) -> Void) {
-        guard let url = chapter.topicURL, let voice else { return }
+        guard let url = app.flatMap({ $0.url(for: chapter) }), let voice else { return }
         player.suspendForVoice()
         open(url)
         voice.onFinished = { [weak self] in self?.voiceFinished() }
@@ -571,7 +571,7 @@ final class PodcastController: ObservableObject {
 
     /// "Ask about this" is offered: a Google key for voice, and a topic.
     func canAsk(about chapter: PodcastChapter?) -> Bool {
-        guard let chapter, chapter.topicURL != nil, let app else { return false }
+        guard let chapter, let app, app.url(for: chapter) != nil else { return false }
         return app.voiceProvider != nil
     }
 

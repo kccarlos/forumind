@@ -276,7 +276,7 @@ struct NowPlayingView: View {
                     .accessibilityHint(Text("Pauses the podcast and starts a voice conversation about this topic", comment: "Podcast: what Ask about this does"))
                     .accessibilityIdentifier("podcastAsk")
                 }
-                if let url = chapter.topicURL, let card = card(for: chapter) {
+                if let url = app.url(for: chapter), let card = card(for: chapter) {
                     Button {
                         DCHaptics.tap()
                         open(url, card)
@@ -364,7 +364,7 @@ struct NowPlayingView: View {
             .buttonStyle(.borderless)
             .disabled(!entry.isReady)
             .accessibilityIdentifier("podcastChapter-\(index)")
-            if let url = entry.chapter.topicURL, let card = card(for: entry.chapter) {
+            if let url = app.url(for: entry.chapter), let card = card(for: entry.chapter) {
                 Button {
                     DCHaptics.tap()
                     open(url, card)

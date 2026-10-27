@@ -10,7 +10,7 @@ final class PostLevelTests: XCTestCase {
     // MARK: Search hits
 
     func testSearchKeepsEveryHitInTheForumsOrder() {
-        let (hits, topics) = ForumService.parseSearch(Data(DiscourseFixtures.search.utf8), siteURL: site)
+        let (hits, topics) = DiscourseParsing.parseSearch(Data(DiscourseFixtures.search.utf8), siteURL: site)
         XCTAssertEqual(hits.map(\.topic.id), [240488, 240488, 415035, 240488])
         XCTAssertEqual(hits.map(\.postNumber), [1, 5, 13, 10])
         XCTAssertEqual(hits.map(\.username), ["alice", "bob", "carol", "bob"])
@@ -26,7 +26,7 @@ final class PostLevelTests: XCTestCase {
         XCTAssertEqual(topics.map(\.id), [240488, 415035])
         XCTAssertEqual(topics[0].excerpt, hits[0].blurb)
         XCTAssertEqual(topics[1].excerpt, hits[2].blurb)
-        XCTAssertEqual(ForumService.parseSearchResults(Data(DiscourseFixtures.search.utf8), siteURL: site), topics)
+        XCTAssertEqual(DiscourseParsing.parseSearchResults(Data(DiscourseFixtures.search.utf8), siteURL: site), topics)
     }
 
     func testSearchHitsAndListingsComeFromOneRequest() async throws {
@@ -35,7 +35,7 @@ final class PostLevelTests: XCTestCase {
             return (200, DiscourseFixtures.search)
         }
         let service = makeService()
-        let results = try await service.searchResults(siteURL: folder, query: "badges topic:240488", cookieHeader: nil)
+        let results = try await DiscourseAPI(net: service.net(folder)).searchResults(query: "badges topic:240488")
         XCTAssertEqual(results.hits.count, 4)
         XCTAssertEqual(results.topics.count, 2)
         XCTAssertEqual(PostLevelURLStub.requests.count, 1)
@@ -45,7 +45,7 @@ final class PostLevelTests: XCTestCase {
     }
 
     func testSearchObservationListsHitsWithPostNumbersAndAuthors() {
-        let (hits, topics) = ForumService.parseSearch(Data(DiscourseFixtures.search.utf8), siteURL: site)
+        let (hits, topics) = DiscourseParsing.parseSearch(Data(DiscourseFixtures.search.utf8), siteURL: site)
         let text = AgentPrompt.format(listings: topics, hits: hits)
         let lines = text.components(separatedBy: "\n")
         XCTAssertEqual(lines.count, 6)
@@ -65,7 +65,7 @@ final class PostLevelTests: XCTestCase {
         XCTAssertTrue(AgentPrompt.format(listings: topics).contains("\n  I imagine that sidebar"))
 
         let prompt = AgentPrompt.system(
-            forumName: "Meta", siteURL: site, maxSteps: 5, maxTopicReads: 2, customInstructions: ""
+            profile: DiscourseAgent.profile, forumName: "Meta", siteURL: site, maxSteps: 5, maxTopicReads: 2, customInstructions: ""
         )
         XCTAssertTrue(prompt.contains("/t/slug/id/N"))
         XCTAssertTrue(prompt.contains("\"author | date UTC | #N\""))
@@ -78,8 +78,8 @@ final class PostLevelTests: XCTestCase {
         let json = try XCTUnwrap(
             JSONSerialization.jsonObject(with: Data(DiscourseFixtures.topic.utf8)) as? [String: Any]
         )
-        let facts = ForumService.parseTopicFacts(json)
-        XCTAssertEqual(facts.acceptedAnswer, ForumTopicFacts.AcceptedAnswer(postNumber: 5, username: "bob"))
+        let facts = DiscourseParsing.parseTopicFacts(json)
+        XCTAssertEqual(facts.acceptedAnswer, TopicFacts.AcceptedAnswer(postNumber: 5, username: "bob"))
         XCTAssertEqual(facts.postsCount, 10)
         XCTAssertEqual(facts.highestPostNumber, 14)
         XCTAssertEqual(facts.stream.count, 13)
@@ -99,8 +99,8 @@ final class PostLevelTests: XCTestCase {
     }
 
     func testTopicFactsFromOlderSolvedVersionsAndUnsolvedTopics() throws {
-        func facts(_ text: String) throws -> ForumTopicFacts {
-            ForumService.parseTopicFacts(
+        func facts(_ text: String) throws -> TopicFacts {
+            DiscourseParsing.parseTopicFacts(
                 try XCTUnwrap(JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any])
             )
         }
@@ -109,7 +109,7 @@ final class PostLevelTests: XCTestCase {
         {"posts_count":3,"accepted_answer":{"post_number":3,"username":"erin","excerpt":"Fixed"},
          "post_stream":{"stream":[11,12,13],"posts":[{"id":11,"post_number":1,"username":"frank","like_count":4}]}}
         """#)
-        XCTAssertEqual(older.acceptedAnswer, ForumTopicFacts.AcceptedAnswer(postNumber: 3, username: "erin"))
+        XCTAssertEqual(older.acceptedAnswer, TopicFacts.AcceptedAnswer(postNumber: 3, username: "erin"))
         XCTAssertEqual(older.openingPoster, "frank")
         XCTAssertEqual(older.posts.first?.likeCount, 4)
 
@@ -119,7 +119,7 @@ final class PostLevelTests: XCTestCase {
           {"id":21,"post_number":1,"username":"frank","accepted_answer":false,"topic_accepted_answer":true},
           {"id":22,"post_number":2,"username":"grace","accepted_answer":true,"topic_accepted_answer":true}]}}
         """#)
-        XCTAssertEqual(flagged.acceptedAnswer, ForumTopicFacts.AcceptedAnswer(postNumber: 2, username: "grace"))
+        XCTAssertEqual(flagged.acceptedAnswer, TopicFacts.AcceptedAnswer(postNumber: 2, username: "grace"))
         XCTAssertNil(flagged.posts[0].likeCount)
 
         // `topic_accepted_answer` alone does not make a post the answer.
@@ -140,14 +140,17 @@ final class PostLevelTests: XCTestCase {
             }
         }
         let service = makeService()
-        let overview = try await service.fetchOverview(siteURL: site, topicID: "240488", cookieHeader: nil)
+        let overview = try await DiscourseAdapter().overview(TopicRef(siteURL: site, topicID: "240488"), net: service.net(site))
         XCTAssertEqual(overview.facts?.acceptedAnswer?.postNumber, 5)
         XCTAssertEqual(overview.postCount, 14)
 
         PostLevelURLStub.requests = []
-        let fetch = try await service.fetchTopic(
-            siteURL: site, topicID: "240488", cachedPages: [], knownTotalPosts: nil, cookieHeader: nil
-        ) { _ in }
+        let fetch = try await DiscourseAdapter().readTopic(
+            TopicReadRequest(topic: TopicRef(siteURL: site, topicID: "240488"), cachedPages: [], knownTotalPosts: nil),
+            net: service.net(site),
+            progress: { _ in },
+            onPage: nil
+        )
         XCTAssertEqual(fetch.facts?.openingPoster, "alice")
         XCTAssertEqual(fetch.totalPosts, 14)
         XCTAssertEqual(PostLevelURLStub.requests.map(\.path), ["/t/240488.json", "/raw/240488"])
@@ -161,8 +164,8 @@ final class PostLevelTests: XCTestCase {
             return (200, DiscourseFixtures.posts)
         }
         let service = makeService()
-        let posts = try await service.fetchPosts(
-            siteURL: folder, topicID: "240488", postIDs: [1198342, 1172723], cookieHeader: "_t=session"
+        let posts = try await DiscourseAPI(net: service.net(folder, cookieHeader: "_t=session")).fetchPosts(
+            topicID: "240488", postIDs: [1198342, 1172723]
         )
         XCTAssertEqual(posts.map(\.number), [5, 10])
         XCTAssertEqual(posts.map(\.username), ["bob", "bob"])
@@ -198,16 +201,14 @@ final class PostLevelTests: XCTestCase {
         let json = try XCTUnwrap(
             JSONSerialization.jsonObject(with: Data(DiscourseFixtures.topic.utf8)) as? [String: Any]
         )
-        let facts = ForumService.parseTopicFacts(json)
+        let facts = DiscourseParsing.parseTopicFacts(json)
         PostLevelURLStub.handler = { request in
             PostLevelURLStub.requests.append(request.url!)
             return (200, DiscourseFixtures.posts)
         }
         let service = makeService()
         // 5 is an included post; 10 is counted from post 7.
-        let posts = try await service.fetchPosts(
-            siteURL: site, topicID: "240488", numbers: [10, 5], facts: facts, cookieHeader: nil
-        )
+        let posts = try await DiscourseAPI(net: service.net(site)).fetchPosts(topicID: "240488", numbers: [10, 5], facts: facts)
         XCTAssertEqual(posts.map(\.number), [5, 10])
         let items = URLComponents(url: try XCTUnwrap(PostLevelURLStub.requests.first), resolvingAgainstBaseURL: false)?
             .queryItems?.map(\.value)
@@ -215,9 +216,7 @@ final class PostLevelTests: XCTestCase {
 
         // The stub answers with posts 5 and 10 again: 10 was not asked for
         // (as when a guessed id lands on another post), so it is dropped.
-        let missing = try await service.fetchPosts(
-            siteURL: site, topicID: "240488", numbers: [5, 11], facts: facts, cookieHeader: nil
-        )
+        let missing = try await DiscourseAPI(net: service.net(site)).fetchPosts(topicID: "240488", numbers: [5, 11], facts: facts)
         XCTAssertEqual(missing.map(\.number), [5])
     }
 
@@ -227,36 +226,36 @@ final class PostLevelTests: XCTestCase {
         for base in [site, folder] {
             let prefix = base + "/t/hide-badges/42"
             XCTAssertEqual(
-                ForumSite.topicURL(siteURL: base, topicID: "42", slug: "hide-badges", postNumber: 7)?.absoluteString,
+                DiscourseRoutes.topicURL(siteURL: base, topicID: "42", slug: "hide-badges", postNumber: 7)?.absoluteString,
                 prefix + "/7"
             )
             XCTAssertEqual(
-                ForumSite.topicURL(siteURL: base, topicID: "42", postNumber: 3)?.absoluteString,
+                DiscourseRoutes.topicURL(siteURL: base, topicID: "42", postNumber: 3)?.absoluteString,
                 base + "/t/42/3"
             )
             XCTAssertEqual(
-                ForumSite.topicURL(siteURL: base, topicID: "42", slug: "hide-badges", filter: .summary)?.absoluteString,
+                DiscourseRoutes.topicURL(siteURL: base, topicID: "42", slug: "hide-badges", filter: .summary)?.absoluteString,
                 prefix + "?filter=summary"
             )
             XCTAssertEqual(
-                ForumSite.topicURL(siteURL: base, topicID: "42", slug: "hide-badges", filter: .username("bob"))?.absoluteString,
+                DiscourseRoutes.topicURL(siteURL: base, topicID: "42", slug: "hide-badges", filter: .username("bob"))?.absoluteString,
                 prefix + "?username_filters=bob"
             )
             XCTAssertEqual(
-                ForumSite.topicJSONURL(siteURL: base, topicID: "42", filter: .summary)?.absoluteString,
+                DiscourseRoutes.topicJSONURL(siteURL: base, topicID: "42", filter: .summary)?.absoluteString,
                 base + "/t/42.json?filter=summary"
             )
             XCTAssertEqual(
-                ForumSite.topicJSONURL(siteURL: base, topicID: "42", filter: .username("bob"))?.absoluteString,
+                DiscourseRoutes.topicJSONURL(siteURL: base, topicID: "42", filter: .username("bob"))?.absoluteString,
                 base + "/t/42.json?username_filters=bob"
             )
         }
-        XCTAssertNil(ForumSite.topicURL(siteURL: site, topicID: "42", postNumber: 0))
-        XCTAssertNil(ForumSite.topicURL(siteURL: site, topicID: "x", postNumber: 2))
-        XCTAssertNil(ForumSite.topicPostsJSONURL(siteURL: site, topicID: "42", postIDs: []))
-        XCTAssertNil(ForumSite.topicPostsJSONURL(siteURL: site, topicID: "42", postIDs: [0]))
+        XCTAssertNil(DiscourseRoutes.topicURL(siteURL: site, topicID: "42", postNumber: 0))
+        XCTAssertNil(DiscourseRoutes.topicURL(siteURL: site, topicID: "x", postNumber: 2))
+        XCTAssertNil(DiscourseRoutes.topicPostsJSONURL(siteURL: site, topicID: "42", postIDs: []))
+        XCTAssertNil(DiscourseRoutes.topicPostsJSONURL(siteURL: site, topicID: "42", postIDs: [0]))
         // A name that needs escaping stays one query value.
-        let escaped = try XCTUnwrap(ForumSite.topicURL(siteURL: site, topicID: "42", filter: .username("a&b c")))
+        let escaped = try XCTUnwrap(DiscourseRoutes.topicURL(siteURL: site, topicID: "42", filter: .username("a&b c")))
         XCTAssertEqual(
             URLComponents(url: escaped, resolvingAgainstBaseURL: false)?.queryItems,
             [URLQueryItem(name: "username_filters", value: "a&b c")]
@@ -264,7 +263,7 @@ final class PostLevelTests: XCTestCase {
     }
 
     func testPostNumberIsReadOnlyRightAfterTheTopicID() {
-        func number(_ text: String) -> Int? { ForumSite.postNumber(from: URL(string: text)!) }
+        func number(_ text: String) -> Int? { DiscourseRecognizer().postNumber(in: URL(string: text)!) }
         XCTAssertEqual(number("https://f.example/t/slug/42/5"), 5)
         XCTAssertEqual(number("https://f.example/t/42/5"), 5)
         XCTAssertEqual(number("https://f.example/forum/t/slug/42/17/?u=bob#reply"), 17)
@@ -273,9 +272,9 @@ final class PostLevelTests: XCTestCase {
         XCTAssertNil(number("https://f.example/t/slug/42?page=2"))
         XCTAssertNil(number("https://f.example/latest"))
         // Building and reading agree, with a base path too.
-        let url = ForumSite.topicURL(siteURL: folder, topicID: "42", slug: "s", postNumber: 9)!
-        XCTAssertEqual(ForumSite.postNumber(from: url), 9)
-        XCTAssertEqual(ForumSite.looseTopicID(from: url), "42")
+        let url = DiscourseRoutes.topicURL(siteURL: folder, topicID: "42", slug: "s", postNumber: 9)!
+        XCTAssertEqual(DiscourseRecognizer().postNumber(in: url), 9)
+        XCTAssertEqual(DiscourseRecognizer().looseTopicID(in: url), "42")
     }
 
     // MARK: Helpers

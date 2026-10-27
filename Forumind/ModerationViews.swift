@@ -242,7 +242,7 @@ struct ReportSheet: View {
     }
 
     private func send(target: ReportTarget, reason: ReportReason?, note: String, blocked: Bool) {
-        let draft = ModerationReport.draft(for: target, reason: reason, note: note, blocked: blocked)
+        let draft = ModerationReport.draft(for: target, reason: reason, note: note, blocked: blocked, links: app.adapter(for: target.siteURL)?.links)
         if MFMailComposeViewController.canSendMail() {
             mail = draft
         } else {
@@ -337,7 +337,8 @@ struct AIOutputReportSheet: View {
             }
         } else {
             ReportForm(target: target) { reason, note in
-                draft = ModerationReport.draft(for: target, reason: reason, note: note, blocked: false)
+                // An AI output names no post, so it needs no site links.
+                draft = ModerationReport.draft(for: target, reason: reason, note: note, blocked: false, links: nil)
             }
             .accessibilityIdentifier("aiOutputReportForm")
         }

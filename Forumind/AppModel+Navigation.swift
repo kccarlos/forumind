@@ -68,16 +68,19 @@ enum BrowseNavigation {
     /// (and give `.last` its number); `newSince` is the post count a watched
     /// topic had when the reader last caught up (`.firstNew`).
     static func plan(
+        adapter: any SiteAdapter,
         siteURL: String,
         topicID: String,
         slug: String?,
         landing: BrowseLanding,
-        facts: ForumTopicFacts?,
-        newSince: Int? = nil
+        facts: TopicFacts?,
+        newSince: Int? = nil,
+        anchor: (Int) -> String? = { _ in nil }
     ) -> Plan? {
-        guard let topic = ForumSite.topicURL(siteURL: siteURL, topicID: topicID, slug: slug) else { return nil }
+        let links = adapter.links
+        guard let topic = links.topicURL(siteURL: siteURL, topicID: topicID, slug: slug) else { return nil }
         func post(_ number: Int) -> Plan? {
-            ForumSite.topicURL(siteURL: siteURL, topicID: topicID, slug: slug, postNumber: number)
+            links.url(siteURL: siteURL, topicID: topicID, slug: slug, postNumber: number, anchor: anchor(number))
                 .map { Plan(url: $0, postNumber: number) }
         }
         switch landing {
@@ -88,10 +91,12 @@ enum BrowseNavigation {
             return Plan(url: topic, postNumber: nil, status: .noSolution)
         case .last:
             if let highest = facts?.highestPostNumber, highest >= 1 { return post(highest) }
-            return Plan(url: topic.appendingPathComponent("last"), postNumber: nil)
+            return Plan(url: links.lastPostURL(topicURL: topic) ?? topic, postNumber: nil)
         case .top:
-            return ForumSite.topicURL(siteURL: siteURL, topicID: topicID, slug: slug, filter: .summary)
-                .map { Plan(url: $0, postNumber: nil) }
+            // A site without filtered views opens the topic itself.
+            let filtered = adapter.capabilities.topicFilters?
+                .url(topic: TopicRef(siteURL: siteURL, topicID: topicID), slug: slug, filter: .top)
+            return Plan(url: filtered ?? topic, postNumber: nil)
         case .firstNew:
             if let newSince, let total = facts?.highestPostNumber ?? facts?.postsCount, total > newSince {
                 return post(newSince + 1)
@@ -118,14 +123,12 @@ extension AppModel {
     func topicOverview(siteURL: String, topicID: String, refresh: Bool = false) async -> ForumTopicOverview? {
         let key = TopicIdentity.key(siteURL: siteURL, topicID: topicID)
         if !refresh, let cached = topicOverviews[key] { return cached }
-        let cookies = await browser.cookieHeader(forSite: siteURL)
-        guard let overview = try? await forumService.fetchOverview(
-            siteURL: siteURL,
-            topicID: topicID,
-            cookieHeader: cookies,
-            resourceLoader: webViewResourceLoader,
-            pace: settings.forumRequestPace
-        ) else {
+        guard let adapter = adapter(for: siteURL),
+              let overview = try? await adapter.overview(
+                  TopicRef(siteURL: siteURL, topicID: topicID),
+                  net: await network(for: siteURL, pace: settings.forumRequestPace)
+              )
+        else {
             return topicOverviews[key]
         }
         if topicOverviews.count >= 100 { topicOverviews.removeAll() }
@@ -155,13 +158,16 @@ extension AppModel {
         let facts = overview?.facts
         let watched = watchedTopics.first { $0.topicKey == ref.topicKey }
         let newSince = watched.flatMap { $0.newReplies > 0 ? $0.knownPostCount - $0.newReplies : nil }
-        guard let plan = BrowseNavigation.plan(
+        guard let adapter = adapter(for: ref.siteURL),
+              let plan = BrowseNavigation.plan(
+            adapter: adapter,
             siteURL: ref.siteURL,
             topicID: ref.topicID,
             slug: ref.slug ?? overview?.slug,
             landing: landing,
             facts: facts,
-            newSince: newSince
+            newSince: newSince,
+            anchor: { postAnchor($0, topicKey: ref.topicKey) }
         ) else {
             return BrowseResult(status: .notFound, shown: "That topic can't be opened.")
         }
@@ -233,6 +239,9 @@ extension AppModel {
 
     /// Scrolls to a rendered post or loads the topic at it, then marks it.
     private func show(post number: Int, in ref: BrowseTopicRef, url: URL) async -> BrowseScrollOutcome {
+        // The topic is on its way to the page: let that load finish, then scroll
+        // (or load the post's address) on the document that is there.
+        if pageContext.topic?.topicKey == ref.topicKey { await browser.waitUntilSettled() }
         let onPage = pageContext.state == .topic && pageContext.topic?.topicKey == ref.topicKey
         if onPage {
             let outcome = await browser.scrollToPost(number)
@@ -270,8 +279,8 @@ extension AppModel {
             if case .focus = browseCursor.origin { browseCursor.clear() }
             if let current = browser.currentURL, URLComponents(url: current, resolvingAgainstBaseURL: false)?.query != nil,
                let url = pageContext.currentPost.flatMap({
-                   ForumSite.topicURL(siteURL: ref.siteURL, topicID: ref.topicID, slug: slug, postNumber: $0)
-               }) ?? ForumSite.topicURL(siteURL: ref.siteURL, topicID: ref.topicID, slug: slug) {
+                   topicURL(siteURL: ref.siteURL, topicID: ref.topicID, slug: slug, postNumber: $0)
+               }) ?? topicURL(siteURL: ref.siteURL, topicID: ref.topicID, slug: slug) {
                 browser.load(url)
             }
             return BrowseResult(status: .focused, shown: "Showing all of \(quoted(title)).")
@@ -294,36 +303,36 @@ extension AppModel {
             return result
 
         case .user, .op, .top:
-            let filter: ForumSite.TopicFilter
+            guard let filters = adapter(for: ref.siteURL)?.capabilities.topicFilters else {
+                return BrowseResult(status: .unavailable, shown: "This forum can't narrow a topic.")
+            }
+            let filter: TopicFilter
             let label: String
             switch focus {
             case .user(let name):
-                filter = .username(name)
+                filter = .author(name)
                 label = "posts by \(name)"
             case .op:
                 guard let poster = overview?.facts?.openingPoster else {
                     return BrowseResult(status: .unavailable, shown: "The opening poster isn't known.")
                 }
-                filter = .username(poster)
+                filter = .author(poster)
                 label = "posts by the opening poster, \(poster)"
             default:
-                filter = .summary
+                filter = .top
                 label = "top posts"
             }
-            guard let url = ForumSite.topicURL(siteURL: ref.siteURL, topicID: ref.topicID, slug: slug, filter: filter) else {
+            let topicRef = TopicRef(siteURL: ref.siteURL, topicID: ref.topicID)
+            guard let url = filters.url(topic: topicRef, slug: slug, filter: filter) else {
                 return BrowseResult(status: .notFound, shown: "That topic can't be opened.")
             }
             await browser.clearHighlight()
             browser.load(url)
             // The filtered JSON lists the posts (about the first 20).
-            let cookies = await browser.cookieHeader(forSite: ref.siteURL)
-            let filtered = try? await forumService.fetchOverview(
-                siteURL: ref.siteURL,
-                topicID: ref.topicID,
+            let filtered = try? await filters.overview(
+                topicRef,
                 filter: filter,
-                cookieHeader: cookies,
-                resourceLoader: webViewResourceLoader,
-                pace: settings.forumRequestPace
+                net: await network(for: ref.siteURL, pace: settings.forumRequestPace)
             )
             let rules = browser.moderationRules
             let posts = (filtered?.facts?.posts ?? []).filter {
@@ -367,22 +376,21 @@ extension AppModel {
         guard let siteURL = pageContext.siteURL ?? currentForum?.siteURL else {
             return BrowseResult(status: .unavailable, shown: "No forum is open.")
         }
-        var search = trimmed
+        var searchScope = SearchScope.forum
         if scope == .topic {
             guard let topic = currentTopicRef else {
                 return BrowseResult(status: .unavailable, shown: "No topic is open to search in.")
             }
-            search += " topic:\(topic.topicID)"
+            searchScope = .topic(id: topic.topicID)
         }
-        let cookies = await browser.cookieHeader(forSite: siteURL)
-        let results: (hits: [ForumSearchHit], topics: [ForumTopicListing])
+        guard let adapter = adapter(for: siteURL) else {
+            return BrowseResult(status: .unavailable, shown: "This forum isn't supported.")
+        }
+        let results: SiteQueryResult
         do {
-            results = try await forumService.searchResults(
-                siteURL: siteURL,
-                query: search,
-                cookieHeader: cookies,
-                resourceLoader: webViewResourceLoader,
-                pace: settings.forumRequestPace
+            results = try await adapter.run(
+                .search(text: trimmed, scope: searchScope),
+                net: await network(for: siteURL, pace: settings.forumRequestPace)
             )
         } catch {
             return BrowseResult(status: .failed, shown: "The search didn't go through: \(error.localizedDescription)")
@@ -477,8 +485,7 @@ extension AppModel {
 
     private func isFilteredView(of item: BrowseItem) -> Bool {
         guard pageContext.topic?.topicKey == item.topicKey, let url = browser.currentURL else { return false }
-        let names = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.map(\.name) ?? []
-        return names.contains("username_filters") || names.contains("filter")
+        return adapter(for: item.siteURL)?.capabilities.topicFilters?.isFiltered(url) ?? false
     }
 
     /// A post of a filtered view: scroll there, or load it with the filter kept.
@@ -489,7 +496,8 @@ extension AppModel {
             return BrowseResult(status: .hidden, shown: "Post \(number) is hidden by your blocks or filters.")
         }
         if outcome != .shown, let current = browser.currentURL,
-           var components = URLComponents(url: ForumSite.postURL(topicURL: current, number: number), resolvingAgainstBaseURL: false) {
+           let post = adapter(for: item.siteURL)?.links.postURL(topicURL: current, number: number, anchor: postAnchor(number, topicKey: item.topicKey)),
+           var components = URLComponents(url: post, resolvingAgainstBaseURL: false) {
             components.query = URLComponents(url: current, resolvingAgainstBaseURL: false)?.query
             if let url = components.url { browser.load(url) }
         }
@@ -528,7 +536,7 @@ extension AppModel {
             return BrowseResult(status: .unavailable, shown: "No topic is open.")
         }
         let number = post ?? pageContext.currentPost ?? 1
-        let facts: ForumTopicFacts?
+        let facts: TopicFacts?
         if let cached = topicOverviews[ref.topicKey]?.facts {
             facts = cached
         } else {
@@ -567,23 +575,19 @@ extension AppModel {
     /// A post's text: from the page when it is rendered there, else from
     /// `/posts.json` (with the topic's facts for the post id). Moderation is
     /// checked again on the text itself.
-    func postText(_ number: Int, in ref: BrowseTopicRef, facts: ForumTopicFacts?) async -> PostTextLookup {
+    func postText(_ number: Int, in ref: BrowseTopicRef, facts: TopicFacts?) async -> PostTextLookup {
         let rules = browser.moderationRules
         if rules.hidesPost(number, siteURL: ref.siteURL, topicID: ref.topicID) { return .hidden }
         var post: BrowsePostText?
         if pageContext.topic?.topicKey == ref.topicKey {
             post = await browser.postText(number)
         }
-        if post == nil, let facts {
-            let cookies = await browser.cookieHeader(forSite: ref.siteURL)
-            post = (try? await forumService.fetchPosts(
-                siteURL: ref.siteURL,
-                topicID: ref.topicID,
-                numbers: [number],
+        if post == nil, let facts, let lookup = adapter(for: ref.siteURL)?.capabilities.postLookup {
+            post = (try? await lookup.posts(
+                [number],
+                in: TopicRef(siteURL: ref.siteURL, topicID: ref.topicID),
                 facts: facts,
-                cookieHeader: cookies,
-                resourceLoader: webViewResourceLoader,
-                pace: settings.forumRequestPace
+                net: await network(for: ref.siteURL, pace: settings.forumRequestPace)
             ))?.first.map { BrowsePostText(number: $0.number, username: $0.username, text: $0.text) }
         }
         guard let post else { return .missing }
@@ -661,7 +665,8 @@ extension AppModel {
     /// Agent sources as current-list items, without hidden posts.
     func sourceItems(_ sources: [AgentSources.Source], siteURL: String) -> [BrowseItem] {
         let rules = browser.moderationRules
-        return sources.compactMap { BrowseItem(source: $0, siteURL: siteURL) }
+        guard let adapter = adapter(for: siteURL) else { return [] }
+        return sources.compactMap { BrowseItem(source: $0, siteURL: siteURL, adapter: adapter) }
             .filter { item in
                 !(item.postNumber.map { rules.hidesPost($0, siteURL: siteURL, topicID: item.topicID) } ?? false)
                     && !rules.hidesText(item.title)
@@ -676,13 +681,14 @@ extension AppModel {
     /// opens the topic at that post and highlights it; anything else loads.
     func openLink(_ url: URL) {
         guard let siteURL = siteURL(containing: url),
-              let topicID = ForumSite.extractTopicID(from: url, basePath: ForumSite.parse(siteURL: siteURL)?.basePath ?? ""),
-              let number = ForumSite.postNumber(from: url)
+              let link = adapter(for: siteURL)?.links.parse(url, basePath: ForumSite.parse(siteURL: siteURL)?.basePath ?? ""),
+              let number = link.postNumber
         else {
             browser.load(url)
             return
         }
-        let slug = BrowseItem.slug(of: url, topicID: topicID)
+        let topicID = link.topicID
+        let slug = link.slug
         Task { [weak self] in
             await self?.openTopic(
                 .item(BrowseItem(kind: .post, siteURL: siteURL, topicID: topicID, slug: slug, postNumber: number, title: "")),
@@ -696,7 +702,8 @@ extension AppModel {
     /// current list, at that source, so the cards and Next follow them.
     func followSources(_ sources: [AgentSources.Source], selecting source: AgentSources.Source, siteURL: String) {
         let items = sourceItems(sources, siteURL: siteURL)
-        let index = items.firstIndex { $0.topicID == source.topicID && $0.postNumber == source.postNumber }
+        let parse = linkParser(siteURL: siteURL)
+        let index = items.firstIndex { $0.topicID == parse(source.url)?.topicID && $0.postNumber == source.postNumber }
         browseCursor.replace(with: items, origin: .sources, current: index)
     }
 
@@ -711,6 +718,55 @@ extension AppModel {
         browseCursor.cards = collapsed ? .collapsed : .expanded
     }
 
+    // MARK: Links
+
+    /// A topic, or with a `postNumber` that post of it, through the site's
+    /// adapter; nil for a site without one.
+    func topicURL(siteURL: String, topicID: String, slug: String?, postNumber: Int? = nil, anchor: String? = nil) -> URL? {
+        adapter(for: siteURL)?.links.url(siteURL: siteURL, topicID: topicID, slug: slug, postNumber: postNumber, anchor: anchor)
+    }
+
+    /// The topic opened at the item's post.
+    func url(for item: BrowseItem) -> URL? {
+        topicURL(
+            siteURL: item.siteURL, topicID: item.topicID, slug: item.slug, postNumber: item.postNumber,
+            anchor: item.postNumber.flatMap { postAnchor($0, topicKey: item.topicKey) }
+        )
+    }
+
+    /// The card's topic, at a post when given; the forum's address when the
+    /// topic has no link.
+    func url(for card: DigestCard, atPost number: Int? = nil) -> URL {
+        topicURL(siteURL: card.siteURL, topicID: card.topicID, slug: card.slug, postNumber: number)
+            ?? topicURL(siteURL: card.siteURL, topicID: card.topicID, slug: card.slug)
+            ?? URL(string: card.siteURL) ?? URL(string: "about:blank")!
+    }
+
+    /// The card's filtered view of the top posts, for long topics whose most
+    /// liked reply isn't known; nil when the site has no such view.
+    func topPostsURL(for card: DigestCard) -> URL? {
+        guard card.topPost == nil, card.postCount >= DigestLimits.topPostsFilterMinimum else { return nil }
+        return adapter(for: card.siteURL)?.capabilities.topicFilters?
+            .url(topic: TopicRef(siteURL: card.siteURL, topicID: card.topicID), slug: card.slug, filter: .top)
+    }
+
+    /// The chapter's topic at the cited post (or its top).
+    func url(for chapter: PodcastChapter) -> URL? {
+        guard let siteURL = chapter.siteURL, let topicID = chapter.topicID else { return nil }
+        return topicURL(siteURL: siteURL, topicID: topicID, slug: chapter.slug, postNumber: chapter.postNumber)
+    }
+
+    /// The slug of a topic URL on `siteURL`'s forum, as its adapter reads it.
+    func slug(of url: URL, siteURL: String) -> String? {
+        linkParser(siteURL: siteURL)(url)?.slug
+    }
+
+    /// The anchor of a post the topic's read pages hold (opaque; the adapter's
+    /// `links` decide whether it matters).
+    func postAnchor(_ number: Int, topicKey: String) -> String? {
+        sessions[topicKey]?.rawPages.lazy.flatMap(\.blocks).first { $0.number == number }?.anchor
+    }
+
     // MARK: Helpers
 
     /// The open topic, when the page is one.
@@ -719,7 +775,7 @@ extension AppModel {
         return BrowseTopicRef(
             siteURL: topic.siteURL,
             topicID: topic.topicID,
-            slug: BrowseItem.slug(of: topic.url, topicID: topic.topicID),
+            slug: slug(of: topic.url, siteURL: topic.siteURL),
             title: topic.title
         )
     }
@@ -742,16 +798,14 @@ extension AppModel {
                 title: item.title.isEmpty ? nil : item.title
             )
         case .url(let url):
-            guard let siteURL = siteURL(containing: url),
-                  let topicID = ForumSite.extractTopicID(from: url, basePath: ForumSite.parse(siteURL: siteURL)?.basePath ?? "")
-            else {
+            guard let siteURL = siteURL(containing: url), let link = linkParser(siteURL: siteURL)(url) else {
                 return nil
             }
-            return BrowseTopicRef(siteURL: siteURL, topicID: topicID, slug: BrowseItem.slug(of: url, topicID: topicID))
+            return BrowseTopicRef(siteURL: siteURL, topicID: link.topicID, slug: link.slug)
         }
     }
 
-    private func item(post number: Int, in ref: BrowseTopicRef, facts: ForumTopicFacts? = nil) -> BrowseItem {
+    private func item(post number: Int, in ref: BrowseTopicRef, facts: TopicFacts? = nil) -> BrowseItem {
         BrowseItem(
             kind: .post,
             siteURL: ref.siteURL,
@@ -795,7 +849,9 @@ extension AppModel {
             if let post {
                 await self.openTopic(.listing(ForumTopicListing(
                     siteURL: topic.siteURL, id: Int(topic.topicID) ?? 0, title: topic.title ?? "",
-                    slug: topic.slug ?? topic.topicID, postsCount: 0
+                    slug: topic.slug ?? topic.topicID,
+                    url: self.currentTopic?.url ?? URL(string: topic.siteURL) ?? URL(string: "about:blank")!,
+                    postsCount: 0
                 )), at: .post(post), includeContent: false)
             }
             if let query {

@@ -30,14 +30,6 @@ struct BrowseItem: Codable, Equatable, Identifiable {
 
     var topicKey: String { TopicIdentity.key(siteURL: siteURL, topicID: topicID) }
 
-    /// The topic opened at this item's post.
-    var url: URL? {
-        if let postNumber {
-            return ForumSite.topicURL(siteURL: siteURL, topicID: topicID, slug: slug, postNumber: postNumber)
-        }
-        return ForumSite.topicURL(siteURL: siteURL, topicID: topicID, slug: slug)
-    }
-
     init(
         kind: Kind,
         siteURL: String,
@@ -73,31 +65,21 @@ struct BrowseItem: Codable, Equatable, Identifiable {
 
     /// A source of an agent answer; nil when its URL is not a topic on
     /// `siteURL`'s forum.
-    init?(source: AgentSources.Source, siteURL: String) {
+    init?(source: AgentSources.Source, siteURL: String, adapter: any SiteAdapter) {
         guard ForumSite.isSameForum(url: source.url, siteURL: siteURL),
-              let topicID = ForumSite.looseTopicID(from: source.url)
+              let topicID = adapter.recognizer.looseTopicID(in: source.url)
         else {
             return nil
         }
-        let site = ForumSite.parse(siteURL: siteURL)
-        let parsed = ForumTopic.parse(url: source.url, title: source.title, basePath: site?.basePath ?? "")
+        let basePath = ForumSite.parse(siteURL: siteURL)?.basePath ?? ""
         self.init(
             kind: .source,
             siteURL: siteURL,
             topicID: topicID,
-            slug: parsed.flatMap { BrowseItem.slug(of: $0.url, topicID: topicID) },
+            slug: adapter.links.parse(source.url, basePath: basePath)?.slug,
             postNumber: source.postNumber,
             title: source.title
         )
-    }
-
-    /// The slug segment before the topic id in a topic URL, if any.
-    static func slug(of url: URL, topicID: String) -> String? {
-        let segments = url.path.split(separator: "/").map(String.init)
-        guard let index = segments.firstIndex(of: topicID), index >= 1, segments[index - 1] != "t" else {
-            return nil
-        }
-        return segments[index - 1]
     }
 }
 

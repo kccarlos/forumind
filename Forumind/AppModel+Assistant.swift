@@ -21,8 +21,7 @@ extension AppModel {
     /// The forum the Assistant header names.
     var assistantForum: Forum? {
         if let siteURL = pageContext.siteURL ?? currentTopic?.siteURL {
-            if let forum = forum(for: siteURL) { return forum }
-            return Forum(siteURL: siteURL, name: pageContext.forumName, iconURL: pageContext.iconURL)
+            return forumInfo(siteURL: siteURL)
         }
         return currentForum
     }
@@ -35,10 +34,11 @@ extension AppModel {
 
     func forumInfo(siteURL: String) -> Forum {
         if let forum = forum(for: siteURL) { return forum }
+        // Not in the directory: the page's recognized site, else a display-only placeholder.
         if pageContext.siteURL == siteURL {
-            return Forum(siteURL: siteURL, name: pageContext.forumName, iconURL: pageContext.iconURL)
+            return Forum(siteURL: siteURL, kind: pageContext.site ?? .unknown, name: pageContext.forumName, iconURL: pageContext.iconURL)
         }
-        return Forum(siteURL: siteURL, name: ForumSite.displayName(siteURL: siteURL, name: nil))
+        return Forum(siteURL: siteURL, kind: .unknown, name: ForumSite.displayName(siteURL: siteURL, name: nil))
     }
 
     /// Forums with saved summaries, chats, agent runs, watched topics or
@@ -90,44 +90,68 @@ enum AgentSources {
 
         var id: Int { number }
         var label: String { "S\(number)" }
-        var topicID: String? { ForumSite.looseTopicID(from: url) }
+    }
+
+    /// A link on the run's site → its topic and post (the adapter's `links.parse`),
+    /// nil for a link that is not a topic of that site (`AppModel.linkParser(siteURL:)`).
+    struct Parse {
+        /// The forum's base path, which its topics' keys include.
+        var basePath = ""
+        var parse: (URL) -> SiteLink?
+
+        init(basePath: String = "", parse: @escaping (URL) -> SiteLink?) {
+            self.basePath = basePath
+            self.parse = parse
+        }
+
+        func callAsFunction(_ url: URL) -> SiteLink? { parse(url) }
     }
 
     private static let linkPattern = try? NSRegularExpression(
         pattern: #"\[([^\]\n]+)\]\((https?://[^)\s]+)\)"#
     )
 
-    /// Same topic regardless of slug, post number, or query.
-    static func topicIdentity(of url: URL) -> String {
-        let host = url.host?.lowercased() ?? ""
-        if let topicID = ForumSite.looseTopicID(from: url) { return "\(host)/t/\(topicID)" }
-        return url.absoluteString
+    /// Same topic regardless of slug, post number, or query: the topic key
+    /// (host, base path, id), so two forums on one host stay apart.
+    static func topicIdentity(of url: URL, parse: Parse) -> String {
+        guard let link = parse(url),
+              let siteURL = ForumSite.siteURL(fromPage: url, basePath: parse.basePath),
+              let key = ForumSite.topicKey(siteURL: siteURL, topicID: link.topicID)
+        else {
+            return url.absoluteString
+        }
+        return key
     }
 
     /// The source a link folds into, by the rule above.
-    static func source(for url: URL, in sources: [Source]) -> Source? {
-        let topic = topicIdentity(of: url)
-        if let post = ForumSite.postNumber(from: url) {
-            return sources.first { topicIdentity(of: $0.url) == topic && $0.postNumber == post }
+    static func source(for url: URL, in sources: [Source], parse: Parse) -> Source? {
+        let topic = topicIdentity(of: url, parse: parse)
+        if let post = parse(url)?.postNumber {
+            return sources.first { topicIdentity(of: $0.url, parse: parse) == topic && $0.postNumber == post }
         }
-        return sources.first { topicIdentity(of: $0.url) == topic }
+        return sources.first { topicIdentity(of: $0.url, parse: parse) == topic }
     }
 
-    static func extract(from answer: String, run: AgentRun?, sessions: [String: TopicSession]) -> [Source] {
+    static func extract(
+        from answer: String,
+        run: AgentRun?,
+        sessions: [String: TopicSession],
+        parse: Parse
+    ) -> [Source] {
         var sources: [Source] = []
-        for (title, url) in links(in: answer) where source(for: url, in: sources) == nil {
+        for (title, url) in links(in: answer) where source(for: url, in: sources, parse: parse) == nil {
             sources.append(Source(
                 number: sources.count + 1,
                 title: title,
                 url: url,
-                postNumber: ForumSite.postNumber(from: url),
+                postNumber: parse(url)?.postNumber,
                 cited: true
             ))
         }
         for step in run?.steps ?? [] {
             guard let topicKey = step.topicKey, let session = sessions[topicKey] else { continue }
-            let topic = topicIdentity(of: session.url)
-            guard !sources.contains(where: { topicIdentity(of: $0.url) == topic }) else { continue }
+            let topic = topicIdentity(of: session.url, parse: parse)
+            guard !sources.contains(where: { topicIdentity(of: $0.url, parse: parse) == topic }) else { continue }
             sources.append(Source(number: sources.count + 1, title: session.title, url: session.url, cited: false))
         }
         return sources
@@ -135,7 +159,7 @@ enum AgentSources {
 
     /// Rewrites each `[title](url)` citation as `title [S1](url)`, so the
     /// Markdown view renders the number as a tappable chip.
-    static func annotate(_ answer: String, sources: [Source]) -> String {
+    static func annotate(_ answer: String, sources: [Source], parse: Parse) -> String {
         guard let linkPattern, !sources.isEmpty else { return answer }
         let nsAnswer = answer as NSString
         var result = ""
@@ -143,7 +167,7 @@ enum AgentSources {
         for match in linkPattern.matches(in: answer, range: NSRange(location: 0, length: nsAnswer.length)) {
             let title = nsAnswer.substring(with: match.range(at: 1))
             let urlText = nsAnswer.substring(with: match.range(at: 2))
-            guard let url = URL(string: urlText), let number = source(for: url, in: sources)?.number else { continue }
+            guard let url = URL(string: urlText), let number = source(for: url, in: sources, parse: parse)?.number else { continue }
             result += nsAnswer.substring(with: NSRange(location: cursor, length: match.range.location - cursor))
             // A bare "[S1](url)" or a title that is just the URL keeps only the chip.
             let trimmed = title.trimmingCharacters(in: .whitespaces)
@@ -235,21 +259,23 @@ extension AppModel {
             return ModelSelection(provider: provider, model: parts[1])
         } ?? ModelSelection(provider: sampleProvider, model: sampleModel)
         func ago(_ minutes: Double) -> Date { now.addingTimeInterval(-minutes * 60) }
+        func sampleHome(_ forum: Forum) -> URL? { sites.adapter(for: forum.kind)?.links.homeURL(siteURL: forum.siteURL) }
         // The sample's words in the app's language (SampleContent.swift).
         let text = SampleContent.current
+        let kind = SiteKind.discourse
 
         let meta = Forum(
-            siteURL: text.meta.siteURL, name: text.meta.name,
+            siteURL: text.meta.siteURL, kind: kind, name: text.meta.name,
             isPinned: true, pinOrder: 0, lastVisitedAt: ago(2)
         )
         // Fictional communities on reserved example domains (screenshots
         // show no real companies or people).
         let makers = Forum(
-            siteURL: text.makers.siteURL, name: text.makers.name,
+            siteURL: text.makers.siteURL, kind: kind, name: text.makers.name,
             isPinned: true, pinOrder: 1, lastVisitedAt: ago(30)
         )
         let homeLab = Forum(
-            siteURL: text.homeLab.siteURL, name: text.homeLab.name,
+            siteURL: text.homeLab.siteURL, kind: kind, name: text.homeLab.name,
             lastVisitedAt: ago(60 * 26)
         )
 
@@ -266,7 +292,7 @@ extension AppModel {
             chat: [(ChatRole, String)] = [], kept: Bool = false, updated: Double
         ) -> TopicSession {
             var value = TopicSession(siteURL: topic.siteURL, topicID: topic.topicID, url: topic.url, title: topic.title)
-            value.source = "Sample post and replies for \(topic.title)."
+            value.seedSource("Sample post and replies for \(topic.title).")
             value.summary = summary
             value.history = chat.enumerated().map { index, message in
                 ChatMessage(role: message.0, content: message.1, createdAt: ago(updated - Double(index)))
@@ -413,7 +439,7 @@ extension AppModel {
             currentRun.steps[3].outcome = ""
             var agentRecord = WorkRecord(
                 type: .agent, siteURL: makers.siteURL, topicID: "agent:" + run.id.uuidString,
-                title: run.goal, url: makers.latestURL!, provider: sampleAgent.provider, model: sampleAgent.model
+                title: run.goal, url: sampleHome(makers)!, provider: sampleAgent.provider, model: sampleAgent.model
             )
             agentRecord.status = .running
             agentRecord.statusText = text.agentRunningStatus
@@ -481,10 +507,10 @@ extension AppModel {
         switch state {
         case .topic:
             selected = openTopic
-            context = PageContext(url: openTopic.url, isDiscourse: true, siteURL: openForum.siteURL,
+            context = PageContext(url: openTopic.url, site: kind, siteURL: openForum.siteURL,
                                   forumName: openForum.name, topic: openTopic, state: .topic)
         case .forumHome:
-            context = PageContext(url: openForum.latestURL, isDiscourse: true, siteURL: openForum.siteURL,
+            context = PageContext(url: sampleHome(openForum), site: kind, siteURL: openForum.siteURL,
                                   forumName: openForum.name, state: .forumHome)
         case .notForum:
             context = PageContext(url: URL(string: "https://www.apple.com/newsroom/"), state: .notForum)
@@ -500,7 +526,7 @@ extension AppModel {
         if AssistantDebug.has("-dc-answer-ready"), !AssistantDebug.has("-dc-agent-running") {
             var readyRecord = WorkRecord(
                 type: .agent, siteURL: readyRun.siteURL, topicID: "agent:" + readyRun.id.uuidString,
-                title: readyRun.goal, url: makers.latestURL!, provider: sampleAgent.provider, model: sampleAgent.model
+                title: readyRun.goal, url: sampleHome(makers)!, provider: sampleAgent.provider, model: sampleAgent.model
             )
             readyRecord.status = .completed
             readyRecord.statusText = String(localized: "Answered")

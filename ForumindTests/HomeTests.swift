@@ -213,7 +213,7 @@ final class HomeTests: XCTestCase {
     /// reading or Spotlight; a visit records them.
     func testOnlyTopicsTheUserOpenedAreContinueReadingAndSpotlightEntries() {
         let app = makeApp()
-        let forum = Forum(siteURL: site, name: "Example")
+        let forum = Forum(siteURL: site, kind: .discourse, name: "Example")
         var agentRead = TopicSession(siteURL: site, topicID: "1", url: URL(string: "\(site)/t/one/1")!, title: "Agent read")
         agentRead.source = "pages"
         XCTAssertNil(agentRead.openedByUserAt)
@@ -261,7 +261,7 @@ final class HomeTests: XCTestCase {
         // Opening a card's topic leaves Home and the pushed pages.
         app.showsTodayPage = true
         let digestCard = card("9", .done)
-        app.openDigestLink(digestCard.url, card: digestCard)
+        app.openDigestLink(app.url(for: digestCard), card: digestCard)
         XCTAssertFalse(app.showsTodayPage)
         XCTAssertEqual(app.homePath, [])
     }

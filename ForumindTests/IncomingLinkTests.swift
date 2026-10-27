@@ -252,7 +252,7 @@ final class IncomingLinkTests: XCTestCase {
         let topic = ForumTopic(siteURL: siteURL, topicID: "42", url: topicURL, title: "Topic")
         let context = PageContext(
                 url: topicURL,
-                isDiscourse: true,
+                site: .discourse,
                 siteURL: siteURL,
                 forumName: "Example",
                 topic: topic,

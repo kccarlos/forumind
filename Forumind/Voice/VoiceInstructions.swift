@@ -4,11 +4,13 @@ import Foundation
 /// can be tuned on its own. Written for the model, not shown to the user,
 /// so English and not localized: the model replies in the user's language.
 enum VoiceInstructions {
-    static let persona = """
-    You are the voice of Forumind, a reading companion for Discourse forums. The user is looking at a forum page in the \
-    app, often with their hands busy, and talks to you instead of tapping. You move the page for them and tell them about \
-    what is on it.
-    """
+    static func persona(_ site: VoiceSiteProfile) -> String {
+        """
+        You are the voice of Forumind, \(site.persona). The user is looking at a forum page in the \
+        app, often with their hands busy, and talks to you instead of tapping. You move the page for them and tell them about \
+        what is on it.
+        """
+    }
 
     static let speech = """
     This is speech. Talk in natural, complete spoken sentences. Never use lists, headings, Markdown, emoji or URLs, and \
@@ -47,11 +49,13 @@ enum VoiceInstructions {
     ask for one; use them when the user asks.
     """
 
-    static let language = """
-    Reply in the language the user speaks, and switch when they switch. Search in the forum's language: Discourse \
-    search matches words, so a Chinese question about an English forum is searched with English words. The topic brief \
-    says which language the forum uses.
-    """
+    static func language(_ site: VoiceSiteProfile) -> String {
+        """
+        Reply in the language the user speaks, and switch when they switch. Search in the forum's language: \
+        \(site.languageHint) The topic brief \
+        says which language the forum uses.
+        """
+    }
 
     static let eyesFreeOn = """
     The user can't look at the screen right now (headphones are in, or they asked to hear it). You may read posts out or \
@@ -80,8 +84,8 @@ enum VoiceInstructions {
     }
 
     /// The whole instruction for a session.
-    static func system(answerLength length: VoiceAnswerLength, eyesFree: Bool, forumName: String?) -> String {
-        var parts = [persona, speech, screen, precedence, research, grounding, notes, language]
+    static func system(answerLength length: VoiceAnswerLength, eyesFree: Bool, forumName: String?, site: VoiceSiteProfile) -> String {
+        var parts = [persona(site), speech, screen, precedence, research, grounding, notes, language(site)]
         parts.append(eyesFree ? eyesFreeOn : eyesFreeOff)
         parts.append(answerLength(length))
         if let forumName, !forumName.isEmpty {

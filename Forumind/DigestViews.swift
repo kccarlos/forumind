@@ -403,7 +403,7 @@ struct DigestCardView: View {
                 }
                 reasonPill
             }
-            Button { onOpen(card.url) } label: {
+            Button { onOpen(app.url(for: card)) } label: {
                 Text(card.title)
                     .font(.headline)
                     .foregroundStyle(.primary)
@@ -491,16 +491,16 @@ struct DigestCardView: View {
         var result: [Link] = []
         if let first = card.firstNewPost, card.newReplies > 0 {
             result.append(Link(id: "first", title: String(localized: "First new reply", comment: "Digest card link: opens the topic at the first reply since the last digest"),
-                               systemImage: "arrow.down.to.line", url: card.url(atPost: first)))
+                               systemImage: "arrow.down.to.line", url: app.url(for: card, atPost: first)))
         }
         if let answer = card.acceptedAnswerPost {
             result.append(Link(id: "solution", title: String(localized: "Accepted answer", comment: "Digest card link: opens the topic at its accepted (solution) post"),
-                               systemImage: "checkmark.seal", url: card.url(atPost: answer)))
+                               systemImage: "checkmark.seal", url: app.url(for: card, atPost: answer)))
         }
         if let top = card.topPost {
             result.append(Link(id: "top", title: String(localized: "Top post", comment: "Digest card link: opens the topic at its most liked reply"),
-                               systemImage: "heart", url: card.url(atPost: top)))
-        } else if let url = card.topPostsURL {
+                               systemImage: "heart", url: app.url(for: card, atPost: top)))
+        } else if let url = app.topPostsURL(for: card) {
             result.append(Link(id: "top", title: String(localized: "Top posts", comment: "Digest card link: opens the topic's most liked posts (Discourse's summary view)"),
                                systemImage: "heart", url: url))
         }

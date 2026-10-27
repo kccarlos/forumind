@@ -113,7 +113,7 @@ final class HistoryTests: XCTestCase {
     // MARK: Grouping
 
     func testGroupsFollowTheForumOrderAndDropEmptyForums() {
-        let forums = [Forum(siteURL: beta, name: "Beta"), Forum(siteURL: alpha, name: "Alpha"), Forum(siteURL: "https://c.example.org", name: "C")]
+        let forums = [Forum(siteURL: beta, kind: .discourse, name: "Beta"), Forum(siteURL: alpha, kind: .discourse, name: "Alpha"), Forum(siteURL: "https://c.example.org", kind: .discourse, name: "C")]
         let runs = [run(site: alpha, goal: "a1"), run(site: beta, goal: "b1"), run(site: alpha, goal: "a2")]
         let groups = HistoryFeed.grouped(runs, forums: forums, siteURL: \.siteURL)
         XCTAssertEqual(groups.map(\.0.siteURL), [beta, alpha])

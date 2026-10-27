@@ -139,7 +139,7 @@ extension AppModel {
     func showAnswer(for record: WorkRecord) {
         let run = agentRunID(for: record).flatMap { id in agentRuns.first { $0.id == id } }
         if browser.showsForumsHome, let run {
-            let forum = forum(for: run.siteURL) ?? Forum(siteURL: run.siteURL, name: ForumSite.displayName(siteURL: run.siteURL, name: nil))
+            let forum = forumInfo(siteURL: run.siteURL)
             if isCurrent(forum), browser.currentURL != nil {
                 browser.hideForumsHome()
             } else {

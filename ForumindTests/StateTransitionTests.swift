@@ -298,8 +298,8 @@ final class StateTransitionTests: XCTestCase {
         let harness = makeHarness()
         let app = harness.app
         select(app, .ollama, model: "model-a")
-        app.recordVisit(siteURL: other, name: "Other", iconURL: nil)
-        app.recordVisit(siteURL: site, name: "Example", iconURL: nil)
+        app.recordVisit(siteURL: other, kind: .discourse, name: "Other", iconURL: nil)
+        app.recordVisit(siteURL: site, kind: .discourse, name: "Example", iconURL: nil)
         app.pin(try XCTUnwrap(app.forum(for: site)))
         harness.deliver(topicPage(topic("1")))
         app.agentSiteURL = site
@@ -340,7 +340,7 @@ final class StateTransitionTests: XCTestCase {
         let harness = makeHarness()
         let app = harness.app
         select(app, .ollama, model: "model-a")
-        app.recordVisit(siteURL: site, name: "Example", iconURL: nil)
+        app.recordVisit(siteURL: site, kind: .discourse, name: "Example", iconURL: nil)
         XCTAssertTrue(app.enqueueSummary(for: topic("1")))
         try await waitUntil { harness.ai.waiting == 1 }
 
@@ -352,12 +352,105 @@ final class StateTransitionTests: XCTestCase {
         XCTAssertNil(app.forum(for: site))
     }
 
-    func testPinStateAndOrderStayConsistent() {
+    /// Owner decision 2: the forum record is gone, so work that has to read the
+    /// site ends in an explicit failure (no spinner, nothing half-written).
+    /// Work already past its read keeps going (see the test above).
+    func testQueuedWorkOfARemovedForumFailsExplicitly() async throws {
         let harness = makeHarness()
+        let app = harness.app
+        select(app, .ollama, model: "model-a")
+        app.recordVisit(siteURL: site, kind: .discourse, name: "Example", iconURL: nil)
+        for id in ["1", "2", "3"] { XCTAssertTrue(app.enqueueSummary(for: topic(id))) }
+        try await waitUntil { harness.ai.waiting == 2 }
+        let queued = try XCTUnwrap(app.activities.first { $0.status == .queued })
+
+        app.removeForum(try XCTUnwrap(app.forum(for: site)), deleteData: false)
+        let failed = try XCTUnwrap(app.activities.first { $0.id == queued.id })
+        XCTAssertEqual(failed.status, .failed, "it never starts")
+        XCTAssertEqual(failed.error, AssistantError.noForum.localizedDescription)
+        XCTAssertEqual(app.presentedError, AssistantError.noForum.localizedDescription)
+
+        harness.ai.gated = false
+        harness.ai.releaseAll()
+        try await waitUntil { app.activities.allSatisfy(\.status.isTerminal) }
+        XCTAssertEqual(app.activities.filter { $0.status == .completed }.count, 2, "the two summaries past their read finished")
+        XCTAssertEqual(app.activities.first { $0.id == queued.id }?.status, .failed)
+        XCTAssertEqual(harness.ai.calls.count, 2)
+        XCTAssertTrue(app.streams.isEmpty)
+    }
+
+    /// The forum is removed (data kept) while a topic is being read: the job
+    /// resolved its adapter when it started, so it finishes and keeps its pages
+    /// (work still queued fails with noForum, see SiteJobTests).
+    func testForumRemovedMidReadLetsTheRunningJobFinish() async throws {
+        let harness = makeHarness()
+        let app = harness.app
+        select(app, .ollama, model: "model-a")
+        harness.ai.gated = false
+        app.recordVisit(siteURL: site, kind: .discourse, name: "Example", iconURL: nil)
+        app.select(topic: topic("1"))
+        StateForumStub.gate(path: "/raw/1")
+        XCTAssertTrue(app.enqueueSummary(for: topic("1")))
+        try await waitUntil { StateForumStub.isWaiting }
+        XCTAssertEqual(app.activities.first?.status, .running)
+
+        app.removeForum(try XCTUnwrap(app.forum(for: site)), deleteData: false)
+        StateForumStub.release()
+        try await waitUntil { app.activities.allSatisfy(\.status.isTerminal) }
+
+        let record = try XCTUnwrap(app.activities.first)
+        XCTAssertEqual(record.status, .completed, record.error)
+        XCTAssertFalse(app.sessions[topic("1").topicKey]?.rawPages.isEmpty ?? true, "pages already fetched stay")
+        XCTAssertEqual(harness.ai.calls.map(\.kind), ["summary"])
+        XCTAssertTrue(app.streams.isEmpty)
+    }
+
+    /// Tapping Add forum again for the address being detected joins that
+    /// detection: one request, one forum.
+    func testRapidRepeatedAddForumDetectsOnce() async throws {
+        let harness = makeHarness()
+        let app = harness.app
+        StateForumStub.gate(path: "/site/basic-info.json")
+        let first = Task { try await app.addForum(fromAddress: "forum.example.com") }
+        try await waitUntil { StateForumStub.isWaiting }
+        XCTAssertEqual(app.addForumPhase, .detecting(address: "forum.example.com"))
+        let second = Task { try await app.addForum(fromAddress: "forum.example.com") }
+        let third = Task { try await app.addForum(fromAddress: "forum.example.com") }
+        try await Task.sleep(for: .milliseconds(100))
+        StateForumStub.release()
+
+        let forums = try await [first.value, second.value, third.value]
+        XCTAssertEqual(Set(forums.map(\.siteURL)), [site])
+        XCTAssertEqual(app.forums.count, 1)
+        XCTAssertEqual(StateForumStub.count(of: "/site/basic-info.json"), 1)
+        XCTAssertEqual(app.addForumPhase, .recognized(kind: .discourse, siteURL: site))
+    }
+
+    /// A site that is not a forum ends in `unsupported`; an unreachable one in
+    /// `failed`, and a retry once the network is back succeeds.
+    func testAddForumPhaseAfterAnUnsupportedSiteAndAnOfflineRetry() async throws {
+        let harness = makeHarness(seedsForum: false)
+        let app = harness.app
+        StateForumStub.offline = true
+        do {
+            _ = try await app.addForum(fromAddress: "forum.example.com")
+            XCTFail("Added while offline")
+        } catch {}
+        XCTAssertEqual(app.addForumPhase, .failed(.offline))
+        XCTAssertTrue(app.forums.isEmpty)
+
+        StateForumStub.offline = false
+        let forum = try await app.addForum(fromAddress: "forum.example.com")
+        XCTAssertEqual(forum.siteURL, site)
+        XCTAssertEqual(app.addForumPhase, .recognized(kind: .discourse, siteURL: site))
+    }
+
+    func testPinStateAndOrderStayConsistent() {
+        let harness = makeHarness(seedsForum: false)
         let app = harness.app
         let sites = ["https://a.example.com", "https://b.example.com", "https://c.example.com"]
         for siteURL in sites {
-            app.recordVisit(siteURL: siteURL, name: nil, iconURL: nil)
+            app.recordVisit(siteURL: siteURL, kind: .discourse, name: nil, iconURL: nil)
             app.pin(app.forum(for: siteURL)!)
         }
         XCTAssertEqual(app.currentForum?.siteURL, sites[2])
@@ -378,7 +471,7 @@ final class StateTransitionTests: XCTestCase {
 
         // A rename (the probe or basic-info reports a new name) reaches the
         // current forum too.
-        app.recordVisit(siteURL: sites[2], name: "Renamed", iconURL: nil)
+        app.recordVisit(siteURL: sites[2], kind: .discourse, name: "Renamed", iconURL: nil)
         XCTAssertEqual(app.currentForum?.name, "Renamed")
     }
 
@@ -388,7 +481,7 @@ final class StateTransitionTests: XCTestCase {
         let harness = makeHarness()
         let app = harness.app
         StateForumStub.gate(path: "/site/basic-info.json")
-        app.pinSuggested(SuggestedForum(name: "Example", siteURL: site, description: ""))
+        app.pinSuggested(SuggestedForum(kind: .discourse, name: "Example", siteURL: site, description: ""))
         try await waitUntil { StateForumStub.isWaiting }
         app.unpin(try XCTUnwrap(app.forum(for: site)))
         StateForumStub.release()
@@ -449,7 +542,9 @@ final class StateTransitionTests: XCTestCase {
     }
 
     func testClearingOneForumKeepsTheOthersRunning() async throws {
-        let harness = makeHarness()
+        var snapshot = AppSnapshot()
+        snapshot.ensureForum(other)
+        let harness = makeHarness(snapshot: snapshot)
         let app = harness.app
         select(app, .ollama, model: "model-a")
         XCTAssertTrue(app.enqueueSummary(for: topic("1")))
@@ -931,7 +1026,7 @@ final class StateTransitionTests: XCTestCase {
         app.settings.hasCompletedOnboarding = true
         setRoles(app, assistant: ModelSelection(provider: .ollama, model: "cheap"),
                  agent: ModelSelection(provider: .deepSeek, model: "deepseek-v4-flash"))
-        app.recordVisit(siteURL: site, name: "Example", iconURL: nil)
+        app.recordVisit(siteURL: site, kind: .discourse, name: "Example", iconURL: nil)
         app.askForum(try XCTUnwrap(app.forum(for: site)))
         XCTAssertEqual(app.needsProviderSetup, .agent)
         // Setting up the assistant role doesn't clear an agent request.
@@ -1183,6 +1278,7 @@ final class StateTransitionTests: XCTestCase {
         try await waitUntil { app.activities.first?.status == .queued }
         XCTAssertEqual(app.activities.first?.statusText, "Paused until Forumind is open again")
         XCTAssertEqual(app.sessions[topic("1").topicKey]?.rawPages.map(\.page), [1])
+        XCTAssertEqual(app.sessions[topic("1").topicKey]?.rawPages.first?.blocks.map(\.number), [1, 2], "blocks come with the page")
         XCTAssertNil(app.presentedError)
         XCTAssertEqual(grace.ended, 1)
 
@@ -1191,6 +1287,7 @@ final class StateTransitionTests: XCTestCase {
         relaunched.browser.onPageContextChanged = nil
         XCTAssertEqual(relaunched.activities.first?.status, .queued)
         XCTAssertEqual(relaunched.sessions[topic("1").topicKey]?.rawPages.map(\.page), [1])
+        XCTAssertEqual(relaunched.sessions[topic("1").topicKey]?.rawPages.first?.blocks.map(\.author), ["alice", "bob"], "blocks survive a kill")
 
         StateForumStub.release()
         app.handleScenePhase(.active)
@@ -1262,13 +1359,16 @@ final class StateTransitionTests: XCTestCase {
     private func makeHarness(
         snapshot: AppSnapshot? = nil,
         planner: AgentPlanner? = nil,
-        backgroundGrace: BackgroundGracing? = nil
+        backgroundGrace: BackgroundGracing? = nil,
+        seedsForum: Bool = true
     ) -> Harness {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         let keys = InMemoryProviderKeyStore()
         let store = PersistentStore(fileURL: directory.appendingPathComponent("state.json"), keys: keys)
-        if let snapshot { try? store.save(snapshot) }
+        var seeded = snapshot ?? AppSnapshot()
+        if seedsForum { seeded.ensureForum(site) }
+        try? store.save(seeded)
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [StateForumStub.self]
         let session = URLSession(configuration: configuration)
@@ -1332,7 +1432,7 @@ final class StateTransitionTests: XCTestCase {
     private func topicPage(_ topic: ForumTopic) -> PageContext {
         PageContext(
             url: topic.url,
-            isDiscourse: true,
+            site: .discourse,
             siteURL: topic.siteURL,
             forumName: ForumSite.host(of: topic.siteURL),
             topic: topic,
@@ -1645,7 +1745,7 @@ final class StateForumStub: URLProtocol {
             return (200, #"{"title":"Topic \#(id)","slug":"topic-\#(id)","posts_count":\#(posts)}"#)
         }
         if parts.count == 2, parts[0] == "raw" {
-            return (200, "Post 1 of topic \(parts[1])\n\n\nPost 2")
+            return (200, "alice | 2026-10-20 12:00:00 UTC | #1\nPost 1 of topic \(parts[1])\n\n\nbob | 2026-10-20 12:05:00 UTC | #2\nPost 2\n")
         }
         return (404, "missing")
     }

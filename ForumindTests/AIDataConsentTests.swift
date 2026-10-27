@@ -253,7 +253,7 @@ final class AIDataConsentTests: XCTestCase {
 
         let target = try XCTUnwrap(app.currentAIOutputReport(feature: .summary))
         XCTAssertNil(app.currentAIOutputReport(feature: .chatAnswer), "no chat answer yet")
-        let draft = ModerationReport.draft(for: target, reason: .inaccurate, note: "Wrong", blocked: false)
+        let draft = ModerationReport.draft(for: target, reason: .inaccurate, note: "Wrong", blocked: false, links: nil)
         XCTAssertEqual(draft.subject, "Forumind report: AI summary on forum.example.com")
         XCTAssertTrue(draft.body.contains("Topic URL: \(topic.url.absoluteString)"))
         XCTAssertTrue(draft.body.contains("Model: Google Gemini · gemini-flash"))
@@ -272,7 +272,7 @@ final class AIDataConsentTests: XCTestCase {
         let run = AgentRun(siteURL: site, goal: "Which printer?", provider: .anthropic, model: "claude-test")
         let long = String(repeating: "a", count: AIOutput.reportTextLimit + 50)
         let target = app.aiOutputReport(for: run, answer: long)
-        let body = ModerationReport.body(for: target, reason: .other, note: "", blocked: false)
+        let body = ModerationReport.body(for: target, reason: .other, note: "", blocked: false, links: nil)
         XCTAssertTrue(body.contains("Question: Which printer?"))
         XCTAssertTrue(body.contains("AI output: Ask the forum answer"))
         XCTAssertTrue(body.contains("Model: Anthropic · claude-test"))
@@ -285,7 +285,9 @@ final class AIDataConsentTests: XCTestCase {
     private func makeApp(aiService: AIService, snapshot: AppSnapshot? = nil) -> AppModel {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         let store = PersistentStore(fileURL: directory.appendingPathComponent("state.json"), keys: InMemoryProviderKeyStore())
-        if let snapshot { try? store.save(snapshot) }
+        var seeded = snapshot ?? AppSnapshot()
+        seeded.ensureForum(site)
+        try? store.save(seeded)
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [StateForumStub.self]
         let app = AppModel(

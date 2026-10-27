@@ -129,14 +129,15 @@ extension AppModel {
         var prefetch = DigestPrefetch(day: todayKey)
         let cap = DigestLimits.prefetchRequestCap
         let pace: ForumRequestPace = background ? .gentle : settings.forumRequestPace
-        let loader = background ? nil : webViewResourceLoader
         let options = DigestPlanner.Options(settings: settings)
-        var cookies: [String: String?] = [:]
-        func cookieHeader(_ siteURL: String) async -> String? {
-            if let known = cookies[siteURL] { return known }
-            let header = await browser.cookieHeader(forSite: siteURL)
-            cookies[siteURL] = .some(header)
-            return header
+        // One transport per site (its cookies are read once). A site with no
+        // adapter is skipped quietly: no request, no failure.
+        var networks: [String: SiteNetwork] = [:]
+        func network(_ siteURL: String) async -> SiteNetwork {
+            if let known = networks[siteURL] { return known }
+            let net = await self.network(for: siteURL, pace: pace, inPage: !background)
+            networks[siteURL] = net
+            return net
         }
         func checkpoint() {
             digestPrefetch = prefetch
@@ -144,14 +145,12 @@ extension AppModel {
         }
 
         func fetchFacts(siteURL: String, topicID: String, topicKey: String) async -> Bool {
+            guard let adapter = adapter(for: siteURL) else { return true }
             prefetch.requestCount += 1
             do {
-                let overview = try await forumService.fetchOverview(
-                    siteURL: siteURL,
-                    topicID: topicID,
-                    cookieHeader: await cookieHeader(siteURL),
-                    resourceLoader: loader,
-                    pace: pace
+                let overview = try await adapter.overview(
+                    TopicRef(siteURL: siteURL, topicID: topicID),
+                    net: await network(siteURL)
                 )
                 prefetch.topics[topicKey] = DigestTopicFacts(overview: overview)
             } catch {
@@ -173,36 +172,16 @@ extension AppModel {
         if options.includesTrending {
             for forum in listForums {
                 guard !Task.isCancelled, prefetch.requestCount < cap else { break }
-                let header = await cookieHeader(forum.siteURL)
-                prefetch.requestCount += 1
-                var list: [ForumTopicListing]?
-                do {
-                    list = try await forumService.topTopics(
-                        siteURL: forum.siteURL,
-                        cookieHeader: header,
-                        resourceLoader: loader,
-                        pace: pace
-                    )
-                } catch {
-                    if Task.isCancelled { break }
-                    prefetch.failedCount += 1
-                }
-                // Top lists can be turned off or empty on a quiet day.
-                if list?.isEmpty ?? true, prefetch.requestCount < cap {
-                    prefetch.requestCount += 1
-                    do {
-                        list = try await forumService.latestTopics(
-                            siteURL: forum.siteURL,
-                            cookieHeader: header,
-                            resourceLoader: loader,
-                            pace: pace
-                        )
-                    } catch {
-                        if Task.isCancelled { break }
-                        prefetch.failedCount += 1
-                    }
-                }
-                if let list { prefetch.trending[forum.siteURL] = list }
+                guard let source = adapter(for: forum.siteURL)?.capabilities.activeTopics else { continue }
+                let found = await source.activeTopics(
+                    siteURL: forum.siteURL,
+                    budget: cap - prefetch.requestCount,
+                    net: await network(forum.siteURL)
+                )
+                prefetch.requestCount += found.requests
+                prefetch.failedCount += found.failures
+                if Task.isCancelled { break }
+                if let list = found.topics { prefetch.trending[forum.siteURL] = list }
                 checkpoint()
             }
         }
@@ -233,7 +212,8 @@ extension AppModel {
             baselines: baselines,
             trending: trending,
             facts: facts,
-            options: DigestPlanner.Options(settings: settings)
+            options: DigestPlanner.Options(settings: settings),
+            slug: { slug(of: $0.url, siteURL: $0.siteURL) }
         )
         return (cards, DigestPlanner.postCounts(watched: watchedTopics, facts: facts))
     }
@@ -494,15 +474,17 @@ extension AppModel {
         }
 
         let cached = sessions[card.topicKey]
-        let fetch = try await forumService.fetchTopic(
-            siteURL: card.siteURL,
-            topicID: card.topicID,
-            cachedPages: cached?.rawPages ?? [],
-            knownTotalPosts: cached?.totalPosts,
-            cookieHeader: await browser.cookieHeader(forSite: card.siteURL),
-            resourceLoader: webViewResourceLoader,
-            pace: context.forumRequestPace
-        ) { _ in }
+        guard let adapter = adapter(for: card.siteURL) else { throw AssistantError.noForum }
+        let fetch = try await adapter.readTopic(
+            TopicReadRequest(
+                topic: TopicRef(siteURL: card.siteURL, topicID: card.topicID),
+                cachedPages: cached?.rawPages ?? [],
+                knownTotalPosts: cached?.totalPosts
+            ),
+            net: await network(for: card.siteURL, pace: context.forumRequestPace),
+            progress: { _ in },
+            onPage: nil
+        )
         try Task.checkCancellation()
         // Like a summary's fetch: an existing session keeps the pages (its
         // saved summary then shows as behind when new replies came in).

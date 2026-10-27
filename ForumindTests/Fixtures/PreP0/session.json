@@ -1,0 +1,41 @@
+{
+  "chatUpdatedAt" : "2026-09-21T14:28:30Z",
+  "createdAt" : "2026-09-21T14:26:40Z",
+  "history" : [
+    {
+      "content" : "Who replied?",
+      "createdAt" : "2026-09-21T14:28:20Z",
+      "id" : "00000000-0000-0000-0000-0000000000A1",
+      "role" : "user"
+    },
+    {
+      "content" : "Bob replied in #2.",
+      "createdAt" : "2026-09-21T14:28:30Z",
+      "id" : "00000000-0000-0000-0000-0000000000A2",
+      "role" : "assistant"
+    }
+  ],
+  "instructions" : "Keep it short.",
+  "kept" : true,
+  "lastCheckedAt" : "2026-09-21T14:28:50Z",
+  "model" : "example-model",
+  "openedByUserAt" : "2026-09-21T14:25:00Z",
+  "provider" : "openrouter",
+  "rawPages" : [
+    {
+      "content" : "alice | 2026-10-20 | #1\nHello there.\n\n\nbob | 2026-10-21 | #2\nWelcome.",
+      "page" : 1,
+      "topicPostCount" : 2
+    }
+  ],
+  "siteURL" : "https:\/\/meta.example.org",
+  "source" : "alice | 2026-10-20 | #1\nHello there.\n\n\nbob | 2026-10-21 | #2\nWelcome.",
+  "summary" : "## Original post\n- Alice says hello. #1\n- Bob welcomes her. #2",
+  "summaryPostCount" : 2,
+  "summaryUpdatedAt" : "2026-09-21T14:27:30Z",
+  "title" : "First topic",
+  "topicID" : "101",
+  "totalPosts" : 2,
+  "updatedAt" : "2026-09-21T14:28:40Z",
+  "url" : "https:\/\/meta.example.org\/t\/first-topic\/101"
+}

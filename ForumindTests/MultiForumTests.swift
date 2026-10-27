@@ -50,20 +50,20 @@ final class MultiForumTests: XCTestCase {
         // Agent work records keep their `agent:` id as the key.
         XCTAssertEqual(TopicIdentity.key(siteURL: meta, topicID: "agent:X"), "agent:X")
 
-        XCTAssertEqual(ForumSite.topicURL(siteURL: folder, topicID: "7")?.absoluteString, "https://example.com/forum/t/7")
+        XCTAssertEqual(DiscourseRoutes.topicURL(siteURL: folder, topicID: "7")?.absoluteString, "https://example.com/forum/t/7")
         XCTAssertEqual(
-            ForumSite.topicURL(siteURL: meta, topicID: "7", slug: "hello-world")?.absoluteString,
+            DiscourseRoutes.topicURL(siteURL: meta, topicID: "7", slug: "hello-world")?.absoluteString,
             "https://meta.discourse.org/t/hello-world/7"
         )
-        XCTAssertEqual(ForumSite.topicJSONURL(siteURL: folder, topicID: "7")?.absoluteString, "https://example.com/forum/t/7.json")
-        XCTAssertEqual(ForumSite.rawPageURL(siteURL: folder, topicID: "7", page: 2)?.absoluteString, "https://example.com/forum/raw/7?page=2")
-        XCTAssertNil(ForumSite.rawPageURL(siteURL: folder, topicID: "7", page: 0))
+        XCTAssertEqual(DiscourseRoutes.topicJSONURL(siteURL: folder, topicID: "7")?.absoluteString, "https://example.com/forum/t/7.json")
+        XCTAssertEqual(DiscourseRoutes.rawPageURL(siteURL: folder, topicID: "7", page: 2)?.absoluteString, "https://example.com/forum/raw/7?page=2")
+        XCTAssertNil(DiscourseRoutes.rawPageURL(siteURL: folder, topicID: "7", page: 0))
         XCTAssertEqual(
-            ForumSite.searchURL(siteURL: meta, query: "a b #c")?.absoluteString,
+            DiscourseRoutes.searchURL(siteURL: meta, query: "a b #c")?.absoluteString,
             "https://meta.discourse.org/search.json?q=a%20b%20%23c"
         )
-        XCTAssertEqual(ForumSite.latestURL(siteURL: folder)?.absoluteString, "https://example.com/forum/latest")
-        XCTAssertEqual(ForumSite.latestURL(siteURL: meta, json: true)?.absoluteString, "https://meta.discourse.org/latest.json")
+        XCTAssertEqual(DiscourseRoutes.latestURL(siteURL: folder)?.absoluteString, "https://example.com/forum/latest")
+        XCTAssertEqual(DiscourseRoutes.latestURL(siteURL: meta, json: true)?.absoluteString, "https://meta.discourse.org/latest.json")
     }
 
     func testSameForumAndDisplayName() {
@@ -82,7 +82,7 @@ final class MultiForumTests: XCTestCase {
 
     func testTopicIDExtractionMirrorsTopicRoute() {
         func id(_ string: String, _ basePath: String = "") -> String? {
-            ForumSite.extractTopicID(from: URL(string: string)!, basePath: basePath)
+            DiscourseRecognizer().topicID(fromURL: URL(string: string)!, basePath: basePath)
         }
         XCTAssertEqual(id("https://x.org/t/slug/12"), "12")
         XCTAssertEqual(id("https://x.org/t/12"), "12")
@@ -91,7 +91,7 @@ final class MultiForumTests: XCTestCase {
         XCTAssertNil(id("https://x.org/forum/t/slug/12"))
         XCTAssertNil(id("https://x.org/latest"))
         XCTAssertNil(id("https://x.org/t/slug"))
-        XCTAssertEqual(ForumSite.looseTopicID(from: URL(string: "https://x.org/forum/t/slug/12")!), "12")
+        XCTAssertEqual(DiscourseRecognizer().looseTopicID(in: URL(string: "https://x.org/forum/t/slug/12")!), "12")
     }
 
     func testCookieFilteringOnlyMatchesTheForumHost() {
@@ -122,37 +122,37 @@ final class MultiForumTests: XCTestCase {
         let topicURL = URL(string: "https://example.com/forum/t/hello/77")!
         let homeURL = URL(string: "https://example.com/forum/latest")!
 
-        XCTAssertEqual(PageContext.make(url: nil, title: nil, probe: nil, knownForum: nil).state, .loading)
+        XCTAssertEqual(PageContext.make(url: nil, title: nil, facts: nil, knownForum: nil, registry: .standard).state, .loading)
         // Unchecked /t/…/id URL → maybe; other unchecked pages → loading.
-        XCTAssertEqual(PageContext.make(url: topicURL, title: nil, probe: nil, knownForum: nil).state, .maybe)
-        XCTAssertEqual(PageContext.make(url: homeURL, title: nil, probe: nil, knownForum: nil).state, .loading)
+        XCTAssertEqual(PageContext.make(url: topicURL, title: nil, facts: nil, knownForum: nil, registry: .standard).state, .maybe)
+        XCTAssertEqual(PageContext.make(url: homeURL, title: nil, facts: nil, knownForum: nil, registry: .standard).state, .loading)
 
-        let probe = PageProbe(url: topicURL, isDiscourse: true, basePath: "/forum", forumName: "Example")
-        let topic = PageContext.make(url: topicURL, title: "Hello - Example", probe: probe, knownForum: nil)
+        let probe = PageFacts.discourse(topicURL, basePath: "/forum", forumName: "Example")
+        let topic = PageContext.make(url: topicURL, title: "Hello - Example", facts: probe, knownForum: nil, registry: .standard)
         XCTAssertEqual(topic.state, .topic)
-        XCTAssertTrue(topic.isDiscourse)
+        XCTAssertEqual(topic.site, .discourse)
         XCTAssertEqual(topic.siteURL, folder)
         XCTAssertEqual(topic.basePath, "/forum")
         XCTAssertEqual(topic.forumName, "Example")
         XCTAssertEqual(topic.topic?.topicKey, "example.com/forum/t/77")
 
-        let homeProbe = PageProbe(url: homeURL, isDiscourse: true, basePath: "/forum")
-        let home = PageContext.make(url: homeURL, title: nil, probe: homeProbe, knownForum: nil)
+        let homeProbe = PageFacts.discourse(homeURL, basePath: "/forum")
+        let home = PageContext.make(url: homeURL, title: nil, facts: homeProbe, knownForum: nil, registry: .standard)
         XCTAssertEqual(home.state, .forumHome)
         XCTAssertEqual(home.forumName, "example.com")
 
         let other = URL(string: "https://news.example.org/t/a/1")!
         XCTAssertEqual(
-            PageContext.make(url: other, title: nil, probe: PageProbe(url: other, isDiscourse: false), knownForum: nil).state,
+            PageContext.make(url: other, title: nil, facts: PageFacts(url: other), knownForum: nil, registry: .standard).state,
             .notForum
         )
         // A probe for a different page does not apply.
-        XCTAssertEqual(PageContext.make(url: other, title: nil, probe: probe, knownForum: nil).state, .maybe)
+        XCTAssertEqual(PageContext.make(url: other, title: nil, facts: probe, knownForum: nil, registry: .standard).state, .maybe)
 
         // A directory forum is Discourse before the probe reports.
-        let known = KnownForumSite(siteURL: netForum, name: "Example Net Forum", iconURL: nil)
+        let known = KnownForumSite(siteURL: netForum, name: "Example Net Forum", iconURL: nil, kind: .discourse)
         let netTopic = URL(string: "https://www.example.net/t/x/517303")!
-        let early = PageContext.make(url: netTopic, title: nil, probe: nil, knownForum: known)
+        let early = PageContext.make(url: netTopic, title: nil, facts: nil, knownForum: known, registry: .standard)
         XCTAssertEqual(early.state, .topic)
         XCTAssertEqual(early.topic?.title, "Example Net Forum topic 517303")
     }
@@ -163,16 +163,16 @@ final class MultiForumTests: XCTestCase {
         var directory = ForumDirectory()
         let old = Date(timeIntervalSince1970: 1_000)
         let new = Date(timeIntervalSince1970: 2_000)
-        directory.upsert(siteURL: "https://meta.discourse.org/", name: "Meta", iconURL: nil, visitedAt: old)
-        directory.upsert(siteURL: netForum, name: "", iconURL: nil, visitedAt: new)
-        directory.upsert(siteURL: folder, name: "Folder", iconURL: nil, visitedAt: nil)
-        XCTAssertNil(directory.upsert(siteURL: "not a url", name: nil, iconURL: nil))
+        directory.upsert(siteURL: "https://meta.discourse.org/", kind: .discourse, name: "Meta", iconURL: nil, visitedAt: old)
+        directory.upsert(siteURL: netForum, kind: .discourse, name: "", iconURL: nil, visitedAt: new)
+        directory.upsert(siteURL: folder, kind: .discourse, name: "Folder", iconURL: nil, visitedAt: nil)
+        XCTAssertNil(directory.upsert(siteURL: "not a url", kind: .discourse, name: nil, iconURL: nil))
         XCTAssertEqual(directory.forums.count, 3)
         XCTAssertEqual(directory.forum(siteURL: meta)?.name, "Meta")
         XCTAssertEqual(directory.forum(siteURL: netForum)?.name, "www.example.net")
 
         // Re-visiting refreshes instead of duplicating.
-        directory.upsert(siteURL: meta, name: "Discourse Meta", iconURL: URL(string: "https://m/icon.png"), visitedAt: new)
+        directory.upsert(siteURL: meta, kind: .discourse, name: "Discourse Meta", iconURL: URL(string: "https://m/icon.png"), visitedAt: new)
         XCTAssertEqual(directory.forums.count, 3)
         XCTAssertEqual(directory.forum(siteURL: meta)?.name, "Discourse Meta")
 
@@ -191,23 +191,23 @@ final class MultiForumTests: XCTestCase {
         XCTAssertEqual(directory.pinned.first?.pinOrder, 0)
 
         // Longest matching base path wins for page lookup.
-        directory.upsert(siteURL: "https://example.com", name: "Root", iconURL: nil)
+        directory.upsert(siteURL: "https://example.com", kind: .discourse, name: "Root", iconURL: nil)
         XCTAssertEqual(directory.forum(containing: URL(string: "https://example.com/forum/t/a/1")!)?.siteURL, folder)
         XCTAssertEqual(directory.forum(containing: URL(string: "https://example.com/t/a/1")!)?.siteURL, "https://example.com")
     }
 
     func testAddForumAddressCandidates() {
-        XCTAssertEqual(ForumDirectory.candidateSiteURLs(fromAddress: "meta.discourse.org"), [meta])
-        XCTAssertEqual(ForumDirectory.candidateSiteURLs(fromAddress: " https://meta.discourse.org/t/x/5 "), [meta])
+        XCTAssertEqual(DiscourseAdapter().siteURLCandidates(fromAddress: "meta.discourse.org"), [meta])
+        XCTAssertEqual(DiscourseAdapter().siteURLCandidates(fromAddress: " https://meta.discourse.org/t/x/5 "), [meta])
         XCTAssertEqual(
-            ForumDirectory.candidateSiteURLs(fromAddress: "https://example.com/forum/t/hello/77"),
+            DiscourseAdapter().siteURLCandidates(fromAddress: "https://example.com/forum/t/hello/77"),
             [folder, "https://example.com"]
         )
-        XCTAssertEqual(ForumDirectory.candidateSiteURLs(fromAddress: "example.com/forum"), [folder, "https://example.com"])
-        XCTAssertEqual(ForumDirectory.candidateSiteURLs(fromAddress: "localhost:3000"), ["http://localhost:3000"])
-        XCTAssertEqual(ForumDirectory.candidateSiteURLs(fromAddress: "hello world"), [])
-        XCTAssertEqual(ForumDirectory.candidateSiteURLs(fromAddress: "hello"), [])
-        XCTAssertEqual(ForumDirectory.candidateSiteURLs(fromAddress: "http://example.com"), [])
+        XCTAssertEqual(DiscourseAdapter().siteURLCandidates(fromAddress: "example.com/forum"), [folder, "https://example.com"])
+        XCTAssertEqual(DiscourseAdapter().siteURLCandidates(fromAddress: "localhost:3000"), ["http://localhost:3000"])
+        XCTAssertEqual(DiscourseAdapter().siteURLCandidates(fromAddress: "hello world"), [])
+        XCTAssertEqual(DiscourseAdapter().siteURLCandidates(fromAddress: "hello"), [])
+        XCTAssertEqual(DiscourseAdapter().siteURLCandidates(fromAddress: "http://example.com"), [])
         XCTAssertEqual(AppModel.suggestedForums.count, 5)
         XCTAssertTrue(AppModel.suggestedForums.allSatisfy { ForumSite.normalizeSiteURL($0.siteURL) == $0.siteURL })
     }
@@ -274,7 +274,7 @@ final class MultiForumTests: XCTestCase {
             AppSnapshot(
                 sessions: [netSession, metaSession],
                 watchedTopics: [metaWatch],
-                forums: [Forum(siteURL: netForum, name: "U"), Forum(siteURL: meta, name: "M")]
+                forums: [Forum(siteURL: netForum, kind: .discourse, name: "U"), Forum(siteURL: meta, kind: .discourse, name: "M")]
             )
         )
         let app = AppModel(store: store)
@@ -320,17 +320,18 @@ final class MultiForumTests: XCTestCase {
             return Self.response(request, 200, "raw")
         }
         let service = ForumService(session: session, pacer: ForumRequestPacer(clock: InstantPacingClock()))
-        let result = try await service.fetchTopic(
-            siteURL: folder,
-            topicID: "77",
-            cachedPages: [],
-            knownTotalPosts: nil,
-            cookieHeader: nil
-        ) { _ in }
+        let net = service.net(folder)
+        let topic = TopicRef(siteURL: folder, topicID: "77")
+        let result = try await DiscourseAdapter().readTopic(
+            TopicReadRequest(topic: topic, cachedPages: [], knownTotalPosts: nil),
+            net: net,
+            progress: { _ in },
+            onPage: nil
+        )
         XCTAssertEqual(result.totalPosts, 2)
         XCTAssertEqual(requested, ["https://example.com/forum/t/77.json", "https://example.com/forum/raw/77?page=1"])
 
-        let overview = try await service.fetchOverview(siteURL: folder, topicID: "77", cookieHeader: nil)
+        let overview = try await DiscourseAdapter().overview(topic, net: net)
         XCTAssertEqual(overview.url.absoluteString, "https://example.com/forum/t/77")
     }
 
@@ -363,6 +364,7 @@ final class MultiForumTests: XCTestCase {
             planner: planner
         )
         app.usesDirectForumRequests = true
+        app.recordVisit(siteURL: meta, kind: .discourse, name: nil, iconURL: nil)
         useLocalProvider(app)
 
         app.startAgentRun(goal: "What is new?", siteURL: "https://meta.discourse.org/")
@@ -449,6 +451,41 @@ final class MultiForumTests: XCTestCase {
         XCTAssertFalse(accepts("https://meta.discourse.org/t/5", nil))
     }
 
+    func testFactsOfAPreviousDocumentAreNotAdoptedForTheShownOne() {
+        let shown = URL(string: "https://meta.discourse.org/t/new-topic/9?u=a#x")
+        func adopts(_ reported: String) -> Bool {
+            ForumBrowserModel.isSamePage(URL(string: reported)!, shown, registry: .standard)
+        }
+        XCTAssertTrue(adopts("https://meta.discourse.org/t/new-topic/9"))
+        XCTAssertTrue(adopts("https://META.discourse.org:443/t/new-topic/9?other=1"))
+        // The forum rewrites its address while the reader scrolls: same topic, same document.
+        XCTAssertTrue(adopts("https://meta.discourse.org/t/new-topic/9/42"))
+        XCTAssertFalse(adopts("https://meta.discourse.org/t/old-topic/5"))
+        XCTAssertFalse(adopts("https://meta.discourse.org/t/old-topic/5/9"))
+        XCTAssertFalse(adopts("https://meta.discourse.org/latest"))
+        XCTAssertFalse(adopts("https://other.example.net/t/new-topic/9"))
+        XCTAssertFalse(ForumBrowserModel.isSamePage(URL(string: "https://meta.discourse.org/t/new-topic/9")!, nil, registry: .standard))
+    }
+
+    /// A post opened while its topic is still loading must not start a second
+    /// load over the first (WebKit can fold it into the first navigation and
+    /// commit that document under the second's address): `show(post:)` waits
+    /// for the load to finish first.
+    @MainActor
+    func testWaitUntilSettledWaitsForANavigationInFlightAndGivesUpAtTheTimeout() async {
+        let browser = ForumBrowserModel()
+        await browser.waitUntilSettled()
+        XCTAssertFalse(browser.webView.isLoading, "Nothing in flight: returns at once.")
+
+        browser.webView.loadHTMLString("<html><body>a</body></html>", baseURL: URL(string: "https://example.com/")!)
+        XCTAssertTrue(browser.webView.isLoading)
+        await browser.waitUntilSettled(timeout: .zero)
+        XCTAssertTrue(browser.webView.isLoading, "The timeout, not the load, ended the wait.")
+
+        await browser.waitUntilSettled()
+        XCTAssertFalse(browser.webView.isLoading, "Returns once the navigation finished.")
+    }
+
     func testUnreadableSnapshotIsKeptBeforeStartingEmpty() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -485,7 +522,7 @@ final class MultiForumTests: XCTestCase {
         )
         app.usesDirectForumRequests = true
         useLocalProvider(app)
-        app.recordVisit(siteURL: meta, name: "Meta", iconURL: nil)
+        app.recordVisit(siteURL: meta, kind: .discourse, name: "Meta", iconURL: nil)
 
         app.startAgentRun(goal: "Anything new?", siteURL: meta)
         let deadline = Date().addingTimeInterval(10)
@@ -532,6 +569,7 @@ final class MultiForumTests: XCTestCase {
             planner: planner
         )
         app.usesDirectForumRequests = true
+        app.recordVisit(siteURL: meta, kind: .discourse, name: "Meta", iconURL: nil)
         useLocalProvider(app)
         app.drafts.goal = "half-typed goal"
         let mode = app.assistantMode
@@ -541,7 +579,8 @@ final class MultiForumTests: XCTestCase {
         XCTAssertEqual(outcome.status, .completed)
         XCTAssertEqual(outcome.answer, answer)
         XCTAssertEqual(outcome.sources.map(\.postNumber), [5, 10])
-        XCTAssertEqual(outcome.sources.map(\.topicID), ["240488", "240488"])
+        let parse = app.linkParser(siteURL: meta)
+        XCTAssertEqual(outcome.sources.map { parse($0.url)?.topicID }, ["240488", "240488"])
         XCTAssertEqual(outcome.runID, app.agentRuns.first?.id)
         XCTAssertNil(app.selectedAgentRunID)
         XCTAssertEqual(app.drafts.goal, "half-typed goal")
@@ -569,6 +608,7 @@ final class MultiForumTests: XCTestCase {
             planner: planner
         )
         app.usesDirectForumRequests = true
+        app.recordVisit(siteURL: meta, kind: .discourse, name: "Meta", iconURL: nil)
         useLocalProvider(app)
 
         var outcomes: [AgentRunOutcome] = []
@@ -622,6 +662,7 @@ final class MultiForumTests: XCTestCase {
             planner: planner
         )
         app.usesDirectForumRequests = true
+        app.recordVisit(siteURL: meta, kind: .discourse, name: "Meta", iconURL: nil)
         useLocalProvider(app)
 
         do {
@@ -716,6 +757,7 @@ final class MultiForumTests: XCTestCase {
             planner: planner
         )
         app.usesDirectForumRequests = true
+        app.recordVisit(siteURL: meta, kind: .discourse, name: "Meta", iconURL: nil)
         useLocalProvider(app)
 
         app.chooseAskForum(siteURL: meta)

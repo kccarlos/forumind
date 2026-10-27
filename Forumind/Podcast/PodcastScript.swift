@@ -39,15 +39,6 @@ struct PodcastChapter: Codable, Equatable, Identifiable {
 
     var isScripted: Bool { !turns.isEmpty }
 
-    /// The topic at the cited post (or its top).
-    var topicURL: URL? {
-        guard let siteURL, let topicID else { return nil }
-        if let postNumber {
-            return ForumSite.topicURL(siteURL: siteURL, topicID: topicID, slug: slug, postNumber: postNumber)
-        }
-        return ForumSite.topicURL(siteURL: siteURL, topicID: topicID, slug: slug)
-    }
-
     /// The text spoken in this chapter, for checks and read-aloud.
     var spokenText: String { turns.map(\.text).joined(separator: " ") }
 

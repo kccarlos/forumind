@@ -108,7 +108,7 @@ final class ModerationTests: XCTestCase {
         )
         let subject = ModerationReport.subject(for: target, blocked: false)
         XCTAssertEqual(subject, "Forumind report: post #3 by @bob on forum.example.com")
-        let body = ModerationReport.body(for: target, reason: .harassment, note: " rude ", blocked: false, appVersion: "1.0 (1)")
+        let body = ModerationReport.body(for: target, reason: .harassment, note: " rude ", blocked: false, links: DiscourseLinks(), appVersion: "1.0 (1)")
         XCTAssertTrue(body.contains("Post URL: https://forum.example.com/t/a-topic/42/3"))
         XCTAssertTrue(body.contains("Reason: harassment"))
         XCTAssertTrue(body.contains("Details:\nrude"))
@@ -122,11 +122,11 @@ final class ModerationTests: XCTestCase {
     func testPostURLKeepsTheTopicPathOnly() {
         let url = { (string: String) in URL(string: string)! }
         XCTAssertEqual(
-            ForumSite.postURL(topicURL: url("https://f.example/t/slug/42"), number: 5).absoluteString,
+            DiscourseLinks().postURL(topicURL: url("https://f.example/t/slug/42"), number: 5, anchor: nil).absoluteString,
             "https://f.example/t/slug/42/5"
         )
         XCTAssertEqual(
-            ForumSite.postURL(topicURL: url("https://f.example/forum/t/slug/42/17/"), number: 5).absoluteString,
+            DiscourseLinks().postURL(topicURL: url("https://f.example/forum/t/slug/42/17/"), number: 5, anchor: nil).absoluteString,
             "https://f.example/forum/t/slug/42/5"
         )
     }

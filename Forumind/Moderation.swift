@@ -111,30 +111,23 @@ struct ModerationRules: Equatable {
 /// summaries, chat and Ask the forum. Each post there starts with a
 /// `username | 2024-01-01 12:00:00 UTC | #N` line.
 enum ModerationFilter {
-    private static let header = try! NSRegularExpression(
-        pattern: #"^(\S+) \| \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC \| #(\d+)$"#,
-        options: [.anchorsMatchLines]
-    )
-
     static func filter(_ raw: String, siteURL: String, topicID: String, rules: ModerationRules) -> String {
         guard !rules.isEmpty, !raw.isEmpty else { return raw }
         let text = raw as NSString
-        let matches = header.matches(in: raw, range: NSRange(location: 0, length: text.length))
-        guard !matches.isEmpty else {
+        let headers = RawTopicFormat.parseHeaders(raw)
+        guard !headers.isEmpty else {
             // Not /raw text: hide it all only if a filtered word appears.
             return rules.hidesText(raw) ? "" : raw
         }
         var kept = ""
         // Text before the first post (rare) is kept as is.
-        kept += text.substring(to: matches[0].range.location)
+        kept += text.substring(to: headers[0].range.location)
         var removedAny = false
-        for (index, match) in matches.enumerated() {
-            let end = index + 1 < matches.count ? matches[index + 1].range.location : text.length
-            let block = text.substring(with: NSRange(location: match.range.location, length: end - match.range.location))
-            let username = text.substring(with: match.range(at: 1))
-            let number = Int(text.substring(with: match.range(at: 2))) ?? 0
-            if rules.hidesUser(username, siteURL: siteURL)
-                || rules.hidesPost(number, siteURL: siteURL, topicID: topicID)
+        for (index, header) in headers.enumerated() {
+            let end = index + 1 < headers.count ? headers[index + 1].range.location : text.length
+            let block = text.substring(with: NSRange(location: header.range.location, length: end - header.range.location))
+            if rules.hidesUser(header.author, siteURL: siteURL)
+                || rules.hidesPost(header.number, siteURL: siteURL, topicID: topicID)
                 || rules.hidesText(block)
             {
                 removedAny = true
@@ -325,6 +318,7 @@ enum ModerationReport {
         reason: ReportReason?,
         note: String,
         blocked: Bool,
+        links: (any SiteLinks)?,
         appVersion: String = AppVersion.text()
     ) -> String {
         var lines: [String] = []
@@ -337,7 +331,9 @@ enum ModerationReport {
         case .topic:
             break
         case .post(let number, let username):
-            if let url = target.topicURL { lines.append("Post URL: \(ForumSite.postURL(topicURL: url, number: number).absoluteString)") }
+            if let url = target.topicURL, let links {
+                lines.append("Post URL: \(links.postURL(topicURL: url, number: number, anchor: nil).absoluteString)")
+            }
             lines.append("Post: #\(number) by @\(username)")
         case .user(let username):
             lines.append("User: @\(username)")
@@ -364,10 +360,11 @@ enum ModerationReport {
         return lines.joined(separator: "\n")
     }
 
-    static func draft(for target: ReportTarget, reason: ReportReason?, note: String, blocked: Bool) -> MailDraft {
+    /// `links` are the target forum's (nil without an adapter: no post link).
+    static func draft(for target: ReportTarget, reason: ReportReason?, note: String, blocked: Bool, links: (any SiteLinks)?) -> MailDraft {
         MailDraft(
             subject: subject(for: target, blocked: blocked),
-            body: body(for: target, reason: reason, note: note, blocked: blocked)
+            body: body(for: target, reason: reason, note: note, blocked: blocked, links: links)
         )
     }
 
@@ -383,9 +380,9 @@ enum ModerationReport {
     }
 }
 
-/// Hides blocked and filtered posts in the built-in browser. Discourse wraps
-/// each post in `[data-post-number]` around `article[id^=post_]`; the author
-/// is the first `a[data-user-card]` inside it.
+/// Hides blocked and filtered posts in the built-in browser: the config the
+/// site's moderation script (`window.__forumindModeration`, installed from
+/// `PageBridgeProfile.moderationInstaller`) takes.
 enum ModerationScript {
     struct Config: Encodable {
         var users: [String]
@@ -414,100 +411,10 @@ enum ModerationScript {
         return string
     }
 
-    /// Calls `window.__forumindModeration.update(config)`, installing the
-    /// observer first if needed.
+    /// Calls `window.__forumindModeration.update(config)`. The site's installer
+    /// (`PageBridgeProfile.moderationInstaller`) runs on every page as a user
+    /// script, so the interface is there; a page without one is left alone.
     static func source(config: Config) -> String {
-        "\(installer)\nwindow.__forumindModeration.update(\(json(config)));"
+        "if (window.__forumindModeration) window.__forumindModeration.update(\(json(config)));"
     }
-
-    static let installer = """
-    (() => {
-      if (window.__forumindModeration) return;
-      const state = { users: new Set(), words: [], posts: {} };
-      const attr = 'data-forumind-hidden';
-      function ensureStyle() {
-        if (document.getElementById('forumind-moderation-style')) return;
-        const style = document.createElement('style');
-        style.id = 'forumind-moderation-style';
-        style.textContent = '[' + attr + '] { display: none !important; }';
-        (document.head || document.documentElement).appendChild(style);
-      }
-      function topicID() {
-        const match = location.pathname.match(/\\/t\\/(?:[^/]+\\/)?(\\d+)/);
-        return match ? match[1] : null;
-      }
-      let hasHidden = false;
-      function apply() {
-        ensureStyle();
-        const hidden = state.posts[topicID()] || [];
-        const active = state.users.size > 0 || state.words.length > 0 || hidden.length > 0;
-        if (!active) {
-          // Nothing to hide: undo earlier hiding once, then stay idle.
-          if (hasHidden) {
-            document.querySelectorAll('[' + attr + ']').forEach(element => element.removeAttribute(attr));
-            hasHidden = false;
-          }
-          return;
-        }
-        hasHidden = true;
-        const checksText = state.words.length > 0;
-        document.querySelectorAll('article[id^="post_"]').forEach(article => {
-          const wrapper = article.closest('[data-post-number]') || article;
-          const author = article.querySelector('a[data-user-card]');
-          const name = author ? (author.dataset.userCard || '').toLowerCase() : '';
-          const number = parseInt(article.id.slice(5), 10);
-          const cooked = checksText ? article.querySelector('.cooked') : null;
-          // textContent: no layout pass on every page change.
-          const text = cooked ? cooked.textContent.toLowerCase() : '';
-          const hide = (name && state.users.has(name))
-            || hidden.includes(number)
-            || (text && state.words.some(word => text.includes(word)));
-          if (hide) wrapper.setAttribute(attr, '');
-          else wrapper.removeAttribute(attr);
-        });
-        // Topic lists: topics started by a hidden user.
-        document.querySelectorAll('.topic-list-item').forEach(row => {
-          const starter = row.querySelector('.posters a[data-user-card]');
-          const name = starter ? (starter.dataset.userCard || '').toLowerCase() : '';
-          if (name && state.users.has(name)) row.setAttribute(attr, '');
-          else row.removeAttribute(attr);
-        });
-      }
-      let scheduled = false;
-      function schedule() {
-        if (scheduled) return;
-        scheduled = true;
-        requestAnimationFrame(() => { scheduled = false; apply(); });
-      }
-      function start() {
-        new MutationObserver(schedule).observe(document.documentElement, { childList: true, subtree: true });
-        schedule();
-      }
-      window.__forumindModeration = {
-        update(config) {
-          state.users = new Set((config.users || []).map(name => name.toLowerCase()));
-          state.words = (config.words || []).map(word => word.toLowerCase());
-          state.posts = config.posts || {};
-          schedule();
-        },
-        // The posts on screen, for the report sheet.
-        posts() {
-          return Array.from(document.querySelectorAll('article[id^="post_"]'))
-            .filter(article => !(article.closest('[data-post-number]') || article).hasAttribute(attr))
-            .map(article => {
-              const author = article.querySelector('a[data-user-card]');
-              const cooked = article.querySelector('.cooked');
-              return {
-                number: parseInt(article.id.slice(5), 10),
-                username: author ? (author.dataset.userCard || '') : '',
-                excerpt: cooked ? cooked.innerText.replace(/\\s+/g, ' ').trim().slice(0, 160) : ''
-              };
-            })
-            .filter(post => post.username && post.number > 0);
-        }
-      };
-      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
-      else start();
-    })();
-    """
 }

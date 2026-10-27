@@ -60,20 +60,27 @@ share_group = project.main_group.new_group("ForumindShare", "ForumindShare")
 app_target = project.new_target(:application, "Forumind", :ios, "17.0")
 app_target.product_reference.name = "Forumind.app"
 
-# Compiled into both the app and the share extension.
+# Compiled into both the app and the share extension. The recognition sources
+# (Sites/Recognition/ and ForumSite.swift) are Foundation-only so the extension
+# can tell a supported site from a plain page.
 shared_source_names = [
   "AppIdentity.swift",
   "BrandMark.swift",
   "BrandMarkShapes.swift",
-  "IncomingLink.swift"
+  "ForumSite.swift",
+  "IncomingLink.swift",
+  "SharedPage.swift"
 ]
+shared_source_prefix = "Sites/Recognition/"
 shared_source_references = []
 
 Dir.glob(File.join(root, "Forumind", "**", "*.swift")).sort.each do |path|
   relative_path = path.delete_prefix("#{root}/Forumind/")
   reference = app_group.new_file(relative_path)
   app_target.source_build_phase.add_file_reference(reference)
-  shared_source_references << reference if shared_source_names.include?(relative_path)
+  if shared_source_names.include?(relative_path) || relative_path.start_with?(shared_source_prefix)
+    shared_source_references << reference
+  end
 end
 
 assets = app_group.new_file("Assets.xcassets")
@@ -247,6 +254,14 @@ end
 
 # Speech fixtures for the voice-activity detector tests.
 Dir.glob(File.join(root, "ForumindTests", "**", "*.wav")).sort.each do |path|
+  reference = test_group.new_file(path.delete_prefix("#{root}/ForumindTests/"))
+  test_target.resources_build_phase.add_file_reference(reference)
+end
+
+# Pre-P0 data (site-adapter refactor): a state snapshot and a topic session as
+# the app wrote them before `Forum.kind` and post blocks, kept to prove that
+# older data still loads.
+Dir.glob(File.join(root, "ForumindTests", "Fixtures", "**", "*.json")).sort.each do |path|
   reference = test_group.new_file(path.delete_prefix("#{root}/ForumindTests/"))
   test_target.resources_build_phase.add_file_reference(reference)
 end

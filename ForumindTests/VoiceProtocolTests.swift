@@ -10,7 +10,7 @@ final class VoiceProtocolTests: XCTestCase {
     func testAIStudioSetup() throws {
         let setup = GeminiLive.Setup(
             endpoint: .aiStudio, voice: "Puck", instructions: "Be brief.",
-            functions: VoiceTool.geminiDeclarations, vocabulary: ["Prusa", "MK4"], resumptionHandle: nil
+            functions: VoiceTool.geminiDeclarations(for: VoiceSite(adapter: DiscourseAdapter())), vocabulary: ["Prusa", "MK4"], resumptionHandle: nil
         )
         let object = try json(GeminiLive.encode(.setup(setup)))
         let body = try XCTUnwrap(object["setup"] as? [String: Any])
@@ -179,18 +179,19 @@ final class VoiceProtocolTests: XCTestCase {
     // MARK: Tools
 
     func testToolDefinitions() {
+        let site = VoiceSite(adapter: DiscourseAdapter())
         XCTAssertEqual(VoiceTool.allCases.count, 7)
         XCTAssertEqual(VoiceTool.find.scheduling, .whenIdle)
         XCTAssertEqual(VoiceTool.open.scheduling, .whenIdle)
         XCTAssertEqual(VoiceTool.research.scheduling, .silent, "research answers started silently; its answer is a briefing")
         for tool in VoiceTool.allCases {
-            XCTAssertGreaterThan(tool.description.count, 80, tool.rawValue)
-            XCTAssertFalse(tool.description.contains("\n"), "\(tool.rawValue): one paragraph")
+            XCTAssertGreaterThan(tool.description(for: site).count, 80, tool.rawValue)
+            XCTAssertFalse(tool.description(for: site).contains("\n"), "\(tool.rawValue): one paragraph")
         }
-        XCTAssertTrue(VoiceTool.find.description.contains("Never read out ids"))
-        XCTAssertTrue(VoiceTool.find.description.contains("call open with its card number right away"))
-        XCTAssertTrue(VoiceTool.research.description.contains("never for something find, open, move, focus or read can do"))
-        guard case .object(let properties, _)? = VoiceTool.move.parameters else { return XCTFail() }
+        XCTAssertTrue(VoiceTool.find.description(for: site).contains("Never read out ids"))
+        XCTAssertTrue(VoiceTool.find.description(for: site).contains("call open with its card number right away"))
+        XCTAssertTrue(VoiceTool.research.description(for: site).contains("never for something find, open, move, focus or read can do"))
+        guard case .object(let properties, _)? = VoiceTool.move.parameters(for: site) else { return XCTFail() }
         XCTAssertEqual(properties.map(\.name), ["action", "post"])
     }
 

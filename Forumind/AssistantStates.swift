@@ -541,7 +541,7 @@ struct NotForumState: View {
                         .foregroundStyle(.secondary)
                     ForEach(suggested) { suggestion in
                         AssistantForumRow(
-                            forum: Forum(siteURL: suggestion.siteURL, name: suggestion.name),
+                            forum: Forum(siteURL: suggestion.siteURL, kind: suggestion.kind, name: suggestion.name),
                             detail: suggestion.description,
                             systemImage: "arrow.up.right"
                         ) {

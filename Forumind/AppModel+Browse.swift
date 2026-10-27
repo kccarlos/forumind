@@ -16,9 +16,36 @@ import SwiftUI
 extension AppModel {
     /// Home button: the current forum's /latest; with no forum, the Forums home.
     func goHome() {
-        if !browser.loadHome() {
+        if !loadHome() {
             browser.showForumsHome()
         }
+    }
+
+    /// Loads the current forum's home through its adapter; false with none.
+    @discardableResult
+    func loadHome() -> Bool {
+        browser.loadHome(adapter: browser.homeSiteURL.flatMap { adapter(for: $0) })
+    }
+
+    /// The current forum's sign-in page; nil with no forum or a site that has none.
+    var loginURL: URL? {
+        guard let siteURL = browser.homeSiteURL else { return nil }
+        return adapter(for: siteURL)?.capabilities.loginURL?(siteURL)
+    }
+
+    /// Loads the current forum's sign-in page; false when there is none.
+    @discardableResult
+    func loadLogin() -> Bool {
+        guard let url = loginURL else { return false }
+        browser.load(url)
+        return true
+    }
+
+    /// The current forum's own search page for typed words; nil with no forum or
+    /// a site without one.
+    func searchPageURL(query: String) -> URL? {
+        guard let siteURL = browser.homeSiteURL else { return nil }
+        return adapter(for: siteURL)?.capabilities.searchPageURL?(siteURL, query)
     }
 
     func showForumsHome() {
@@ -109,7 +136,7 @@ extension AppModel {
     /// Pins a suggested forum immediately (no network), then refreshes its name
     /// and icon from `basic-info.json` in the background.
     func pinSuggested(_ suggested: SuggestedForum) {
-        pin(Forum(siteURL: suggested.siteURL, name: suggested.name))
+        pin(Forum(siteURL: suggested.siteURL, kind: suggested.kind, name: suggested.name))
         refreshForumInfo(siteURL: suggested.siteURL)
     }
 
@@ -135,8 +162,8 @@ extension AppModel {
         if let siteURL = pageContext.siteURL, let forum = forum(for: siteURL) {
             return forum
         }
-        if pageContext.isForum, let siteURL = pageContext.siteURL {
-            return Forum(siteURL: siteURL, name: pageContext.forumName, iconURL: pageContext.iconURL)
+        if pageContext.isForum, let siteURL = pageContext.siteURL, let kind = pageContext.site {
+            return Forum(siteURL: siteURL, kind: kind, name: pageContext.forumName, iconURL: pageContext.iconURL)
         }
         return currentForum
     }
@@ -163,12 +190,14 @@ extension AppModel {
             // domains (screenshots show no real companies).
             // Names in the app's language (SampleContent.swift).
             let text = SampleContent.current
+            let kind = SiteKind.discourse
             let pinned = [text.meta, text.makers, text.trailRunners].map {
-                Forum(siteURL: $0.siteURL, name: $0.name)
+                Forum(siteURL: $0.siteURL, kind: kind, name: $0.name)
             }
             pinned.forEach(pin)
-            recordVisit(siteURL: text.homeLab.siteURL, name: text.homeLab.name, iconURL: nil)
-            recordVisit(siteURL: text.bakers.siteURL, name: text.bakers.name, iconURL: nil)
+            for sample in [text.homeLab, text.bakers] {
+                recordVisit(siteURL: sample.siteURL, kind: kind, name: sample.name, iconURL: nil)
+            }
             if ForumIconPolicy.loadsRemoteIcons {
                 for forum in forums { refreshForumInfo(siteURL: forum.siteURL) }
             }

@@ -40,6 +40,9 @@ final class DailyDigestTests: XCTestCase {
 
     // MARK: Input selection
 
+    /// The slug of a watched topic's URL, as its adapter reads it.
+    private let slug: (WatchedTopic) -> String? = { DiscourseLinks().parse($0.url, basePath: "")?.slug }
+
     func testWatchedTopicsComeFirstThenTrendingInTurnDedupedAndCapped() {
         let quiet = watched("1", known: 10)
         let few = watched("2", known: 13)
@@ -52,7 +55,7 @@ final class DailyDigestTests: XCTestCase {
 
         let cards = DigestPlanner.plan(
             watched: [quiet, few, many], baselines: baselines, trending: trending,
-            options: .init(maxCards: 5)
+            options: .init(maxCards: 5), slug: slug
         )
         // Most new replies first; topic 3 is not repeated as trending; the
         // pinned announcement is skipped; forums take turns; capped at 5.
@@ -66,12 +69,12 @@ final class DailyDigestTests: XCTestCase {
 
         let watchedOnly = DigestPlanner.plan(
             watched: [quiet, few, many], baselines: baselines, trending: trending,
-            options: .init(includesTrending: false)
+            options: .init(includesTrending: false), slug: slug
         )
         XCTAssertEqual(watchedOnly.map(\.topicID), ["3", "2"])
         let trendingOnly = DigestPlanner.plan(
             watched: [quiet, few, many], baselines: baselines, trending: trending,
-            options: .init(includesWatched: false, maxCards: 3)
+            options: .init(includesWatched: false, maxCards: 3), slug: slug
         )
         XCTAssertEqual(trendingOnly.map(\.topicID), ["3", "60", "51"])
         XCTAssertTrue(trendingOnly.allSatisfy { $0.reason == .trending })
@@ -90,18 +93,18 @@ final class DailyDigestTests: XCTestCase {
 
         // A fresher post count from the prefetch wins over the last watch check.
         let facts = [fresh.topicKey: DigestTopicFacts(title: "Fresh", slug: "fresh", postCount: 15, acceptedAnswerPost: 4)]
-        let cards = DigestPlanner.plan(watched: [seen, fresh], baselines: baselines, trending: [], facts: facts, options: .init())
+        let cards = DigestPlanner.plan(watched: [seen, fresh], baselines: baselines, trending: [], facts: facts, options: .init(), slug: slug)
         XCTAssertEqual(cards.map(\.topicID), ["2", "1"])
         XCTAssertEqual(cards[0].reason, .newReplies(6))
         XCTAssertEqual(cards[0].postCount, 15)
         XCTAssertEqual(cards[0].acceptedAnswerPost, 4)
-        XCTAssertEqual(cards[0].url(atPost: 4).absoluteString, "\(site)/t/fresh/2/4")
+        XCTAssertEqual(makeHarness().app.url(for: cards[0], atPost: 4).absoluteString, "\(site)/t/fresh/2/4")
     }
 
     // MARK: Background prefetch
 
     func testPrefetchStopsAtTheRequestCap() async throws {
-        let forums = (1...10).map { Forum(siteURL: "https://f\($0).example.com", name: "F\($0)", isPinned: true, pinOrder: $0) }
+        let forums = (1...10).map { Forum(siteURL: "https://f\($0).example.com", kind: .discourse, name: "F\($0)", isPinned: true, pinOrder: $0) }
         for (index, forum) in forums.enumerated() {
             let ids = (0..<3).map { 1000 * (index + 1) + $0 }
             StateForumStub.lists["\(ForumSite.host(of: forum.siteURL))/top.json"] = topicList(ids)
@@ -124,6 +127,50 @@ final class DailyDigestTests: XCTestCase {
         let stored = DigestStore(directory: harness.store.directoryURL).load().prefetch
         XCTAssertEqual(stored?.requestCount, prefetch.requestCount)
         XCTAssertEqual(stored?.topics, prefetch.topics)
+    }
+
+    func testPrefetchCountsWhatTheActiveTopicsSourceReports() async throws {
+        for used in 0...2 {
+            let source = FakeActiveTopics(requests: used)
+            let forum = Forum(siteURL: "https://fake.example.com", kind: FakeSiteAdapter.kind, name: "Fake", isPinned: true, pinOrder: 0)
+            let harness = makeHarness(
+                snapshot: AppSnapshot(forums: [forum]),
+                sites: SiteRegistry(adapters: [DiscourseAdapter(), FakeSiteAdapter(activeTopics: source)])
+            )
+            let prefetch = await harness.app.prefetchDigestInputs(background: true)
+            XCTAssertEqual(prefetch.requestCount, used)
+            XCTAssertEqual(prefetch.failedCount, 0)
+            XCTAssertEqual(source.receivedBudgets, [DigestLimits.prefetchRequestCap])
+            XCTAssertEqual(prefetch.trending["https://fake.example.com"], [])
+            XCTAssertTrue(StateForumStub.requests.isEmpty)
+        }
+    }
+
+    func testPrefetchHandsEachSourceWhatIsLeftOfTheCap() async throws {
+        let forums = (0..<3).map {
+            Forum(siteURL: "https://fake\($0).example.com", kind: FakeSiteAdapter.kind, name: "Fake\($0)", isPinned: true, pinOrder: $0)
+        }
+        // One registry adapter per forum is not possible (the kind is the key),
+        // so the three forums share a source that counts its calls.
+        let source = FakeActiveTopics(requests: 2)
+        let harness = makeHarness(
+            snapshot: AppSnapshot(forums: forums),
+            sites: SiteRegistry(adapters: [DiscourseAdapter(), FakeSiteAdapter(activeTopics: source)])
+        )
+        let prefetch = await harness.app.prefetchDigestInputs(background: true)
+        XCTAssertEqual(prefetch.requestCount, 6)
+        let cap = DigestLimits.prefetchRequestCap
+        XCTAssertEqual(source.receivedBudgets, [cap, cap - 2, cap - 4])
+    }
+
+    func testPrefetchSkipsASiteWithNoAdapterQuietly() async throws {
+        let forum = Forum(siteURL: "https://ghost.example.com", kind: SiteKind("ghost"), name: "Ghost", isPinned: true, pinOrder: 0)
+        let harness = makeHarness(snapshot: AppSnapshot(forums: [forum]))
+        let prefetch = await harness.app.prefetchDigestInputs(background: true)
+        XCTAssertEqual(prefetch.requestCount, 0)
+        XCTAssertEqual(prefetch.failedCount, 0)
+        XCTAssertNil(prefetch.trending[forum.siteURL])
+        XCTAssertTrue(StateForumStub.requests.isEmpty)
     }
 
     func testRepliesSinceTheLastWatchCheckCountWithoutChangingTheWatch() async throws {
@@ -301,13 +348,18 @@ final class DailyDigestTests: XCTestCase {
         snapshot: AppSnapshot? = nil,
         directory: URL? = nil,
         keys: InMemoryProviderKeyStore? = nil,
-        scheduler: BackgroundTaskScheduling = FakeTaskScheduler()
+        scheduler: BackgroundTaskScheduling = FakeTaskScheduler(),
+        sites: SiteRegistry = .standard
     ) -> Harness {
         let folder = directory ?? FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         let keys = keys ?? InMemoryProviderKeyStore()
         let store = PersistentStore(fileURL: folder.appendingPathComponent("state.json"), keys: keys)
-        if let snapshot { try? store.save(snapshot) }
+        // Jobs resolve their adapter from the forum record a real session has.
+        if var snapshot = snapshot ?? (directory == nil ? AppSnapshot() : nil) {
+            snapshot.ensureForum(site)
+            try? store.save(snapshot)
+        }
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [StateForumStub.self]
         let ai = StateAIStub()
@@ -317,6 +369,7 @@ final class DailyDigestTests: XCTestCase {
                 session: URLSession(configuration: configuration),
                 pacer: ForumRequestPacer(clock: InstantPacingClock())
             ),
+            sites: sites,
             aiService: ai,
             backgroundScheduler: scheduler
         )
@@ -342,7 +395,7 @@ final class DailyDigestTests: XCTestCase {
     }
 
     private func pinned(_ siteURL: String) -> Forum {
-        Forum(siteURL: siteURL, name: ForumSite.host(of: siteURL), isPinned: true, pinOrder: 0)
+        Forum(siteURL: siteURL, kind: .discourse, name: ForumSite.host(of: siteURL), isPinned: true, pinOrder: 0)
     }
 
     private func watched(_ id: String, known: Int, slug: String = "topic") -> WatchedTopic {
@@ -350,7 +403,10 @@ final class DailyDigestTests: XCTestCase {
     }
 
     private func listing(_ siteURL: String, _ id: Int, pinned: Bool = false) -> ForumTopicListing {
-        ForumTopicListing(siteURL: siteURL, id: id, title: "Topic \(id)", slug: "topic-\(id)", postsCount: 2, isPinned: pinned)
+        ForumTopicListing(
+            siteURL: siteURL, id: id, title: "Topic \(id)", slug: "topic-\(id)",
+            url: URL(string: "\(siteURL)/t/topic-\(id)/\(id)")!, postsCount: 2, isPinned: pinned
+        )
     }
 
     /// A `/top.json` or `/latest.json` body.
