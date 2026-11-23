@@ -4,9 +4,9 @@ version = 4
 
 [[package]]
 name = "adblock"
-version = "0.13.3"
+version = "0.13.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f44b96a666a23c12acad7c688bfe8638a7094e7eabe765b09a6864ab991c676d"
+checksum = "7a4c8558f27608dec74695c866f9a8ef897ec7a77cb826f8a5baf0b8ba461d2a"
 dependencies = [
  "addr",
  "arrayvec",
@@ -26,7 +26,6 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
- "url",
 ]
 
 [[package]]
@@ -161,15 +160,6 @@ checksum = "35f6839d7b3b98adde531effaf34f0c2badc6f4735d26fe74709d8e513a96ef3"
 dependencies = [
  "bitflags",
  "rustc_version",
-]
-
-[[package]]
-name = "form_urlencoded"
-version = "1.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
-dependencies = [
- "percent-encoding",
 ]
 
 [[package]]
@@ -649,18 +639,6 @@ name = "unicode-ident"
 version = "1.0.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d245f478577f809a851594d02313b640fb437e0bb33866753cff937863096954"
-
-[[package]]
-name = "url"
-version = "2.5.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff67a8a4397373c3ef660812acab3268222035010ab8680ec4215f38ba3d0eed"
-dependencies = [
- "form_urlencoded",
- "idna",
- "percent-encoding",
- "serde",
-]
 
 [[package]]
 name = "utf8_iter"
