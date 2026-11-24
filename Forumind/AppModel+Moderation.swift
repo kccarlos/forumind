@@ -1,5 +1,31 @@
 import Foundation
 
+struct ModeratedSourceCacheEntry {
+    struct SourceIdentity: Equatable {
+        let length: Int
+        let headHash: Int
+        let tailHash: Int
+        let generation: Int
+
+        init(_ source: String, generation: Int) {
+            let utf8 = source.utf8
+            self.length = utf8.count
+            let sample = min(64, length)
+            var headHasher = Hasher()
+            for byte in utf8.prefix(sample) { headHasher.combine(byte) }
+            self.headHash = headHasher.finalize()
+            var tailHasher = Hasher()
+            for byte in utf8.suffix(sample) { tailHasher.combine(byte) }
+            self.tailHash = tailHasher.finalize()
+            self.generation = generation
+        }
+    }
+
+    let sourceIdentity: SourceIdentity
+    let rules: ModerationRules
+    let moderated: String
+}
+
 // MARK: - Moderation (AppModel API for the UI; see Moderation.swift)
 //
 // - `moderationRules`                  blocks + words + the developer's list
@@ -45,6 +71,7 @@ extension AppModel {
 
     func applyModerationRules() {
         browser.moderationRules = moderationRules
+        moderatedSourceCache.removeAll()
     }
 
     /// Topic text for a prompt, without blocked or filtered posts. Applied
@@ -86,7 +113,21 @@ extension AppModel {
     /// The open topic's cached posts with blocked users and filtered words removed.
     var currentModeratedSource: String {
         guard let session = currentSession, !session.source.isEmpty else { return "" }
-        return moderated(session.source, siteURL: session.siteURL, topicID: session.topicID)
+        let topicKey = session.topicKey
+        let identity = ModeratedSourceCacheEntry.SourceIdentity(session.source, generation: sessionsGeneration)
+        let rules = topicModerationRules(siteURL: session.siteURL, topicID: session.topicID)
+        if let cached = moderatedSourceCache[topicKey],
+           cached.sourceIdentity == identity,
+           cached.rules == rules {
+            return cached.moderated
+        }
+        let filtered = ModerationFilter.filter(session.source, siteURL: session.siteURL, topicID: session.topicID, rules: rules)
+        moderatedSourceCache[topicKey] = ModeratedSourceCacheEntry(
+            sourceIdentity: identity,
+            rules: rules,
+            moderated: filtered
+        )
+        return filtered
     }
 
     func isBlocked(_ username: String, on siteURL: String) -> Bool {

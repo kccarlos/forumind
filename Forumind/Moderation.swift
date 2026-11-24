@@ -1,4 +1,7 @@
 import Foundation
+#if DEBUG
+import os
+#endif
 
 // Moderation for content shown from forums (App Store guideline 1.2):
 //
@@ -151,7 +154,18 @@ struct ModerationRules: Equatable {
 /// summaries, chat and Ask the forum. Each post there starts with a
 /// `username | 2024-01-01 12:00:00 UTC | #N` line.
 enum ModerationFilter {
+    #if DEBUG
+    private static let debugCallCountLock = OSAllocatedUnfairLock(initialState: 0)
+    static var debugFilterCallCount: Int {
+        get { debugCallCountLock.withLock { $0 } }
+        set { debugCallCountLock.withLock { $0 = newValue } }
+    }
+    #endif
+
     static func filter(_ raw: String, siteURL: String, topicID: String, rules: ModerationRules) -> String {
+        #if DEBUG
+        debugCallCountLock.withLock { $0 += 1 }
+        #endif
         guard !rules.isEmpty, !raw.isEmpty else { return raw }
         let text = raw as NSString
         let headers = RawTopicFormat.parseHeaders(raw)

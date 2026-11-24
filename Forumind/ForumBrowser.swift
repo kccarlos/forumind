@@ -826,12 +826,16 @@ final class ForumBrowserModel: NSObject, ObservableObject {
     ) {
         let resolvedURL = url ?? webView.url
         let resolvedTitle = title ?? webView.title
-        currentURL = resolvedURL
-        pageTitle = resolvedTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if currentURL != resolvedURL { currentURL = resolvedURL }
+        let normalizedTitle = resolvedTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
             .nonEmpty ?? Self.defaultPageTitle
-        canGoBack = webView.canGoBack
-        canGoForward = webView.canGoForward
-        isLoading = webView.isLoading
+        if pageTitle != normalizedTitle { pageTitle = normalizedTitle }
+        let back = webView.canGoBack
+        if canGoBack != back { canGoBack = back }
+        let forward = webView.canGoForward
+        if canGoForward != forward { canGoForward = forward }
+        let loading = webView.isLoading
+        if isLoading != loading { isLoading = loading }
 
         let made = PageContext.make(
             url: resolvedURL,

@@ -659,7 +659,18 @@ struct TopicExportPayload: Equatable {
         !history.isEmpty
     }
 
+    #if DEBUG
+    nonisolated(unsafe) static var textBuilds = 0
+
+    static func resetTextBuilds() {
+        textBuilds = 0
+    }
+    #endif
+
     func text(options: ExportOptions) -> String {
+        #if DEBUG
+        Self.textBuilds += 1
+        #endif
         var sections: [String] = []
         if !options.excludeTitleAndURL {
             if !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -691,7 +702,28 @@ struct TopicExportPayload: Equatable {
     }
 
     func hasContent(options: ExportOptions) -> Bool {
-        !text(options: options).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        Self.hasContent(
+            title: title,
+            url: url,
+            summary: summary,
+            hasSource: hasSource,
+            hasChatHistory: hasChatHistory,
+            options: options
+        )
+    }
+
+    static func hasContent(
+        title: String,
+        url: URL?,
+        summary: String,
+        hasSource: Bool,
+        hasChatHistory: Bool,
+        options: ExportOptions
+    ) -> Bool {
+        (!options.excludeTitleAndURL && (!title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !(url?.absoluteString.isEmpty ?? true)))
+            || (!options.excludeSummary && !summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            || (!options.excludePostAndResponses && hasSource)
+            || (!options.excludeChatHistory && hasChatHistory)
     }
 }
 

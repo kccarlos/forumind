@@ -162,8 +162,14 @@ final class AppModel: ObservableObject {
         }
     }
     @Published private(set) var sessions: [String: TopicSession] {
-        didSet { spotlightDataDidChange() }
+        didSet {
+            sessionsGeneration &+= 1
+            moderatedSourceCache.removeAll()
+            spotlightDataDidChange()
+        }
     }
+    var sessionsGeneration = 0
+    var moderatedSourceCache: [String: ModeratedSourceCacheEntry] = [:]
     @Published private(set) var activities: [WorkRecord]
     @Published private(set) var currentTopic: ForumTopic?
     @Published var panelRoute: PanelRoute = .topic
@@ -252,6 +258,26 @@ final class AppModel: ObservableObject {
     @Published var requestedSettingsPage: SettingsPage?
     /// Export toggles shared between AssistantPanel and RouterHost's ExportOptionsSheet.
     @Published var exportOptions = ExportOptions()
+
+    /// Cheap check for whether the open topic has pulled post text, without
+    /// running moderation filtering during SwiftUI render.
+    var hasCurrentSource: Bool {
+        !(currentSession?.source.isEmpty ?? true)
+    }
+
+    /// Cheap check for whether any enabled export section has content, without
+    /// running moderation filtering or building the export string during render.
+    func hasCurrentExportContent(options: ExportOptions) -> Bool {
+        let session = currentSession
+        return TopicExportPayload.hasContent(
+            title: session?.title ?? currentTopic?.title ?? "",
+            url: session?.url ?? currentTopic?.url,
+            summary: session?.summary ?? "",
+            hasSource: hasCurrentSource,
+            hasChatHistory: !(session?.history.isEmpty ?? true),
+            options: options
+        )
+    }
 
     var currentExportPayload: TopicExportPayload {
         let session = currentSession
@@ -3799,6 +3825,16 @@ final class AppModel: ObservableObject {
         }
         if updated != settings { settings = updated }
     }
+
+    #if DEBUG
+    func upsertSessionForTesting(_ session: TopicSession) {
+        sessions[session.topicKey] = session
+    }
+
+    func setActivitiesForTesting(_ records: [WorkRecord]) {
+        activities = records
+    }
+    #endif
 }
 
 /// What a job runs with, captured when it starts (see `AppModel.runSettings`).

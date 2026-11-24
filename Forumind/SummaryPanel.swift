@@ -2,6 +2,22 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
+#if DEBUG
+enum DrawerRenderProbe {
+    nonisolated(unsafe) static var assistantPanelBodies = 0
+    nonisolated(unsafe) static var headerBodies = 0
+    nonisolated(unsafe) static var chatBubbleBodies = 0
+    nonisolated(unsafe) static var chatBubbleMessageIDs: Set<UUID> = []
+
+    static func reset() {
+        assistantPanelBodies = 0
+        headerBodies = 0
+        chatBubbleBodies = 0
+        chatBubbleMessageIDs.removeAll()
+    }
+}
+#endif
+
 /// The assistant's screens shown as a sheet (Post & responses; History and
 /// Settings over Home and in the drawer layout).
 enum ExpandedPanelRoute: String, Identifiable {
@@ -32,6 +48,8 @@ struct AssistantPanel: View {
     /// Opens a forum URL in the Browse workspace (the agent's step log uses it).
     let onOpenURL: ((URL) -> Void)?
     @State private var exporting = false
+    @State private var exportDocument: PlainTextDocument?
+    @State private var shareItem: ShareTextItem?
     /// "Tap a post number to jump to it", shown with the first summary.
     @State private var showsCitationTip = false
     @State private var renderedSummary: ThrottledParse<DrawerSummarySections.Input, (sections: Int, hasCitations: Bool, rows: [MarkdownRow])>?
@@ -66,12 +84,17 @@ struct AssistantPanel: View {
         app.currentExportPayload
     }
 
-    private var exportText: String {
+    private func buildExportText() -> String {
         payload.text(options: app.exportOptions)
     }
 
+    func copyExport() {
+        UIPasteboard.general.string = buildExportText()
+        DCHaptics.success()
+    }
+
     private var exportDisabled: Bool {
-        activePull != nil || !payload.hasContent(options: app.exportOptions)
+        activePull != nil || !app.hasCurrentExportContent(options: app.exportOptions)
     }
 
     /// What the body shows; the key drives the cross-fade between states.
@@ -95,6 +118,9 @@ struct AssistantPanel: View {
     }
 
     var body: some View {
+        #if DEBUG
+        let _ = { DrawerRenderProbe.assistantPanelBodies += 1 }()
+        #endif
         VStack(spacing: 0) {
             // Over History and Settings too: voice can always be muted or
             // ended (the rest of the row is about the topic).
@@ -139,13 +165,21 @@ struct AssistantPanel: View {
         }
         .fileExporter(
             isPresented: $exporting,
-            document: PlainTextDocument(text: exportText),
+            document: exportDocument,
             contentType: .plainText,
             defaultFilename: "forumind-\(exportSlug).txt"
         ) { result in
+            exportDocument = nil
             if case .failure(let error) = result {
                 app.presentError(error.localizedDescription)
             }
+        }
+        .onChange(of: exporting) {
+            if !exporting { exportDocument = nil }
+        }
+        .sheet(item: $shareItem) { item in
+            ActivitySheet(text: item.text)
+                .presentationDetents([.medium, .large])
         }
     }
 
@@ -190,51 +224,57 @@ struct AssistantPanel: View {
     /// Ask box asks the whole forum), the model pill, Translate, Read aloud
     /// and the drawer's ··· menu. The system grabber sits above it.
     private var drawerHeader: some View {
-        let layout = dynamicTypeSize.isAccessibilitySize
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
-            : AnyLayout(HStackLayout(spacing: 4))
-        return layout {
-            HStack(spacing: 4) {
-                Text(drawerTitle)
-                    .font(.headline)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .contentTransition(.opacity)
-                    .accessibilityAddTraits(.isHeader)
-                    .accessibilityIdentifier("drawerTitle")
-                if dynamicTypeSize.isAccessibilitySize {
-                    Spacer(minLength: 0)
-                    drawerHeaderActions
-                }
-            }
-            if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 4) }
-            if !dynamicTypeSize.isAccessibilitySize {
-                drawerModelPill
-                drawerHeaderActions
-            }
+        let role = ModelPill.role(for: app.assistantMode)
+        let selection = app.selection(for: role)
+        let menuRole = app.currentRole
+        let menuSelection = app.selection(for: menuRole)
+        let summaryAction: DrawerHeaderView.SummaryAction? = if bodyKind == .summary,
+            let session = app.currentSession,
+            session.hasSummary {
+            .init(topicKey: session.topicKey, title: session.title, summary: session.summary)
+        } else {
+            nil
         }
-        .padding(.leading, 16)
-        .padding(.trailing, 8)
-        .padding(.top, 14)
-        .frame(minHeight: DCTheme.controlHeight + 14)
-        .fixedSize(horizontal: false, vertical: true)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("drawerHeader")
-    }
-
-    private var drawerHeaderActions: some View {
-        HStack(spacing: 4) {
-            if bodyKind == .summary, let session = app.currentSession, session.hasSummary {
-                let text = PostCitations.stripped(session.summary)
-                TranslateButton(app: app, title: session.title, text: text, compact: true)
-                    .buttonStyle(DCIconButtonStyle())
-                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-                ReadAloudButton(podcast: app.podcast, id: "summary-\(session.topicKey)", title: session.title, text: text, compact: true)
-                    .buttonStyle(DCIconButtonStyle())
-                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-            }
-            drawerMoreMenu
-        }
+        return DrawerHeaderView(
+            title: drawerTitle,
+            summaryAction: summaryAction,
+            modelPill: .init(
+                role: role,
+                selection: selection,
+                readiness: app.readiness(of: selection),
+                menuRole: menuRole,
+                menuSelection: menuSelection,
+                favorites: app.visibleFavorites.map { favorite in
+                    .init(
+                        favorite: favorite,
+                        isSelected: favorite.matches(menuSelection),
+                        detail: app.favoriteDetail(favorite)
+                    )
+                },
+                showsUseSameModel: !app.rolesShareModel && app.isProviderSelectable(menuSelection.provider),
+                runningSearchModel: app.runningSearchModel(for: menuRole)
+            ),
+            moreMenu: .init(
+                exportDisabled: exportDisabled,
+                hasCurrentSource: app.hasCurrentSource,
+                canPullPost: app.currentTopic != nil && activeSummary == nil && activePull == nil,
+                hasCurrentTopic: app.currentTopic != nil,
+                isWatched: app.currentTopic.map { app.isWatched(topicKey: $0.topicKey) },
+                isAgentMode: app.assistantMode == .agent,
+                isChatMode: app.assistantMode == .chat,
+                reportTargets: reportTargets,
+                hasChatHistory: !(app.currentSession?.history.isEmpty ?? true)
+            ),
+            app: app,
+            onCopyExport: { copyExport() },
+            onShareExport: { shareItem = ShareTextItem(text: buildExportText()) },
+            onExportFile: {
+                exportDocument = PlainTextDocument(text: buildExportText())
+                exporting = true
+            },
+            onExpandPost: { onExpand(.post) }
+        )
+        .equatable()
     }
 
     private var drawerTitle: String {
@@ -244,257 +284,8 @@ struct AssistantPanel: View {
         }
     }
 
-    /// The current scope's model (§6), 36 pt high; tap for the favorites
-    /// and AI models. The label cross-fades and the width follows; a model
-    /// that can't run shows why instead.
-    private var drawerModelPill: some View {
-        let role = ModelPill.role(for: app.assistantMode)
-        let selection = app.selection(for: role)
-        let readiness = app.readiness(of: selection)
-        let model = ModelPill.label(for: selection)
-        let ready = readiness == .ready
-        let tint = role == .agent ? DCTheme.agentTint : DCTheme.summaryTint
-        return Menu {
-            modelSwitcherItems
-        } label: {
-            HStack(spacing: 4) {
-                if !ready {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .imageScale(.small)
-                        .accessibilityHidden(true)
-                }
-                Text(verbatim: ready ? model : readiness.title)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : nil, alignment: .leading)
-                    .multilineTextAlignment(.leading)
-                    .truncationMode(.middle)
-                    .contentTransition(.opacity)
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(dynamicTypeSize.isAccessibilitySize ? .system(size: 12, weight: .semibold) : .footnote.weight(.semibold))
-                    .imageScale(.small)
-                    .accessibilityHidden(true)
-            }
-            .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : nil, alignment: .leading)
-            .font(dynamicTypeSize.isAccessibilitySize ? .caption2.weight(.semibold) : .footnote.weight(.semibold))
-            .foregroundStyle(ready ? tint : DCTheme.newRepliesBadgeText)
-            .padding(.horizontal, dynamicTypeSize.isAccessibilitySize ? 8 : 12)
-            .frame(minHeight: 36)
-            .background(ready ? tint.opacity(0.12) : DCTheme.newRepliesBadgeBackground, in: RoundedRectangle(cornerRadius: dynamicTypeSize.isAccessibilitySize ? 14 : 18))
-            .frame(minHeight: DCTheme.controlHeight)
-            .contentShape(Rectangle())
-            .animation(DCMotion.respecting(reduceMotion, DCMotion.quick), value: model)
-            .animation(DCMotion.respecting(reduceMotion, DCMotion.quick), value: role)
-        }
-        .menuOrder(.fixed)
-        .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : 190)
-        // A new model for the same role; a scope change has its own haptic.
-        .sensoryFeedback(.impact(weight: .light), trigger: PillState(role: role, selection: selection)) { old, new in
-            old.role == new.role && old.selection != new.selection
-        }
-        .accessibilityLabel(Text("Model: \(ready ? model : "\(model), \(readiness.title)")", comment: "Accessibility label of the AI drawer's model pill; the placeholder is the model name"))
-        .accessibilityIdentifier("modelPill")
-    }
-
-    private struct PillState: Equatable {
-        let role: ModelRole
-        let selection: ModelSelection
-    }
-
-    // MARK: Drawer ··· menu
-
-    /// §4.4 order: export, the topic's post and pull, instructions, watch,
-    /// History (Manage for now), then Clear Chat.
-    private var drawerMoreMenu: some View {
-        Menu {
-            if dynamicTypeSize.isAccessibilitySize { drawerModelPill }
-            Section {
-                Button {
-                    UIPasteboard.general.string = exportText
-                    DCHaptics.success()
-                } label: {
-                    Label("Copy", systemImage: "doc.on.doc")
-                }
-                .accessibilityIdentifier("copyExport")
-                .disabled(exportDisabled)
-
-                ShareLink(item: exportText) {
-                    Label("Share", systemImage: "square.and.arrow.up")
-                }
-                .accessibilityIdentifier("shareExport")
-                .disabled(exportDisabled)
-
-                Button {
-                    exporting = true
-                } label: {
-                    Label("Export .txt", systemImage: "arrow.down.doc")
-                }
-                .accessibilityIdentifier("exportExport")
-                .disabled(exportDisabled)
-
-                Button {
-                    app.router.item = .exportOptions
-                } label: {
-                    Label("Export Options…", systemImage: "slider.horizontal.3")
-                }
-                .accessibilityIdentifier("exportOptions")
-            }
-
-            Section {
-                Button {
-                    onExpand(.post)
-                } label: {
-                    Label("Post & Responses", systemImage: "text.bubble")
-                }
-                .accessibilityIdentifier("viewPost")
-                .disabled(app.currentModeratedSource.isEmpty)
-
-                Button {
-                    app.pullTopic()
-                } label: {
-                    Label("Pull Post + Replies Only", systemImage: "arrow.down.circle")
-                }
-                .accessibilityIdentifier("pullPost")
-                .disabled(app.currentTopic == nil || activeSummary != nil || activePull != nil)
-
-                Button {
-                    app.router.item = .instructions
-                } label: {
-                    Label("Instructions & Context", systemImage: "text.quote")
-                }
-                .accessibilityIdentifier("menuInstructions")
-                .disabled(app.currentTopic == nil)
-
-                Button {
-                    app.toggleWatchCurrentTopic()
-                } label: {
-                    if let topicKey = app.currentTopic?.topicKey, app.isWatched(topicKey: topicKey) {
-                        Label("Unwatch Topic", systemImage: "eye.slash")
-                    } else {
-                        Label("Watch Topic", systemImage: "eye")
-                    }
-                }
-                .accessibilityIdentifier("toggleWatchTopic")
-                .disabled(app.currentTopic == nil)
-
-                Button {
-                    withAnimation(DCMotion.respecting(reduceMotion)) { app.panelRoute = .history }
-                } label: {
-                    Label("History", systemImage: "clock.arrow.circlepath")
-                }
-                .accessibilityIdentifier("openHistoryMenu")
-            }
-
-            if app.assistantMode != .agent {
-                Section { reportAIOutputButtons }
-            }
-
-            if !(app.currentSession?.history.isEmpty ?? true) {
-                Section {
-                    Button(role: .destructive) {
-                        app.clearChat()
-                    } label: {
-                        Label("Clear Chat", systemImage: "trash")
-                    }
-                    .accessibilityIdentifier("clearChat")
-                }
-            }
-        } label: {
-            Image(systemName: "ellipsis.circle")
-                .font(dynamicTypeSize.isAccessibilitySize ? .system(size: 24, weight: .medium) : .body.weight(.medium))
-                // Watch Topic lives in this menu: the button answers the tap.
-                .dcStateBounce(app.currentTopic.map { app.isWatched(topicKey: $0.topicKey) })
-        }
-        .buttonStyle(DCIconButtonStyle())
-        .accessibilityLabel("More assistant actions")
-        .accessibilityIdentifier("assistantMoreMenu")
-    }
-
     /// Reportable AI outputs offered in the assistant `···` menu.
     var reportTargets: [ReportTarget] { app.currentTopicAIOutputReports }
-
-    /// Report This Summary… and/or Report This Answer…: App Review 1.2.
-    /// Disabled until there is AI text to report.
-    @ViewBuilder
-    private var reportAIOutputButtons: some View {
-        let targets = reportTargets
-        if targets.isEmpty {
-            Button {} label: {
-                if app.assistantMode == .chat {
-                    Label(String(localized: "Report This Answer…", comment: "Assistant menu: report the AI's latest chat answer"), systemImage: "flag")
-                } else {
-                    Label(String(localized: "Report This Summary…", comment: "Assistant menu: report the AI summary"), systemImage: "flag")
-                }
-            }
-            .disabled(true)
-            .accessibilityIdentifier("reportAIOutput")
-        } else {
-            ForEach(targets) { target in
-                let isChatAnswer = if case .aiOutput(let output) = target.kind {
-                    output.feature == .chatAnswer
-                } else {
-                    false
-                }
-                Button {
-                    app.report(target)
-                } label: {
-                    if isChatAnswer {
-                        Label(String(localized: "Report This Answer…", comment: "Assistant menu: report the AI's latest chat answer"), systemImage: "flag")
-                    } else {
-                        Label(String(localized: "Report This Summary…", comment: "Assistant menu: report the AI summary"), systemImage: "flag")
-                    }
-                }
-                .accessibilityIdentifier(
-                    targets.count > 1 && isChatAnswer ? "reportAIChatAnswer" : "reportAIOutput"
-                )
-            }
-        }
-    }
-
-    /// The pill's menu (ModelMenu, ModelForum): the role, what it is used
-    /// for, the favorites with their state, "Use X for both", AI models…, and
-    /// while a search runs, that a change waits for the next question.
-    @ViewBuilder
-    private var modelSwitcherItems: some View {
-        let role = app.currentRole
-        let current = app.selection(for: role)
-        Section {
-            Text(role.menuExplanation)
-            ForEach(app.visibleFavorites) { favorite in
-                Toggle(isOn: Binding(
-                    get: { favorite.matches(current) },
-                    set: { _ in app.activateFavorite(favorite, for: role) }
-                )) {
-                    Text(favorite.provider.displayName)
-                    Text(app.favoriteDetail(favorite))
-                }
-            }
-        } header: {
-            Text(role.title.localizedUppercase)
-        }
-        if !app.rolesShareModel, app.isProviderSelectable(current.provider) {
-            Button {
-                app.useSameModel(as: role)
-            } label: {
-                Label(
-                    String(localized: "Use \(ModelPill.label(for: current)) for both", comment: "Model menu: gives the other role this model too. The placeholder is a model name, e.g. claude-opus."),
-                    systemImage: "arrow.left.arrow.right"
-                )
-            }
-            .accessibilityIdentifier("modelUseForBoth")
-        }
-        Button {
-            app.requestedSettingsPage = .provider
-        } label: {
-            Label("AI models…", systemImage: "gearshape")
-        }
-        .accessibilityIdentifier("modelMenuSettings")
-        if let running = app.runningSearchModel(for: role) {
-            Section {
-                Text("A change applies to your next question. The search running now keeps \(running).", comment: "Ask the forum model menu while a search runs. The placeholder is the running search's model.")
-            }
-        }
-    }
 
     private func subHeader(_ title: LocalizedStringKey) -> some View {
         HStack {
@@ -900,10 +691,378 @@ struct AssistantPanel: View {
     }
 }
 
+/// Equatable drawer header over only the fields it draws so unrelated
+/// `AppModel` publishes skip re-evaluating the title, model pill, actions, and
+/// more menu.
+private struct DrawerHeaderView: View, Equatable {
+    struct SummaryAction: Equatable {
+        let topicKey: String
+        let title: String
+        let summary: String
+    }
+
+    struct FavoriteItem: Identifiable, Equatable {
+        let favorite: FavoriteModel
+        let isSelected: Bool
+        let detail: String
+
+        var id: FavoriteModel.ID { favorite.id }
+    }
+
+    struct ModelPillSnapshot: Equatable {
+        let role: ModelRole
+        let selection: ModelSelection
+        let readiness: ModelReadiness
+        let menuRole: ModelRole
+        let menuSelection: ModelSelection
+        let favorites: [FavoriteItem]
+        let showsUseSameModel: Bool
+        let runningSearchModel: String?
+    }
+
+    struct MoreMenuSnapshot: Equatable {
+        let exportDisabled: Bool
+        let hasCurrentSource: Bool
+        let canPullPost: Bool
+        let hasCurrentTopic: Bool
+        let isWatched: Bool?
+        let isAgentMode: Bool
+        let isChatMode: Bool
+        let reportTargets: [ReportTarget]
+        let hasChatHistory: Bool
+    }
+
+    private struct PillState: Equatable {
+        let role: ModelRole
+        let selection: ModelSelection
+    }
+
+    let title: String
+    let summaryAction: SummaryAction?
+    let modelPill: ModelPillSnapshot
+    let moreMenu: MoreMenuSnapshot
+    let app: AppModel
+    let onCopyExport: () -> Void
+    let onShareExport: () -> Void
+    let onExportFile: () -> Void
+    let onExpandPost: () -> Void
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    static func == (lhs: DrawerHeaderView, rhs: DrawerHeaderView) -> Bool {
+        lhs.title == rhs.title
+            && lhs.summaryAction == rhs.summaryAction
+            && lhs.modelPill == rhs.modelPill
+            && lhs.moreMenu == rhs.moreMenu
+    }
+
+    var body: some View {
+        #if DEBUG
+        let _ = { DrawerRenderProbe.headerBodies += 1 }()
+        #endif
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+            : AnyLayout(HStackLayout(spacing: 4))
+        return layout {
+            HStack(spacing: 4) {
+                Text(title)
+                    .font(.headline)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .contentTransition(.opacity)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("drawerTitle")
+                if dynamicTypeSize.isAccessibilitySize {
+                    Spacer(minLength: 0)
+                    drawerHeaderActions
+                }
+            }
+            if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 4) }
+            if !dynamicTypeSize.isAccessibilitySize {
+                drawerModelPill
+                drawerHeaderActions
+            }
+        }
+        .padding(.leading, 16)
+        .padding(.trailing, 8)
+        .padding(.top, 14)
+        .frame(minHeight: DCTheme.controlHeight + 14)
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("drawerHeader")
+    }
+
+    private var drawerHeaderActions: some View {
+        HStack(spacing: 4) {
+            if let action = summaryAction {
+                let text = PostCitations.stripped(action.summary)
+                TranslateButton(app: app, title: action.title, text: text, compact: true)
+                    .buttonStyle(DCIconButtonStyle())
+                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+                ReadAloudButton(podcast: app.podcast, id: "summary-\(action.topicKey)", title: action.title, text: text, compact: true)
+                    .buttonStyle(DCIconButtonStyle())
+                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+            }
+            drawerMoreMenu
+        }
+    }
+
+    /// The current scope's model (§6), 36 pt high; tap for the favorites
+    /// and AI models. The label cross-fades and the width follows; a model
+    /// that can't run shows why instead.
+    private var drawerModelPill: some View {
+        let role = modelPill.role
+        let selection = modelPill.selection
+        let readiness = modelPill.readiness
+        let model = ModelPill.label(for: selection)
+        let ready = readiness == .ready
+        let tint = role == .agent ? DCTheme.agentTint : DCTheme.summaryTint
+        return Menu {
+            modelSwitcherItems
+        } label: {
+            HStack(spacing: 4) {
+                if !ready {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .imageScale(.small)
+                        .accessibilityHidden(true)
+                }
+                Text(verbatim: ready ? model : readiness.title)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : nil, alignment: .leading)
+                    .multilineTextAlignment(.leading)
+                    .truncationMode(.middle)
+                    .contentTransition(.opacity)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(dynamicTypeSize.isAccessibilitySize ? .system(size: 12, weight: .semibold) : .footnote.weight(.semibold))
+                    .imageScale(.small)
+                    .accessibilityHidden(true)
+            }
+            .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : nil, alignment: .leading)
+            .font(dynamicTypeSize.isAccessibilitySize ? .caption2.weight(.semibold) : .footnote.weight(.semibold))
+            .foregroundStyle(ready ? tint : DCTheme.newRepliesBadgeText)
+            .padding(.horizontal, dynamicTypeSize.isAccessibilitySize ? 8 : 12)
+            .frame(minHeight: 36)
+            .background(ready ? tint.opacity(0.12) : DCTheme.newRepliesBadgeBackground, in: RoundedRectangle(cornerRadius: dynamicTypeSize.isAccessibilitySize ? 14 : 18))
+            .frame(minHeight: DCTheme.controlHeight)
+            .contentShape(Rectangle())
+            .animation(DCMotion.respecting(reduceMotion, DCMotion.quick), value: model)
+            .animation(DCMotion.respecting(reduceMotion, DCMotion.quick), value: role)
+        }
+        .menuOrder(.fixed)
+        .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : 190)
+        // A new model for the same role; a scope change has its own haptic.
+        .sensoryFeedback(.impact(weight: .light), trigger: PillState(role: role, selection: selection)) { old, new in
+            old.role == new.role && old.selection != new.selection
+        }
+        .accessibilityLabel(Text("Model: \(ready ? model : "\(model), \(readiness.title)")", comment: "Accessibility label of the AI drawer's model pill; the placeholder is the model name"))
+        .accessibilityIdentifier("modelPill")
+    }
+
+    /// §4.4 order: export, the topic's post and pull, instructions, watch,
+    /// History (Manage for now), then Clear Chat.
+    private var drawerMoreMenu: some View {
+        Menu {
+            if dynamicTypeSize.isAccessibilitySize { drawerModelPill }
+            Section {
+                Button {
+                    onCopyExport()
+                } label: {
+                    Label("Copy", systemImage: "doc.on.doc")
+                }
+                .accessibilityIdentifier("copyExport")
+                .disabled(moreMenu.exportDisabled)
+
+                Button {
+                    onShareExport()
+                } label: {
+                    Label("Share", systemImage: "square.and.arrow.up")
+                }
+                .accessibilityIdentifier("shareExport")
+                .disabled(moreMenu.exportDisabled)
+
+                Button {
+                    onExportFile()
+                } label: {
+                    Label("Export .txt", systemImage: "arrow.down.doc")
+                }
+                .accessibilityIdentifier("exportExport")
+                .disabled(moreMenu.exportDisabled)
+
+                Button {
+                    app.router.item = .exportOptions
+                } label: {
+                    Label("Export Options…", systemImage: "slider.horizontal.3")
+                }
+                .accessibilityIdentifier("exportOptions")
+            }
+
+            Section {
+                Button {
+                    onExpandPost()
+                } label: {
+                    Label("Post & Responses", systemImage: "text.bubble")
+                }
+                .accessibilityIdentifier("viewPost")
+                .disabled(!moreMenu.hasCurrentSource)
+
+                Button {
+                    app.pullTopic()
+                } label: {
+                    Label("Pull Post + Replies Only", systemImage: "arrow.down.circle")
+                }
+                .accessibilityIdentifier("pullPost")
+                .disabled(!moreMenu.canPullPost)
+
+                Button {
+                    app.router.item = .instructions
+                } label: {
+                    Label("Instructions & Context", systemImage: "text.quote")
+                }
+                .accessibilityIdentifier("menuInstructions")
+                .disabled(!moreMenu.hasCurrentTopic)
+
+                Button {
+                    app.toggleWatchCurrentTopic()
+                } label: {
+                    if moreMenu.isWatched == true {
+                        Label("Unwatch Topic", systemImage: "eye.slash")
+                    } else {
+                        Label("Watch Topic", systemImage: "eye")
+                    }
+                }
+                .accessibilityIdentifier("toggleWatchTopic")
+                .disabled(!moreMenu.hasCurrentTopic)
+
+                Button {
+                    withAnimation(DCMotion.respecting(reduceMotion)) { app.panelRoute = .history }
+                } label: {
+                    Label("History", systemImage: "clock.arrow.circlepath")
+                }
+                .accessibilityIdentifier("openHistoryMenu")
+            }
+
+            if !moreMenu.isAgentMode {
+                Section { reportAIOutputButtons }
+            }
+
+            if moreMenu.hasChatHistory {
+                Section {
+                    Button(role: .destructive) {
+                        app.clearChat()
+                    } label: {
+                        Label("Clear Chat", systemImage: "trash")
+                    }
+                    .accessibilityIdentifier("clearChat")
+                }
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(dynamicTypeSize.isAccessibilitySize ? .system(size: 24, weight: .medium) : .body.weight(.medium))
+                // Watch Topic lives in this menu: the button answers the tap.
+                .dcStateBounce(moreMenu.isWatched)
+        }
+        .buttonStyle(DCIconButtonStyle())
+        .accessibilityLabel("More assistant actions")
+        .accessibilityIdentifier("assistantMoreMenu")
+    }
+
+    /// Report This Summary… and/or Report This Answer…: App Review 1.2.
+    /// Disabled until there is AI text to report.
+    @ViewBuilder
+    private var reportAIOutputButtons: some View {
+        let targets = moreMenu.reportTargets
+        if targets.isEmpty {
+            Button {} label: {
+                if moreMenu.isChatMode {
+                    Label(String(localized: "Report This Answer…", comment: "Assistant menu: report the AI's latest chat answer"), systemImage: "flag")
+                } else {
+                    Label(String(localized: "Report This Summary…", comment: "Assistant menu: report the AI summary"), systemImage: "flag")
+                }
+            }
+            .disabled(true)
+            .accessibilityIdentifier("reportAIOutput")
+        } else {
+            ForEach(targets) { target in
+                let isChatAnswer = if case .aiOutput(let output) = target.kind {
+                    output.feature == .chatAnswer
+                } else {
+                    false
+                }
+                Button {
+                    app.report(target)
+                } label: {
+                    if isChatAnswer {
+                        Label(String(localized: "Report This Answer…", comment: "Assistant menu: report the AI's latest chat answer"), systemImage: "flag")
+                    } else {
+                        Label(String(localized: "Report This Summary…", comment: "Assistant menu: report the AI summary"), systemImage: "flag")
+                    }
+                }
+                .accessibilityIdentifier(
+                    targets.count > 1 && isChatAnswer ? "reportAIChatAnswer" : "reportAIOutput"
+                )
+            }
+        }
+    }
+
+    /// The pill's menu (ModelMenu, ModelForum): the role, what it is used
+    /// for, the favorites with their state, "Use X for both", AI models…, and
+    /// while a search runs, that a change waits for the next question.
+    @ViewBuilder
+    private var modelSwitcherItems: some View {
+        let role = modelPill.menuRole
+        let current = modelPill.menuSelection
+        Section {
+            Text(role.menuExplanation)
+            ForEach(modelPill.favorites) { item in
+                Toggle(isOn: Binding(
+                    get: { item.isSelected },
+                    set: { _ in app.activateFavorite(item.favorite, for: role) }
+                )) {
+                    Text(item.favorite.provider.displayName)
+                    Text(item.detail)
+                }
+            }
+        } header: {
+            Text(role.title.localizedUppercase)
+        }
+        if modelPill.showsUseSameModel {
+            Button {
+                app.useSameModel(as: role)
+            } label: {
+                Label(
+                    String(localized: "Use \(ModelPill.label(for: current)) for both", comment: "Model menu: gives the other role this model too. The placeholder is a model name, e.g. claude-opus."),
+                    systemImage: "arrow.left.arrow.right"
+                )
+            }
+            .accessibilityIdentifier("modelUseForBoth")
+        }
+        Button {
+            app.requestedSettingsPage = .provider
+        } label: {
+            Label("AI models…", systemImage: "gearshape")
+        }
+        .accessibilityIdentifier("modelMenuSettings")
+        if let running = modelPill.runningSearchModel {
+            Section {
+                Text("A change applies to your next question. The search running now keeps \(running).", comment: "Ask the forum model menu while a search runs. The placeholder is the running search's model.")
+            }
+        }
+    }
+}
+
 // MARK: - Chat
 
 /// The conversation: a collapsed summary card, messages, and a pinned composer.
 private struct ChatThread<Leading: View>: View {
+    /// Keep the newest messages eager alongside the streaming bubble so
+    /// scroll-to-bottom and follow-streaming never race lazy tail layout.
+    private static var eagerTailCount: Int { 4 }
+    /// Short conversations stay eager so exact row heights avoid lazy
+    /// estimation drift; longer threads render earlier messages lazily.
+    private static var lazyHistoryThreshold: Int { 16 }
+
     private struct HistoryCountKey: Equatable {
         let topicKey: String
         let count: Int
@@ -1013,10 +1172,18 @@ private struct ChatThread<Leading: View>: View {
                     }
                 }, onStateChange: { old, new in
                     metricsBox.nearBottom = new.nearBottom
-                    if new.nearBottom {
+                    // Lazy rows re-estimating can shrink the content under a
+                    // reader who scrolled away; that alone is not "back at the
+                    // bottom" and must not resume following.
+                    let shrankOnly = new.contentHeight < old.contentHeight && new.offsetY <= old.offsetY
+                    if new.nearBottom, atBottom || !shrankOnly {
                         metricsBox.pinningBottom = false
                         if !atBottom { atBottom = true }
-                    } else if atBottom, scrollTask != nil, new.offsetY < old.offsetY - 1 {
+                    } else if atBottom, scrollTask != nil, userScrolling, new.offsetY < old.offsetY - 1 {
+                        // Only the reader dragging up stops a jump. Lazy rows
+                        // re-measuring above the viewport also move the offset
+                        // up mid-jump; treating that as the reader froze the
+                        // jump thousands of points short of the bottom.
                         scrollTask?.cancel()
                         scrollTask = nil
                         atBottom = false
@@ -1117,15 +1284,25 @@ private struct ChatThread<Leading: View>: View {
         }
 
         let hiddenPosts = app.currentHiddenPosts
-        ForEach(history) { message in
-            ChatBubble(message: message, maximumPost: app.currentSession?.totalPosts, hiddenPosts: hiddenPosts) {
-                app.editChat(messageID: message.id)
+        let splitIndex = history.count > Self.lazyHistoryThreshold
+            ? max(0, history.count - Self.eagerTailCount)
+            : 0
+        let earlierMessages = history[..<splitIndex]
+        let recentMessages = history[splitIndex...]
+
+        if !earlierMessages.isEmpty {
+            LazyVStack(alignment: .leading, spacing: 8) {
+                ForEach(earlierMessages) { message in
+                    chatBubbleRow(message, hiddenPosts: hiddenPosts)
+                        .id(message.id)
+                }
             }
-            .padding(.top, 4)
-            .transition(.asymmetric(
-                insertion: reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .bottom)),
-                removal: .opacity
-            ))
+            .transition(.identity)
+        }
+
+        ForEach(recentMessages) { message in
+            chatBubbleRow(message, hiddenPosts: hiddenPosts)
+                .id(message.id)
         }
 
         if !stream.isEmpty {
@@ -1136,6 +1313,7 @@ private struct ChatThread<Leading: View>: View {
                 onEdit: nil,
                 isStreaming: true
             )
+            .equatable()
             .padding(.top, 4)
             .id("chatStream")
         } else if activeChat != nil {
@@ -1151,6 +1329,18 @@ private struct ChatThread<Leading: View>: View {
         if !history.isEmpty, activeChat == nil, app.activeChatEdit == nil {
             followUpChips
         }
+    }
+
+    private func chatBubbleRow(_ message: ChatMessage, hiddenPosts: Set<Int>) -> some View {
+        ChatBubble(message: message, maximumPost: app.currentSession?.totalPosts, hiddenPosts: hiddenPosts) {
+            app.editChat(messageID: message.id)
+        }
+        .equatable()
+        .padding(.top, 4)
+        .transition(.asymmetric(
+            insertion: reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .bottom)),
+            removal: .opacity
+        ))
     }
 
     /// "Conversation" between the drawer's summary and the messages.
@@ -1458,6 +1648,21 @@ struct ExpandedPanel: View {
     }
 }
 
+private struct ShareTextItem: Identifiable {
+    let id = UUID()
+    let text: String
+}
+
+private struct ActivitySheet: UIViewControllerRepresentable {
+    let text: String
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [text], applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
 private struct PlainTextDocument: FileDocument {
     static var readableContentTypes: [UTType] { [.plainText] }
     var text: String
@@ -1611,16 +1816,30 @@ struct ChatBubbleShape: Shape {
     }
 }
 
-struct ChatBubble: View {
+struct ChatBubble: View, Equatable {
     let message: ChatMessage
     var maximumPost: Int? = nil
     var hiddenPosts: Set<Int> = []
     var onEdit: (() -> Void)? = nil
     var isStreaming = false
 
+    static func == (lhs: ChatBubble, rhs: ChatBubble) -> Bool {
+        lhs.message == rhs.message
+            && lhs.maximumPost == rhs.maximumPost
+            && lhs.hiddenPosts == rhs.hiddenPosts
+            && (lhs.onEdit != nil) == (rhs.onEdit != nil)
+            && lhs.isStreaming == rhs.isStreaming
+    }
+
     private var isUser: Bool { message.role == .user }
 
     var body: some View {
+        #if DEBUG
+        let _ = {
+            DrawerRenderProbe.chatBubbleBodies += 1
+            DrawerRenderProbe.chatBubbleMessageIDs.insert(message.id)
+        }()
+        #endif
         HStack(alignment: .bottom) {
             if isUser { Spacer(minLength: 40) }
             VStack(alignment: isUser ? .trailing : .leading, spacing: 6) {

@@ -12,6 +12,11 @@ if [[ ! -d "$xcode_app" ]]; then
   xcode_app="/Applications/Xcode.app"
 fi
 
-sudo xcode-select -s "${xcode_app}/Contents/Developer"
+# DEVELOPER_DIR instead of `sudo xcode-select -s`: the self-hosted runner
+# has no passwordless sudo, and this leaves the machine's global choice alone.
+export DEVELOPER_DIR="${xcode_app}/Contents/Developer"
+if [[ -n "${GITHUB_ENV:-}" ]]; then
+  echo "DEVELOPER_DIR=${DEVELOPER_DIR}" >>"$GITHUB_ENV"
+fi
 xcodebuild -version
 xcrun --sdk iphonesimulator --show-sdk-version

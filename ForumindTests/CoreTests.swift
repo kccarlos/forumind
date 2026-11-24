@@ -4,6 +4,11 @@ import XCTest
 @testable import Forumind
 
 final class CoreTests: XCTestCase {
+    /// A full stop "touches" its citation chip when the gap is at most this many points:
+    /// 2 pt of spacing plus one pixel at the tests' 2x render scale, so a simulator that
+    /// rasterises the same layout half a point differently does not fail the test.
+    private let citationTouchLimit: CGFloat = 2.5
+
     // MARK: Browser bar position
 
     func testNewSettingsPlaceTheBarAutomatically() {
@@ -193,8 +198,7 @@ final class CoreTests: XCTestCase {
             for idx in [0, 2, 4, 5, 6, 7] where idx < pills.count {
                 let pill = pills[idx]
                 let gapAfter = try XCTUnwrap(pill.gapAfter, "\(name) pill[\(idx)]: trailing full stop must stay on the same line right after its chip")
-                // A space is several points wider even at default sizes; CI renders up to 0.5 pt looser.
-                XCTAssertLessThanOrEqual(gapAfter, 3.0, "\(name) pill[\(idx)]: full stop must touch the chip without a space (got \(gapAfter) pt)")
+                XCTAssertLessThanOrEqual(gapAfter, citationTouchLimit, "\(name) pill[\(idx)]: full stop must touch the chip without a space (got \(gapAfter) pt)")
                 if let dotMaxY = pill.dotMaxY {
                     XCTAssertLessThanOrEqual(dotMaxY, pill.pillMaxY + 1.5, "\(name) pill[\(idx)]: full stop must not drop below the chip pill")
                 }
@@ -227,7 +231,7 @@ final class CoreTests: XCTestCase {
             let pills = try measurePills(in: image)
             let lastPill = try XCTUnwrap(pills.last, "\(name): expected citation pill")
             let gapAfter = try XCTUnwrap(lastPill.gapAfter, "\(name): full stop must stay on the same line as its chip")
-            XCTAssertLessThanOrEqual(gapAfter, 2.0, "\(name): full stop must touch its chip")
+            XCTAssertLessThanOrEqual(gapAfter, citationTouchLimit, "\(name): full stop must touch its chip")
             // Verify there is no orphan ink below the last pill's line band.
             let cgImage = try XCTUnwrap(image.cgImage)
             let scale = image.scale
@@ -276,7 +280,7 @@ final class CoreTests: XCTestCase {
             XCTAssertEqual(pills.count, 3, "\(name): expected 3 chat citations")
             for idx in [0, 2] where idx < pills.count {
                 let gapAfter = try XCTUnwrap(pills[idx].gapAfter, "\(name) pill[\(idx)]: full stop must stay with its chip in chat")
-                XCTAssertLessThanOrEqual(gapAfter, 2.0, "\(name) pill[\(idx)]: full stop in chat must touch the chip (got \(gapAfter) pt)")
+                XCTAssertLessThanOrEqual(gapAfter, citationTouchLimit, "\(name) pill[\(idx)]: full stop in chat must touch the chip (got \(gapAfter) pt)")
             }
         }
     }
@@ -599,6 +603,91 @@ final class CoreTests: XCTestCase {
     }
 
     @MainActor
+    func testLazyEarlierChatMessagesAndScrollFollowWith60Messages() throws {
+        var lines = ["## Original post"]
+        for section in 1...12 {
+            lines.append("\n## Section \(section)")
+            for point in 1...4 {
+                lines.append("- Summary point \(section).\(point) discussing the card offer and timing #\(section * point)")
+            }
+        }
+        let longSummary = lines.joined(separator: "\n")
+        let ai = HeldChatAIStub()
+        let (app, topic) = try makeSummaryTestApp(summary: longSummary, totalPosts: 500, aiService: ai)
+
+        var session = try XCTUnwrap(app.sessions[topic.topicKey])
+        let messages: [ChatMessage] = (1...60).map { index in
+            ChatMessage(
+                role: index.isMultiple(of: 2) ? .assistant : .user,
+                content: index.isMultiple(of: 2)
+                    ? "Assistant reply \(index) with enough detail to occupy a full bubble height and cite #\(index)."
+                    : "User question \(index) about the discussion?"
+            )
+        }
+        session.history = messages
+        app.upsertSessionForTesting(session)
+
+        DrawerRenderProbe.reset()
+        let (window, host) = hostView(
+            AssistantPanel(app: app, onExpand: { _ in }),
+            size: CGSize(width: 393, height: 740)
+        )
+        defer { window.isHidden = true }
+
+        let initialBodies = DrawerRenderProbe.chatBubbleBodies
+        XCTAssertGreaterThan(initialBodies, 0, "Newest chat bubbles must still evaluate eagerly on open.")
+        XCTAssertLessThan(
+            initialBodies,
+            15,
+            "Opening AssistantPanel with 60 chat messages must evaluate fewer than 15 ChatBubble.body instances; got \(initialBodies)."
+        )
+
+        let scrollView = try XCTUnwrap(findScrollView(in: host.view), "Missing chatScroll UIScrollView")
+
+        // Adding a user message and streaming an answer must still land and stay at the bottom.
+        app.drafts.chat = "What is the latest takeaway?"
+        app.sendChat()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.9))
+        host.view.layoutIfNeeded()
+
+        let distanceAfterSend = scrollView.contentSize.height - (scrollView.contentOffset.y + scrollView.bounds.height)
+        XCTAssertLessThan(distanceAfterSend, 48, "sendChat over 60 lazy chat messages must reach the bottom; distance=\(distanceAfterSend)")
+
+        let chatRecord = try XCTUnwrap(app.activities.first { $0.type == .chat })
+        for line in 1...6 {
+            app.streams.append("Streamed paragraph \(line) over a 60-message conversation.\n\n", to: chatRecord.id)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.15))
+            host.view.layoutIfNeeded()
+        }
+        let distanceAfterStream = scrollView.contentSize.height - (scrollView.contentOffset.y + scrollView.bounds.height)
+        XCTAssertLessThan(distanceAfterStream, 48, "Streaming answer over 60 lazy chat messages must stay at the bottom; distance=\(distanceAfterStream)")
+
+        ai.finish()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+        host.view.layoutIfNeeded()
+
+        // Scrolling from the bottom toward the top must materialize earlier messages.
+        DrawerRenderProbe.reset()
+        var currentOffset = scrollView.contentOffset.y
+        while currentOffset > 0 {
+            currentOffset = max(0, currentOffset - 350)
+            scrollView.setContentOffset(CGPoint(x: 0, y: currentOffset), animated: false)
+            window.layoutIfNeeded()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+            window.layoutIfNeeded()
+        }
+        XCTAssertGreaterThan(
+            DrawerRenderProbe.chatBubbleBodies,
+            0,
+            "Scrolling to the top must materialize earlier chat bubbles."
+        )
+        XCTAssertTrue(
+            DrawerRenderProbe.chatBubbleMessageIDs.contains(messages[0].id),
+            "Scrolling to the top must materialize the earliest chat message."
+        )
+    }
+
+    @MainActor
     func testExternalMarkdownViewCallersRenderLazilyAndSizeInForm() throws {
         // Long MarkdownView inside an outer ScrollView + VStack (as in AgentView and TranslationViews).
         let longMarkdown = (1...180).map { "## Heading \($0)\n\nParagraph \($0) with **bold** and `code`." }.joined(separator: "\n\n")
@@ -627,61 +716,6 @@ final class CoreTests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(0.1))
         formWindow.layoutIfNeeded()
         XCTAssertGreaterThanOrEqual(MarkdownLayoutProbe.blockBodies, 3, "MarkdownView inside Form must render its acknowledgement blocks.")
-    }
-
-    @MainActor
-    private func makeSummaryTestApp(
-        summary: String,
-        totalPosts: Int,
-        aiService: AIService = AIService()
-    ) throws -> (AppModel, ForumTopic) {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        let store = PersistentStore(fileURL: directory.appendingPathComponent("state.json"), keys: InMemoryProviderKeyStore())
-        let siteURL = "https://forum.example.com"
-        let url = try XCTUnwrap(URL(string: "\(siteURL)/t/test-topic/42"))
-        let topic = ForumTopic(siteURL: siteURL, topicID: "42", url: url, title: "Test topic")
-        var session = TopicSession(siteURL: siteURL, topicID: "42", url: url, title: "Test topic")
-        session.source = "alice | 2026-10-20 | #1\nPost 1"
-        session.summary = summary
-        session.totalPosts = totalPosts
-        session.summaryPostCount = totalPosts
-        session.summaryUpdatedAt = Date()
-        session.model = "test-model"
-        var snapshot = AppSnapshot()
-        snapshot.sessions = [session]
-        try store.save(snapshot)
-        let app = AppModel(store: store, aiService: aiService)
-        let handler = app.browser.onPageContextChanged
-        app.browser.onPageContextChanged = nil
-        app.allowAllAIProviders()
-        app.selectModel(ModelSelection(provider: .ollama, model: "test-model"), for: .both)
-        let page = PageContext(url: url, site: .discourse, siteURL: siteURL, forumName: "Forum", topic: topic, state: .topic)
-        app.browser.setPageContext(page)
-        handler?(page)
-        return (app, topic)
-    }
-
-    @MainActor
-    private func hostView<V: View>(_ view: V, size: CGSize) -> (UIWindow, UIHostingController<V>) {
-        let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
-        let window = scene.map(UIWindow.init(windowScene:)) ?? UIWindow(frame: CGRect(origin: .zero, size: size))
-        window.frame = CGRect(origin: .zero, size: size)
-        let host = UIHostingController(rootView: view)
-        window.rootViewController = host
-        window.makeKeyAndVisible()
-        host.view.frame = window.bounds
-        window.layoutIfNeeded()
-        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
-        window.layoutIfNeeded()
-        addTeardownBlock {
-            MainActor.assumeIsolated {
-                window.isHidden = true
-                window.rootViewController = nil
-                window.windowScene = nil
-            }
-        }
-        return (window, host)
     }
 
     @MainActor
@@ -1898,28 +1932,6 @@ final class LazyMarkdownTests: XCTestCase {
     }
 
     @MainActor
-    private func hostView<V: View>(_ view: V, size: CGSize) -> (UIWindow, UIHostingController<V>) {
-        let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
-        let window = scene.map(UIWindow.init(windowScene:)) ?? UIWindow(frame: CGRect(origin: .zero, size: size))
-        window.frame = CGRect(origin: .zero, size: size)
-        let host = UIHostingController(rootView: view)
-        window.rootViewController = host
-        window.makeKeyAndVisible()
-        host.view.frame = window.bounds
-        window.layoutIfNeeded()
-        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
-        window.layoutIfNeeded()
-        addTeardownBlock {
-            MainActor.assumeIsolated {
-                window.isHidden = true
-                window.rootViewController = nil
-                window.windowScene = nil
-            }
-        }
-        return (window, host)
-    }
-
-    @MainActor
     private func findScrollView(in view: UIView) -> UIScrollView? {
         if let scroll = view as? UIScrollView, scroll.bounds.height > 200 {
             return scroll
@@ -2044,11 +2056,22 @@ final class LazyMarkdownTests: XCTestCase {
         let scrollView = try XCTUnwrap(findScrollView(in: host.view))
         app.drafts.chat = "Does my follow-up reach the viewport?"
         app.sendChat()
+        // Wait for the jump to settle rather than a fixed time: on a loaded
+        // machine the settle loop can still be running at 0.8 s. A jump that
+        // freezes short (the bug this pins) never gets closer, so the 3 s cap
+        // still fails it.
+        func distanceToBottom() -> CGFloat {
+            window.layoutIfNeeded()
+            return scrollView.contentSize.height - (scrollView.contentOffset.y + scrollView.bounds.height)
+        }
+        let deadline = Date().addingTimeInterval(3)
         RunLoop.current.run(until: Date().addingTimeInterval(0.8))
-        window.layoutIfNeeded()
+        while distanceToBottom() >= 48, Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
 
         XCTAssertNotNil(app.activities.first { $0.type == .chat && $0.status == .running })
-        let distance = scrollView.contentSize.height - (scrollView.contentOffset.y + scrollView.bounds.height)
+        let distance = distanceToBottom()
         ai.finish()
 
         XCTAssertLessThan(
@@ -2208,6 +2231,7 @@ final class LazyMarkdownTests: XCTestCase {
             window.layoutIfNeeded()
         }
 
+        print("PROBE_DRAG_START \(Date().timeIntervalSince1970)")
         // Simulate 90 frames of smooth upward scrolling at 1.8 pt/frame (~162 pt total, > 3x the 48 pt threshold).
         for _ in 1...90 {
             let nextY = max(0, scrollView.contentOffset.y - 1.8)
@@ -2783,5 +2807,74 @@ final class LazyMarkdownTests: XCTestCase {
 
         let outOfRangeObs = try XCTUnwrap(planner.transcripts[5].last?.content)
         XCTAssertEqual(outOfRangeObs, "ERROR from read_topic:\nInvalid argument \"page\": use a number from 1 to 2.")
+    }
+
+    @MainActor
+    func testCitedTextCoalescesTextRunsAndPreservesAccessibilityLabel() {
+        func measureTokenViews(for source: String) -> Int {
+            MarkdownLayoutProbe.reset()
+            let content = MarkdownBlockView(
+                row: MarkdownRow(content: .paragraph(source), topSpacing: 0),
+                citations: true
+            )
+            .frame(width: 360, alignment: .leading)
+            let renderer = ImageRenderer(content: content)
+            _ = renderer.cgImage
+            return MarkdownLayoutProbe.textViews
+        }
+
+        let enSeg1 = "Members discussing the **onboarding flow** noticed that new accounts often hit link limits right away"
+        let enSeg2 = "while moderators explained that community flags are reviewed together so spam stays out of threads"
+        let enSeg3 = "Several admins also shared plugins extending the default trust level rules across busy forum categories"
+        let enSeg4 = "Trust level unlocks after reading."
+        let englishSource = "\(enSeg1) [#1](forumind-post:1) \(enSeg2) [#7](forumind-post:7). \(enSeg3) [#14](forumind-post:14). \(enSeg4)"
+        let englishPlain = "Members discussing the onboarding flow noticed that new accounts often hit link limits right away "
+            + "\(enSeg2) . \(enSeg3) . \(enSeg4)"
+
+        XCTAssertEqual(CitedText.accessibilityLabel(for: englishSource), englishPlain)
+        let englishTokenViews = measureTokenViews(for: englishSource)
+        XCTAssertGreaterThan(englishTokenViews, 0)
+        XCTAssertLessThanOrEqual(
+            englishTokenViews,
+            7,
+            "A 50-word English paragraph with 3 citations must yield at most 7 CitedText token views; got \(englishTokenViews)."
+        )
+
+        let zhSeg1 = "一篇官方帖子整理了新用户最常问的问题，包括信任等级是怎么回事、为什么一开始能发布"
+        let zhSeg2 = "的链接有限，以及去哪里查看社区的准则。不少人在第二个链接被拦下时还以为账号出了问"
+        let zhSeg3 = "题，版主解释这只是防垃圾信息的措施，只要正常浏览一两天并认真回复几次就会自动升级"
+        XCTAssertEqual(zhSeg1.count + zhSeg2.count + zhSeg3.count, 120)
+        let chineseSource = "\(zhSeg1) [#2](forumind-post:2)。\(zhSeg2) [#9](forumind-post:9)。\(zhSeg3)"
+        let chinesePlain = "\(zhSeg1) 。\(zhSeg2) 。\(zhSeg3)"
+
+        XCTAssertEqual(CitedText.accessibilityLabel(for: chineseSource), chinesePlain)
+        let chineseTokenViews = measureTokenViews(for: chineseSource)
+        XCTAssertGreaterThan(chineseTokenViews, 0)
+        XCTAssertLessThanOrEqual(
+            chineseTokenViews,
+            5,
+            "A 120-character Chinese paragraph with 2 citations must yield at most 5 CitedText token views; got \(chineseTokenViews)."
+        )
+
+        // Leading non-opening punctuation on words or styled runs after a chip must not glue onto the chip.
+        XCTAssertEqual(CitedText.citationSuffixes(for: "See [#1](forumind-post:1) @alice"), [nil])
+        XCTAssertEqual(CitedText.accessibilityLabel(for: "See [#1](forumind-post:1) @alice"), "See @alice")
+
+        XCTAssertEqual(CitedText.citationSuffixes(for: #"See [#1](forumind-post:1) "quoted""#), [nil])
+        XCTAssertEqual(CitedText.accessibilityLabel(for: #"See [#1](forumind-post:1) "quoted""#), #"See "quoted""#)
+
+        XCTAssertEqual(CitedText.citationSuffixes(for: "See [#1](forumind-post:1) `.env`"), [nil])
+        XCTAssertEqual(CitedText.accessibilityLabel(for: "See [#1](forumind-post:1) `.env`"), "See .env")
+
+        XCTAssertEqual(CitedText.citationSuffixes(for: "See [#1](forumind-post:1). `@alice`"), ["."])
+        XCTAssertEqual(CitedText.accessibilityLabel(for: "See [#1](forumind-post:1). `@alice`"), "See . @alice")
+
+        XCTAssertEqual(CitedText.citationSuffixes(for: #"See [#1](forumind-post:1). **"quoted"**"#), ["."])
+        XCTAssertEqual(CitedText.accessibilityLabel(for: #"See [#1](forumind-post:1). **"quoted"**"#), #"See . "quoted""#)
+
+        // True trailing punctuation still glues onto its chip (including space-before-period and CJK).
+        XCTAssertEqual(CitedText.citationSuffixes(for: "See [#1](forumind-post:1) . Next"), ["."])
+        XCTAssertEqual(CitedText.citationSuffixes(for: "（见 [#7](forumind-post:7)）。"), ["）。"])
+        XCTAssertEqual(CitedText.citationSuffixes(for: "先开启 [#12](forumind-post:12)。另见"), ["。"])
     }
 }

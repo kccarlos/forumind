@@ -282,6 +282,117 @@ final class ModerationTests: XCTestCase {
         XCTAssertEqual(PostPreviewView(app: app).source, raw)
     }
 
+    func testCurrentModeratedSourceCachesPerTopicAndInvalidates() throws {
+        let url1 = try XCTUnwrap(URL(string: "\(site)/t/topic-one/1"))
+        let topic1 = ForumTopic(siteURL: site, topicID: "1", url: url1, title: "Topic One")
+        var session1 = TopicSession(siteURL: site, topicID: "1", url: url1, title: "Topic One")
+        session1.seedSource(raw)
+        session1.openedByUserAt = Date()
+
+        let raw2 = """
+        dave | 2026-01-02 10:00:00 UTC | #1
+
+        Second topic opening post.
+
+        -------------------------
+
+        Bob | 2026-01-02 11:00:00 UTC | #2
+
+        Another bob post.
+
+        -------------------------
+
+        erin | 2026-01-02 12:00:00 UTC | #3
+
+        Second topic reply.
+
+        -------------------------
+        """
+        let url2 = try XCTUnwrap(URL(string: "\(site)/t/topic-two/2"))
+        let topic2 = ForumTopic(siteURL: site, topicID: "2", url: url2, title: "Topic Two")
+        var session2 = TopicSession(siteURL: site, topicID: "2", url: url2, title: "Topic Two")
+        session2.seedSource(raw2)
+        session2.openedByUserAt = Date()
+
+        let app = makeApp(sessions: [session1, session2])
+        app.select(topic: topic1)
+        app.block("bob", on: site)
+
+        let expectedBobBlocked = ModerationFilter.filter(
+            raw, siteURL: site, topicID: "1",
+            rules: app.topicModerationRules(siteURL: site, topicID: "1")
+        )
+
+        // 20 reads with one blocked user invoke ModerationFilter.filter once.
+        ModerationFilter.debugFilterCallCount = 0
+        var firstResult = ""
+        for _ in 0..<20 {
+            firstResult = app.currentModeratedSource
+            XCTAssertEqual(firstResult, expectedBobBlocked)
+        }
+        XCTAssertEqual(ModerationFilter.debugFilterCallCount, 1)
+        XCTAssertFalse(firstResult.contains("buy now"))
+
+        // Adding another block recomputes and removes newly blocked posts (stale cache cannot show blocked posts).
+        app.block("carol", on: site)
+        let expectedBothBlocked = ModerationFilter.filter(
+            raw, siteURL: site, topicID: "1",
+            rules: app.topicModerationRules(siteURL: site, topicID: "1")
+        )
+        ModerationFilter.debugFilterCallCount = 0
+        let afterSecondBlock = app.currentModeratedSource
+        XCTAssertEqual(ModerationFilter.debugFilterCallCount, 1)
+        XCTAssertNotEqual(afterSecondBlock, firstResult)
+        XCTAssertEqual(afterSecondBlock, expectedBothBlocked)
+        XCTAssertFalse(afterSecondBlock.contains("A helpful reply."))
+        // Subsequent read hits cache.
+        XCTAssertEqual(app.currentModeratedSource, expectedBothBlocked)
+        XCTAssertEqual(ModerationFilter.debugFilterCallCount, 1)
+
+        // Unblocking recomputes and restores posts (stale cache cannot hide unblocked posts).
+        let carolBlock = try XCTUnwrap(app.settings.blockedUsers.first { $0.username.caseInsensitiveCompare("carol") == .orderedSame })
+        app.unblock(carolBlock)
+        ModerationFilter.debugFilterCallCount = 0
+        let afterUnblockCarol = app.currentModeratedSource
+        XCTAssertEqual(ModerationFilter.debugFilterCallCount, 1)
+        XCTAssertNotEqual(afterUnblockCarol, afterSecondBlock)
+        XCTAssertEqual(afterUnblockCarol, expectedBobBlocked)
+        XCTAssertTrue(afterUnblockCarol.contains("A helpful reply."))
+
+        // Unblocking the last blocked user restores the full source.
+        let bobBlock = try XCTUnwrap(app.settings.blockedUsers.first { $0.username.caseInsensitiveCompare("bob") == .orderedSame })
+        app.unblock(bobBlock)
+        let expectedUnblocked = ModerationFilter.filter(
+            raw, siteURL: site, topicID: "1",
+            rules: app.topicModerationRules(siteURL: site, topicID: "1")
+        )
+        ModerationFilter.debugFilterCallCount = 0
+        let afterUnblockAll = app.currentModeratedSource
+        XCTAssertEqual(ModerationFilter.debugFilterCallCount, 1)
+        XCTAssertNotEqual(afterUnblockAll, afterUnblockCarol)
+        XCTAssertEqual(afterUnblockAll, expectedUnblocked)
+        XCTAssertEqual(afterUnblockAll, raw)
+
+        // Re-block bob and switch topic: must recompute and match uncached filter for topic 2.
+        app.block("bob", on: site)
+        _ = app.currentModeratedSource
+        app.select(topic: topic2)
+        let expectedTopic2 = ModerationFilter.filter(
+            raw2, siteURL: site, topicID: "2",
+            rules: app.topicModerationRules(siteURL: site, topicID: "2")
+        )
+        ModerationFilter.debugFilterCallCount = 0
+        let topic2Result = app.currentModeratedSource
+        XCTAssertEqual(ModerationFilter.debugFilterCallCount, 1)
+        XCTAssertNotEqual(topic2Result, expectedBobBlocked)
+        XCTAssertEqual(topic2Result, expectedTopic2)
+        XCTAssertFalse(topic2Result.contains("Another bob post."))
+        XCTAssertTrue(topic2Result.contains("Second topic opening post."))
+        // Subsequent read of topic 2 hits cache.
+        XCTAssertEqual(app.currentModeratedSource, expectedTopic2)
+        XCTAssertEqual(ModerationFilter.debugFilterCallCount, 1)
+    }
+
     // MARK: Reporting AI digests, podcasts, and voice answers
 
     func testReportingAIDigestsPodcastsAndVoiceAnswers() throws {

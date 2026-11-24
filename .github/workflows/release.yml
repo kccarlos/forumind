@@ -69,7 +69,8 @@ jobs:
   # `secrets` can't be used in a job-level `if:`, so compute what can run here.
   preflight:
     name: Preflight
-    runs-on: ubuntu-latest
+    # Runs on every push to main. Runner rule: see the comment in ci.yml.
+    runs-on: ${{ github.repository == 'kccarlos/forumind-dev' && fromJSON('["self-hosted","macOS","xcode-27"]') || 'ubuntu-latest' }}
     timeout-minutes: 5
     outputs:
       asc: ${{ steps.check.outputs.asc }}
@@ -144,7 +145,7 @@ jobs:
     needs: preflight
     # Attached to GitHub Releases; CI already builds every push to main.
     if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
-    runs-on: ${{ vars.CI_MACOS_RUNNER || 'xcode-27' }}
+    runs-on: ${{ github.repository == 'kccarlos/forumind-dev' && fromJSON('["self-hosted","macOS","xcode-27"]') || vars.CI_MACOS_RUNNER || 'xcode-27' }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
@@ -185,7 +186,7 @@ jobs:
     name: Archive & upload to TestFlight
     needs: preflight
     if: needs.preflight.outputs.signing == 'true'
-    runs-on: ${{ vars.CI_MACOS_RUNNER || 'xcode-27' }}
+    runs-on: ${{ github.repository == 'kccarlos/forumind-dev' && fromJSON('["self-hosted","macOS","xcode-27"]') || vars.CI_MACOS_RUNNER || 'xcode-27' }}
     timeout-minutes: 90
     environment: testflight
     env:
@@ -358,7 +359,7 @@ jobs:
     if: >-
       always() && needs.preflight.outputs.metadata == 'true' &&
       (needs.testflight.result == 'success' || needs.testflight.result == 'skipped')
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.repository == 'kccarlos/forumind-dev' && fromJSON('["self-hosted","macOS","xcode-27"]') || 'ubuntu-latest' }}
     timeout-minutes: 30
     environment: testflight
     steps:
@@ -440,7 +441,7 @@ jobs:
       always() && github.ref_type == 'tag' &&
       needs.simulator-build.result == 'success' &&
       (needs.testflight.result == 'success' || needs.testflight.result == 'skipped')
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.repository == 'kccarlos/forumind-dev' && fromJSON('["self-hosted","macOS","xcode-27"]') || 'ubuntu-latest' }}
     timeout-minutes: 10
     permissions:
       contents: write

@@ -18,6 +18,8 @@ concurrency:
 
 jobs:
   deploy:
+    # Only the public repo has a Pages site; the private dev repo would always fail here.
+    if: github.repository == 'kccarlos/forumind'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
